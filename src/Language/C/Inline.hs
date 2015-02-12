@@ -3,10 +3,10 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Language.C.Inline
-  ( CCode(..)
-  , embedCCode
-  , embedCStm
-  , embedCExp
+  ( Code(..)
+  , embedCode
+  , embedStm
+  , embedExp
   ) where
 
 import qualified Language.Haskell.TH as TH
@@ -26,14 +26,14 @@ import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
 -- | Data type representing some typed C code.
-data CCode = CCode
-  { cCallSafety :: TH.Safety
+data Code = Code
+  { codeCallSafety :: TH.Safety
     -- ^ Safety of the foreign call
-  , cType :: TH.TypeQ
+  , codeType :: TH.TypeQ
     -- ^ Type of the foreign call
-  , cFunName :: String
+  , codeFunName :: String
     -- ^ Name of the function to call in the code above.
-  , cCode :: [C.Definition]
+  , codeDefs :: [C.Definition]
     -- ^ The C code.
   }
 
@@ -55,8 +55,8 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 -- refer to the source location in the Haskell file they come from.
 --
 -- See <https://gcc.gnu.org/onlinedocs/cpp/Line-Control.html>.
-embedCCode :: CCode -> TH.ExpQ
-embedCCode CCode{..} = do
+embedCode :: Code -> TH.ExpQ
+embedCode Code{..} = do
   cFile <- cSourceLoc
   -- First make sure that 'currentModule' and C file are up to date
   mbModule <- TH.runIO $ readIORef currentModuleRef
@@ -72,12 +72,12 @@ embedCCode CCode{..} = do
     Just currentModule | currentModule == thisModule -> return ()
     Just _otherModule -> recordThisModule
   -- Write out definitions
-  TH.runIO $ forM_ cCode $ appendCDefinition cFile
+  TH.runIO $ forM_ codeDefs $ appendCDefinition cFile
   -- Create and add the FFI declaration.  TODO absurdly, I need to
   -- 'newName' twice for things to work.  I found this hack in
   -- language-c-inline.  Why is this?
   ffiImportName <- TH.newName . show =<< TH.newName "inline_c_ffi"
-  dec <- TH.forImpD TH.CCall cCallSafety cFunName ffiImportName cType
+  dec <- TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType
   TH.addTopDecls [dec]
   [| $(TH.varE ffiImportName) |]
 
@@ -92,7 +92,7 @@ uniqueCName = do
   unique <- filter (/= '-') . UUID.toString <$> UUID.nextRandom
   return $ "inline_c_" ++ unique
 
-embedCStm
+embedStm
   :: TH.Safety
   -- ^ Safety of the foreign call
   -> TH.TypeQ
@@ -104,17 +104,17 @@ embedCStm
   -> C.Stm
   -- ^ The C statement
   -> TH.ExpQ
-embedCStm callSafety type_ cRetType cParams cStm = do
+embedStm callSafety type_ cRetType cParams cStm = do
   funName <- TH.runIO uniqueCName
   let defs = [C.cunit| $ty:cRetType $id:funName($params:cParams) { $stm:cStm } |]
-  embedCCode $ CCode
-    { cCallSafety = callSafety
-    , cType = type_
-    , cFunName = funName
-    , cCode = defs
+  embedCode $ Code
+    { codeCallSafety = callSafety
+    , codeType = type_
+    , codeFunName = funName
+    , codeDefs = defs
     }
 
-embedCExp
+embedExp
   :: TH.Safety
   -- ^ Safety of the foreign call
   -> TH.TypeQ
@@ -126,5 +126,5 @@ embedCExp
   -> C.Exp
   -- ^ The C expression
   -> TH.ExpQ
-embedCExp callSafety type_ cRetType cParams cExp =
-  embedCStm callSafety type_ cRetType cParams [C.cstm| return $exp:cExp; |]
+embedExp callSafety type_ cRetType cParams cExp =
+  embedStm callSafety type_ cRetType cParams [C.cstm| return $exp:cExp; |]

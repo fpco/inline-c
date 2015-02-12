@@ -5,26 +5,26 @@ import qualified Language.Haskell.TH as TH
 import           Language.C.Quote
 import           Language.C.Quote.C
 
-test_embedCCode :: Int
-test_embedCCode = c_add 1 2
+test_embedCode :: Int
+test_embedCode = c_add 1 2
   where
-    c_add = $(embedCCode $ CCode
+    c_add = $(embedCode $ Code
       TH.Unsafe                   -- Call safety
       [t| Int -> Int -> Int |]    -- Call type
       "add"                       -- Call name
       -- C Code
       [cunit| int add(int x, int y) { int z = x + y; return z; } |])
 
-test_embedCStm :: Double
-test_embedCStm = $(embedCStm
+test_embedStm :: Double
+test_embedStm = $(embedStm
   TH.Unsafe
   [t| Double -> Double |]
   [cty| double |]
   [cparams| double x |]
   [cstm| return cos(x); |]) 1
 
-test_embedCExp :: Double
-test_embedCExp = $(embedCExp
+test_embedExp :: Double
+test_embedExp = $(embedExp
   TH.Unsafe
   [t| Double |]
   [cty| double |]
@@ -33,6 +33,6 @@ test_embedCExp = $(embedCExp
 
 main :: IO ()
 main = do
-  print test_embedCCode
-  print test_embedCStm
-  print test_embedCExp
+  print test_embedCode
+  print test_embedStm
+  print test_embedExp
