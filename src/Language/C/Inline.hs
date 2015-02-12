@@ -47,7 +47,8 @@ import           Data.Functor ((<$>))
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
--- | Data type representing some typed C code.
+-- | Data type representing some C code with a typed and named entry
+-- function.
 data Code = Code
   { codeCallSafety :: TH.Safety
     -- ^ Safety of the foreign call
