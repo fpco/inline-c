@@ -7,8 +7,11 @@ import           Language.C.Quote.C
 
 main :: IO ()
 main = do
-  print $ $(embedCFunction $ CFunction
-    TH.Unsafe
-    [t| Int -> Int -> Int |]
-    ([cty| int |], [cparams| int x, int y |])
-    [cstms| { int z = x + y; return z; } |]) 1 2
+  let c_add = $(embedCCode $ CCode
+        TH.Unsafe                   -- Call safety
+        [t| Int -> Int -> Int |]    -- Call type
+        "add"                       -- Call name
+        -- C Code
+        [cunit| int add(int x, int y) { int z = x + y; return z; } |])
+  print $ c_add 1 2
+

@@ -3,62 +3,34 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Language.C.Inline
-  ( CFunction(..)
-  , buildCFunction
-  , embedCFunction
+  ( CCode(..)
+  , embedCCode
   ) where
 
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
 import qualified Text.PrettyPrint.Mainland as PrettyPrint
 import qualified Language.C as C
-import qualified Language.C.Quote.C as C
 import           Control.Exception (catch, throwIO)
 import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import           Control.Monad (unless)
+import           Control.Monad (unless, forM_)
 import           System.IO.Error (isDoesNotExistError)
 import           System.Directory (removeFile)
 import           Data.Functor ((<$>))
 
--- | Data type representing a C function with the information we need
--- (its type) to call it from Haskell.
-data CFunction = CFunction
-  { cFunSafety :: TH.Safety
+-- | Data type representing some typed C code.
+data CCode = CCode
+  { cCallSafety :: TH.Safety
     -- ^ Safety of the foreign call
-  , cFunHSType :: TH.TypeQ
+  , cType :: TH.TypeQ
     -- ^ Type of the foreign call
-  , cFunCType :: (C.Type, [C.Param])
-    -- ^ Type of the C function (return type and parameters)
-  , cFunBody :: [C.Stm]
-    -- ^ Body of the function
+  , cFunName :: String
+    -- ^ Name of the function to call in the code above.
+  , cCode :: [C.Definition]
+    -- ^ The C code.
   }
-
--- |
--- @
--- buildCFunction "add" $ CFunction
---   TH.Unsafe
---   [t| Int -> Int -> Int |]
---   ([cty| int |], [cparams| int x, int y |])
---   [cstms| { int z = x + y; return z; } |]
--- @
---
--- We accept @['C.Stm']@ insteaad of @['C.BlockItem']@ because there
--- does not seem to be a way to easily parse lists of items.
-buildCFunction
-  :: String
-  -- ^ Function name
-  -> CFunction
-  -> C.Definition
-buildCFunction funName CFunction{..} =
-  [C.cedecl| $ty:(fst cFunCType) $id:funName($params:(snd cFunCType)) { $stms:cFunBody } |]
-
--- | Generates a fresh name for C functions
-freshName :: TH.Q TH.Name
-freshName = TH.newName "cfun"
--- TODO check that this is safe.  E.g. that we don't duplicate names
--- across modules.
 
 appendCDefinition :: FilePath -> C.Definition -> IO ()
 appendCDefinition fp cdef = do
@@ -78,8 +50,8 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 -- refer to the source location in the Haskell file they come from.
 --
 -- See <https://gcc.gnu.org/onlinedocs/cpp/Line-Control.html>.
-embedCFunction :: CFunction -> TH.ExpQ
-embedCFunction cfun@CFunction{..} = do
+embedCCode :: CCode -> TH.ExpQ
+embedCCode CCode{..} = do
   cFile <- cSourceLoc
   -- First make sure that 'currentModule' and C file are up to date
   mbModule <- TH.runIO $ readIORef currentModuleRef
@@ -94,16 +66,13 @@ embedCFunction cfun@CFunction{..} = do
     Nothing -> recordThisModule
     Just currentModule | currentModule == thisModule -> return ()
     Just _otherModule -> recordThisModule
-  -- Generate new name for C function
-  funName <- freshName
-  let cFunName = show funName
-  -- Write out the C code to the right files
-  let funDef = buildCFunction cFunName cfun
-  TH.runIO $ appendCDefinition cFile funDef
+  -- Write out definitions
+  TH.runIO $ forM_ cCode $ appendCDefinition cFile
   -- Create and add the FFI declaration
-  dec <- TH.forImpD TH.CCall cFunSafety cFunName funName cFunHSType
+  ffiImportName <- TH.newName "inline_c_ffi"
+  dec <- TH.forImpD TH.CCall cCallSafety cFunName ffiImportName cType
   TH.addTopDecls [dec]
-  [| $(TH.varE funName) |]
+  [| $(TH.varE ffiImportName) |]
 
 -- | Records what module we are in.
 {-# NOINLINE currentModuleRef #-}
