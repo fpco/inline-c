@@ -2,14 +2,33 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+-- | Each module that uses at least one of the TH functions below gets
+-- a C file associated to it.  This C file must be built after the
+-- Haskell code and linked appropriately.  If you use cabal, all you
+-- have to do is declare each associated C file in the @.cabal@ file and
+-- you are good.
+--
+-- For example we might have
+--
+-- @
+-- executable foo
+--   main-is:             Main.hs
+--   hs-source-dirs:      src
+--   -- Here the corresponding C sources must be listed for every module
+--   -- that uses C snippets.
+--   c-sources:           src/Main.c
+--   ...
+-- @
 module Language.C.Inline
   ( Code(..)
-  , embedCode
-  , embedStm
-  , embedExp
+    -- * Emitting
   , emitLiteral
   , emitInclude
   , emitCode
+    -- * Embedding
+  , embedCode
+  , embedStm
+  , embedExp
   ) where
 
 import qualified Language.Haskell.TH as TH
@@ -83,14 +102,17 @@ emitCode defs = do
   return []
 
 -- | Emits an include CPP statement for the given file.
--- To avoid having to escape quotes, the function itself adds them, so
--- that
+-- To avoid having to escape quotes, the function itself adds them when
+-- appropriate, so that
+--
 -- @
 -- emitInclude "foo.h" ==> #import "foo.h"
 -- @
+--
 -- but
+--
 -- @
--- emitInclude <foo> ==> #import <foo>
+-- emitInclude \<foo\> ==> #import \<foo\>
 -- @
 emitInclude :: String -> TH.Q [TH.Dec]
 emitInclude s
