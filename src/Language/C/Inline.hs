@@ -88,7 +88,7 @@ initialiseModuleState = do
     Just currentModule | currentModule == thisModule -> return ()
     Just _otherModule -> recordThisModule
 
--- | Simply appends some string to the module's C file.  Use with care.q
+-- | Simply appends some string to the module's C file.  Use with care.
 emitLiteral :: String -> TH.Q [TH.Dec]
 emitLiteral s = do
   initialiseModuleState         -- Make sure that things are up-to-date
@@ -107,13 +107,13 @@ emitCode defs = do
 -- appropriate, so that
 --
 -- @
--- emitInclude "foo.h" ==> #import "foo.h"
+-- emitInclude "foo.h" ==> #include "foo.h"
 -- @
 --
 -- but
 --
 -- @
--- emitInclude \<foo\> ==> #import \<foo\>
+-- emitInclude \<foo\> ==> #include \<foo\>
 -- @
 emitInclude :: String -> TH.Q [TH.Dec]
 emitInclude s
@@ -125,6 +125,9 @@ emitInclude s
 -- refer to the source location in the Haskell file they come from.
 --
 -- See <https://gcc.gnu.org/onlinedocs/cpp/Line-Control.html>.
+
+-- | Embeds a piece of code inline.  The resulting 'TH.Exp' will have
+-- the type specified in the 'codeType'.
 embedCode :: Code -> TH.ExpQ
 embedCode Code{..} = do
   initialiseModuleState         -- Make sure that things are up-to-date
@@ -149,6 +152,15 @@ uniqueCName = do
   unique <- filter (/= '-') . UUID.toString <$> UUID.nextRandom
   return $ "inline_c_" ++ unique
 
+-- |
+-- @
+-- c_cos :: Double -> Double
+-- c_cos = $(embedStm
+--   TH.Unsafe
+--   [t| Double -> Double |]
+--   [cty| double |] [cparams| double x |]
+--   [cstm| return cos(x); |])
+-- @
 embedStm
   :: TH.Safety
   -- ^ Safety of the foreign call
@@ -171,6 +183,15 @@ embedStm callSafety type_ cRetType cParams cStm = do
     , codeDefs = defs
     }
 
+-- |
+-- @
+-- cos_of_1 :: Double
+-- cos_of_1 = $(embedStm
+--   TH.Unsafe
+--   [t| Double |]
+--   [cty| double |] []
+--   [cstm| cos(1) |])
+-- @
 embedExp
   :: TH.Safety
   -- ^ Safety of the foreign call
