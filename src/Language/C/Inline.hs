@@ -68,8 +68,10 @@ embedCCode CCode{..} = do
     Just _otherModule -> recordThisModule
   -- Write out definitions
   TH.runIO $ forM_ cCode $ appendCDefinition cFile
-  -- Create and add the FFI declaration
-  ffiImportName <- TH.newName "inline_c_ffi"
+  -- Create and add the FFI declaration.  TODO absurdly, I need to
+  -- 'newName' twice for things to work.  I found this hack in
+  -- language-c-inline.  Why is this?
+  ffiImportName <- TH.newName . show =<< TH.newName "inline_c_ffi"
   dec <- TH.forImpD TH.CCall cCallSafety cFunName ffiImportName cType
   TH.addTopDecls [dec]
   [| $(TH.varE ffiImportName) |]
