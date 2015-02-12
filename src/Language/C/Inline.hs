@@ -5,12 +5,15 @@
 module Language.C.Inline
   ( CCode(..)
   , embedCCode
+  , embedCStm
+  , embedCExp
   ) where
 
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
 import qualified Text.PrettyPrint.Mainland as PrettyPrint
 import qualified Language.C as C
+import qualified Language.C.Quote.C as C
 import           Control.Exception (catch, throwIO)
 import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Unsafe (unsafePerformIO)
@@ -19,6 +22,8 @@ import           Control.Monad (unless, forM_)
 import           System.IO.Error (isDoesNotExistError)
 import           System.Directory (removeFile)
 import           Data.Functor ((<$>))
+import qualified Data.UUID as UUID
+import qualified Data.UUID.V4 as UUID
 
 -- | Data type representing some typed C code.
 data CCode = CCode
@@ -80,3 +85,46 @@ embedCCode CCode{..} = do
 {-# NOINLINE currentModuleRef #-}
 currentModuleRef :: IORef (Maybe String)
 currentModuleRef = unsafePerformIO $ newIORef Nothing
+
+uniqueCName :: IO String
+uniqueCName = do
+  -- UUID with the dashes removed
+  unique <- filter (/= '-') . UUID.toString <$> UUID.nextRandom
+  return $ "inline_c_" ++ unique
+
+embedCStm
+  :: TH.Safety
+  -- ^ Safety of the foreign call
+  -> TH.TypeQ
+  -- ^ Type of the foreign call
+  -> C.Type
+  -- ^ Return type of the C expr
+  -> [C.Param]
+  -- ^ Parameters of the C expr
+  -> C.Stm
+  -- ^ The C statement
+  -> TH.ExpQ
+embedCStm callSafety type_ cRetType cParams cStm = do
+  funName <- TH.runIO uniqueCName
+  let defs = [C.cunit| $ty:cRetType $id:funName($params:cParams) { $stm:cStm } |]
+  embedCCode $ CCode
+    { cCallSafety = callSafety
+    , cType = type_
+    , cFunName = funName
+    , cCode = defs
+    }
+
+embedCExp
+  :: TH.Safety
+  -- ^ Safety of the foreign call
+  -> TH.TypeQ
+  -- ^ Type of the foreign call
+  -> C.Type
+  -- ^ Return type of the C expr
+  -> [C.Param]
+  -- ^ Parameters of the C expr
+  -> C.Exp
+  -- ^ The C expression
+  -> TH.ExpQ
+embedCExp callSafety type_ cRetType cParams cExp =
+  embedCStm callSafety type_ cRetType cParams [C.cstm| return $exp:cExp; |]
