@@ -59,6 +59,18 @@ test_cexp_pure_unsafe :: CDouble -> CDouble
 test_cexp_pure_unsafe x =
   [cexp_pure_unsafe| double(double x){ cos(x) + sin(x) } |]
 
+test_suffixType1 :: CInt -> CInt -> CInt
+test_suffixType1 x y = [cexp_pure| int{ x_int + y_int } |]
+
+test_suffixType2 :: CInt -> CInt -> CInt
+test_suffixType2 x y = [cexp_pure| int(){ x_int + y_int } |]
+
+test_suffixType3 :: CInt -> CInt -> CInt
+test_suffixType3 x y = [cexp_pure| int(int x){ x + y_int } |]
+
+test_suffixType4 :: CInt -> CInt -> CInt
+test_suffixType4 x y = [cexp_pure| int(int x){ x_int + y_int } |]
+
 main :: IO ()
 main = do
   print test_embedCode
@@ -69,3 +81,7 @@ main = do
   print =<< test_cexp_unsafe 3 4
   print $ test_cexp_pure 4
   print $ test_cexp_pure_unsafe 4
+  print $ test_suffixType1 1 2
+  print $ test_suffixType2 1 2
+  print $ test_suffixType3 1 2
+  print $ test_suffixType4 1 2

@@ -1,6 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE GADTs #-}
 -- | Each module that uses at least one of the TH functions below gets
 -- a C file associated to it.  This C file must be built after the
 -- Haskell code and linked appropriately.  If you use cabal, all you
@@ -51,7 +54,7 @@ import           Control.Exception (catch, throwIO)
 import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import           Control.Monad (void, unless, forM_)
+import           Control.Monad (void, unless, guard, msum)
 import           System.IO.Error (isDoesNotExistError)
 import           System.Directory (removeFile)
 import           Data.Functor ((<$>))
@@ -61,9 +64,16 @@ import qualified Text.Parsec as Parsec
 import qualified Text.Parsec.Pos as Parsec
 import qualified Text.Parsec.String as Parsec
 import           Foreign.C.Types
-import           Data.Loc (Pos(..))
+import           Data.Loc (Pos(..), locOf)
 import qualified Data.ByteString.UTF8
-import           Control.Applicative ((*>), (<*))
+import           Control.Applicative ((*>), (<*), (<|>))
+import           Data.Data (Data)
+import           Generics.SYB (everywhereM)
+import qualified Data.Map as Map
+import qualified Control.Monad.Trans.State as State
+import           Data.Typeable (Typeable, (:~:)(..), eqT)
+import           Data.Foldable (forM_)
+import           Data.List (isSuffixOf)
 
 ------------------------------------------------------------------------
 -- Module compile-time state
@@ -273,7 +283,8 @@ quoteCode p = TH.QuasiQuoter
   }
 
 genericQuote
-  :: Bool
+  :: (Data a)
+  => Bool
   -- ^ Whether the call should be pure or not
   -> C.P a
   -- ^ Parser producing something
@@ -283,30 +294,27 @@ genericQuote
   -> TH.QuasiQuoter
 genericQuote pure p build = quoteCode $ \s -> do
   (cType, cParams, cExp) <- runCParser s $ parseTypedC p
-  let cParams' = map cleanupParam cParams
-  let hsType = cFunSigToHsType pure cType $ map snd cParams'
-  buildFunCall (build hsType cType cParams cExp) $ map fst cParams'
+  let hsType = cFunSigToHsType pure cType $ map snd cParams
+  buildFunCall (build hsType cType (map rebuildParam cParams) cExp) $ map fst cParams
   where
-    buildFunCall :: TH.ExpQ -> [Maybe C.Id] -> TH.ExpQ
+    buildFunCall :: TH.ExpQ -> [C.Id] -> TH.ExpQ
     buildFunCall f [] =
       f
-    buildFunCall f (mbParamId : params) = case mbParamId of
-      Nothing -> do
-        error "Cannot capture Haskell variable if you don't give a name."
-      Just name -> do
-        mbHsName <- TH.lookupValueName $ case name of
-          C.Id s _ -> s
-          C.AntiId _ _ -> error "inline-c: got antiquotation (buildFunCall)"
-        case mbHsName of
-          Nothing -> do
-            error $ "Cannot capture Haskell variable " ++ show name ++
-                    ", because it's not in scope."
-          Just hsName -> do
-            buildFunCall [| $f $(TH.varE hsName) |] params
+    buildFunCall f (name : params) = do
+      mbHsName <- TH.lookupValueName $ case name of
+        C.Id s _ -> s
+        C.AntiId _ _ -> error "inline-c: got antiquotation (buildFunCall)"
+      case mbHsName of
+        Nothing -> do
+          error $ "Cannot capture Haskell variable " ++ show name ++
+                  ", because it's not in scope."
+        Just hsName -> do
+          buildFunCall [| $f $(TH.varE hsName) |] params
 
-    cleanupParam param = case param of
-      C.Param mbId ds d loc -> (mbId, C.Type ds d loc)
-      _                     -> error "inline-c: got antiquotation (inlineExp)"
+    rebuildParam :: (C.Id, C.Type) -> C.Param
+    rebuildParam (name, C.Type ds d loc) = C.Param (Just name) ds d loc
+    rebuildParam (_, _) = error "inline-c: got antiquotation (rebuildParam)"
+
 -- Type conversion
 
 cFunSigToHsType :: Bool -> C.Type -> [C.Type] -> TH.TypeQ
@@ -370,30 +378,113 @@ parseC parsecPos str p =
 
 -- Note that we split the input this way because we cannot compose Happy
 -- parsers easily.
-parseTypedC :: C.P a -> Parsec.Parser (C.Type, [C.Param], a)
+parseTypedC
+  :: forall a. (Data a)
+  => C.P a -> Parsec.Parser (C.Type, [(C.Id, C.Type)], a)
 parseTypedC p = do
-  -- Get stuff up to parens, and parse the type
+  -- Get stuff up to parens or brace, and parse it
   typePos <- Parsec.getPosition
-  typeStr <- takeTillChar '('
+  typeStr <- takeTillAnyChar ['(', '{']
   let cType = parseC typePos typeStr C.parseType
-  -- Get stuff for params, and parse the type
-  paramsPos <- Parsec.getPosition
-  paramsStr <- takeTillChar ')'
-  let cParams = parseC paramsPos paramsStr C.parseParams
+  -- Get stuff for params, and parse them
+  let emptyParams = do
+        Parsec.try $ do
+          lex $ Parsec.char '('
+          lex $ Parsec.char ')'
+        lex $ Parsec.char '{'
+        return []
+  let someParams = do
+        lex $ Parsec.char '('
+        paramsPos <- Parsec.getPosition
+        paramsStr <- takeTillChar ')'
+        lex $ Parsec.char '{'
+        return $ map cleanupParam $ parseC paramsPos paramsStr C.parseParams
+  let noParams = do
+        lex $ Parsec.char '{'
+        return []
+  cParams <- emptyParams <|> someParams <|> noParams
   -- Get the body, and feed it to the given parser
-  void $ lex $ Parsec.char '{'
   bodyPos <- Parsec.getPosition
   bodyStr <- takeTillChar '}'
   let cBody = parseC bodyPos bodyStr p
+  -- Collect the implicit parameters present in the body
+  let paramsMap = mkParamsMap cParams
+  let (cBody', paramsMap') = State.runState (collectImplParams cBody) paramsMap
   -- Whew
-  return (cType, cParams, cBody)
+  return (cType, Map.toList paramsMap', cBody')
   where
+    lex :: Parsec.Parser b -> Parsec.Parser ()
     lex p' = do
       void p'
       Parsec.spaces
 
+    takeTillAnyChar :: [Char] -> Parsec.Parser String
+    takeTillAnyChar chs = Parsec.many $ Parsec.satisfy $ \ch -> all (/= ch) chs
+
     takeTillChar :: Char -> Parsec.Parser String
     takeTillChar ch = do
-      str <- Parsec.many1 $ Parsec.satisfy (/= ch)
-      void $ lex $ Parsec.char ch
+      str <- takeTillAnyChar [ch]
+      lex $ Parsec.char ch
       return str
+
+    cleanupParam :: C.Param -> (C.Id, C.Type)
+    cleanupParam param = case param of
+      C.Param Nothing _ _ _        -> error "Cannot capture Haskell variable if you don't give a name."
+      C.Param (Just name) ds d loc -> (name, C.Type ds d loc)
+      _                            -> error "inline-c: got antiquotation (parseTypedC)"
+
+    mkParamsMap :: [(C.Id, C.Type)] -> Map.Map C.Id C.Type
+    mkParamsMap cParams =
+      let m = Map.fromList cParams
+      in if Map.size m == length cParams
+           then m
+           else error "Duplicated variable in parameter list"
+
+    collectImplParams :: a -> State.State (Map.Map C.Id C.Type) a
+    collectImplParams = everywhereM (typeableAppM collectImplParam)
+
+    collectImplParam :: C.Id -> State.State (Map.Map C.Id C.Type) C.Id
+    collectImplParam name0@(C.Id str loc) = do
+      case hasSuffixType str of
+        Nothing -> return name0
+        Just (str', type_) -> do
+          let name = C.Id str' loc
+          m <- State.get
+          case Map.lookup name m of
+            Nothing -> do
+              State.put $ Map.insert name type_ m
+              return name
+            Just type' | type_ == type' -> do
+              return name
+            Just type' -> do
+              let prevName = head $ dropWhile (/= name) $ Map.keys m
+              error $ "Cannot recapture variable " ++ show (PrettyPrint.ppr name) ++
+                      " to have type " ++ show (PrettyPrint.ppr type_) ++ ".\n" ++
+                      "Previous redefinition of type " ++ show (PrettyPrint.ppr type') ++
+                      " at " ++ show (locOf prevName) ++ "."
+    collectImplParam (C.AntiId _ _) = do
+      error "inline-c: got antiquotation (collectImplParam)"
+
+    hasSuffixType :: String -> Maybe (String, C.Type)
+    hasSuffixType s = msum
+      [ do guard (('_' : suff) `isSuffixOf` s)
+           return (take (length s - length suff - 1) s, ctype)
+      | (suff, ctype) <- suffixTypes
+      ]
+
+    -- TODO make this complete
+    suffixTypes :: [(String, C.Type)]
+    suffixTypes =
+      [ ("int", [C.cty| int |])
+      , ("char", [C.cty| char |])
+      , ("float", [C.cty| float |])
+      , ("double", [C.cty| double |])
+      ]
+
+-- TODO doesn't something of this kind exist?
+typeableAppM :: (Typeable a, Typeable b, Monad m) => (b -> m b) -> a -> m a
+typeableAppM = help eqT
+  where
+    help :: (Typeable a, Typeable b, Monad m) => Maybe (a :~: b) -> (b -> m b) -> a -> m a
+    help (Just Refl) f x = f x
+    help Nothing     _ x = return x
