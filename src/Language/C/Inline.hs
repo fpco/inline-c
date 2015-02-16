@@ -4,45 +4,33 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE GADTs #-}
--- | Each module that uses at least one of the TH functions below gets
--- a C file associated to it.  This C file must be built after the
--- Haskell code and linked appropriately.  If you use cabal, all you
--- have to do is declare each associated C file in the @.cabal@ file and
--- you are good.
---
--- For example we might have
---
--- @
--- executable foo
---   main-is:             Main.hs
---   hs-source-dirs:      src
---   -- Here the corresponding C sources must be listed for every module
---   -- that uses C snippets.
---   c-sources:           src/Main.c
---   ...
--- @
 module Language.C.Inline
-  ( Code(..)
-    -- * Emitting
-  , emitLiteral
-  , emitInclude
-  , emitCode
-    -- * Embedding
-  , embedCode
-  , embedStm
-  , embedExp
-    -- * Quoting
-  , cstm
-  , cstm_unsafe
-  , cstm_pure
-  , cstm_pure_unsafe
-  , cexp
-  , cexp_unsafe
-  , cexp_pure
-  , cexp_pure_unsafe
-  ) where
+    ( -- * Build process
+      -- $building
 
-import           Prelude hiding (lex)
+      -- * Manual handling
+      Code(..)
+      -- ** Emitting
+      -- $emitting
+    , emitLiteral
+    , emitInclude
+    , emitCode
+      -- ** Embedding
+      -- $embedding
+    , embedCode
+    , embedStm
+    , embedExp
+      -- * Direct quoting
+      -- $quoting
+    , cstm
+    , cstm_unsafe
+    , cstm_pure
+    , cstm_pure_unsafe
+    , cexp
+    , cexp_unsafe
+    , cexp_pure
+    , cexp_pure_unsafe
+    ) where
 
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -78,6 +66,34 @@ import           Data.List (isSuffixOf)
 ------------------------------------------------------------------------
 -- Module compile-time state
 
+-- $building
+--
+-- Each module that uses at least one of the TH functions below gets
+-- a C file associated to it.  This C file must be built after the
+-- Haskell code and linked appropriately.  If you use cabal, all you
+-- have to do is declare each associated C file in the @.cabal@ file and
+-- you are good.
+--
+-- For example we might have
+--
+-- @
+-- executable foo
+--   main-is:             Main.hs, Foo.hs, Bar.hs
+--   hs-source-dirs:      src
+--   -- Here the corresponding C sources must be listed for every module
+--   -- that uses C code.  In this example, Main.hs and Bar.hs do, but
+--   -- Foo.hs does not.
+--   c-sources:           src\/Main.c, src\/Bar.c
+--   -- These flags will be passed to the C compiler
+--   cc-options:          -Wall -O2
+--   -- Libraries to link the code with.
+--   extra-libraries:     -lm
+--   ...
+-- @
+--
+-- Note that currently @cabal repl@ is not supported, because the C code
+-- is not compiled and linked appropriately.
+
 -- | Records what module we are in.
 {-# NOINLINE currentModuleRef #-}
 currentModuleRef :: IORef (Maybe String)
@@ -103,6 +119,10 @@ initialiseModuleState = do
 
 ------------------------------------------------------------------------
 -- Emitting
+
+-- $emitting
+--
+-- TODO document
 
 -- | Data type representing some C code with a typed and named entry
 -- function.
@@ -135,10 +155,10 @@ emitLiteral s = do
   TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
   return []
 
--- | Emits some definition to the module C file.
+-- | Emits some definitions to the module C file.
 emitCode :: [C.Definition] -> TH.DecsQ
 emitCode defs = do
-  forM_ defs $ \def -> void $ emitLiteral $ show $ PrettyPrint.ppr def
+  forM_ defs $ \def -> void $ emitLiteral $ pretty80 def
   return []
 
 -- | Emits an include CPP statement for the given file.
@@ -163,6 +183,10 @@ emitInclude s
 ------------------------------------------------------------------------
 -- Embedding
 
+-- $embedding
+--
+-- TODO document
+
 -- TODO use the #line CPP macro to have the functions in the C file
 -- refer to the source location in the Haskell file they come from.
 --
@@ -170,12 +194,23 @@ emitInclude s
 
 -- | Embeds a piece of code inline.  The resulting 'TH.Exp' will have
 -- the type specified in the 'codeType'.
+--
+-- @
+-- c_add :: Int -> Int -> Int
+-- c_add = $(embedCode $ Code
+--   TH.Unsafe                   -- Call safety
+--   [t| Int -> Int -> Int |]    -- Call type
+--   "francescos_add"            -- Call name
+--   -- C Code
+--   [C.cunit| int francescos_add(int x, int y) { int z = x + y; return z; } |])
+-- @
 embedCode :: Code -> TH.ExpQ
 embedCode Code{..} = do
   initialiseModuleState         -- Make sure that things are up-to-date
   -- Write out definitions
   void $ emitCode codeDefs
-  -- Create and add the FFI declaration.  TODO absurdly, I need to
+  -- Create and add the FFI declaration.
+  -- TODO absurdly, I need to
   -- 'newName' twice for things to work.  I found this hack in
   -- language-c-inline.  Why is this?
   ffiImportName <- TH.newName . show =<< TH.newName "inline_c_ffi"
@@ -246,6 +281,10 @@ embedExp callSafety type_ cRetType cParams cExp =
 
 ------------------------------------------------------------------------
 -- Quoting sugar
+
+-- $quoting
+--
+-- TODO document
 
 cexp :: TH.QuasiQuoter
 cexp = genericQuote False C.parseExp $ embedExp TH.Safe
@@ -341,7 +380,6 @@ cTypeToHsType _ = error "TODO cTypeToHsType"
 --     fromSpec (C.Tchar (Just (C.Tunsigned _)) _) = [t| CUChar |]
 --     fromSpec _ = error "TODO cTypeToHsType"
 
-
 -- Parsing
 
 runCParser :: String -> Parsec.Parser a -> TH.Q a
@@ -389,18 +427,18 @@ parseTypedC p = do
   -- Get stuff for params, and parse them
   let emptyParams = do
         Parsec.try $ do
-          lex $ Parsec.char '('
-          lex $ Parsec.char ')'
-        lex $ Parsec.char '{'
+          lex_ $ Parsec.char '('
+          lex_ $ Parsec.char ')'
+        lex_ $ Parsec.char '{'
         return []
   let someParams = do
-        lex $ Parsec.char '('
+        lex_ $ Parsec.char '('
         paramsPos <- Parsec.getPosition
         paramsStr <- takeTillChar ')'
-        lex $ Parsec.char '{'
+        lex_ $ Parsec.char '{'
         return $ map cleanupParam $ parseC paramsPos paramsStr C.parseParams
   let noParams = do
-        lex $ Parsec.char '{'
+        lex_ $ Parsec.char '{'
         return []
   cParams <- emptyParams <|> someParams <|> noParams
   -- Get the body, and feed it to the given parser
@@ -413,8 +451,8 @@ parseTypedC p = do
   -- Whew
   return (cType, Map.toList paramsMap', cBody')
   where
-    lex :: Parsec.Parser b -> Parsec.Parser ()
-    lex p' = do
+    lex_ :: Parsec.Parser b -> Parsec.Parser ()
+    lex_ p' = do
       void p'
       Parsec.spaces
 
@@ -424,7 +462,7 @@ parseTypedC p = do
     takeTillChar :: Char -> Parsec.Parser String
     takeTillChar ch = do
       str <- takeTillAnyChar [ch]
-      lex $ Parsec.char ch
+      lex_ $ Parsec.char ch
       return str
 
     cleanupParam :: C.Param -> (C.Id, C.Type)
@@ -440,7 +478,6 @@ parseTypedC p = do
            then m
            else error "Duplicated variable in parameter list"
 
-    collectImplParams :: a -> State.State (Map.Map C.Id C.Type) a
     collectImplParams = everywhereM (typeableAppM collectImplParam)
 
     collectImplParam :: C.Id -> State.State (Map.Map C.Id C.Type) C.Id
@@ -458,10 +495,11 @@ parseTypedC p = do
               return name
             Just type' -> do
               let prevName = head $ dropWhile (/= name) $ Map.keys m
-              error $ "Cannot recapture variable " ++ show (PrettyPrint.ppr name) ++
-                      " to have type " ++ show (PrettyPrint.ppr type_) ++ ".\n" ++
-                      "Previous redefinition of type " ++ show (PrettyPrint.ppr type') ++
-                      " at " ++ show (locOf prevName) ++ "."
+              error $
+                "Cannot recapture variable " ++ pretty80 name ++
+                " to have type " ++ pretty80 type_ ++ ".\n" ++
+                "Previous redefinition of type " ++ pretty80 type' ++
+                " at " ++ show (locOf prevName) ++ "."
     collectImplParam (C.AntiId _ _) = do
       error "inline-c: got antiquotation (collectImplParam)"
 
@@ -472,19 +510,26 @@ parseTypedC p = do
       | (suff, ctype) <- suffixTypes
       ]
 
-    -- TODO make this complete
-    suffixTypes :: [(String, C.Type)]
-    suffixTypes =
-      [ ("int", [C.cty| int |])
-      , ("char", [C.cty| char |])
-      , ("float", [C.cty| float |])
-      , ("double", [C.cty| double |])
-      ]
+-- TODO make this complete
+suffixTypes :: [(String, C.Type)]
+suffixTypes =
+  [ ("int", [C.cty| int |])
+  , ("char", [C.cty| char |])
+  , ("float", [C.cty| float |])
+  , ("double", [C.cty| double |])
+  ]
+
+------------------------------------------------------------------------
+-- Utils
+
+pretty80 :: PrettyPrint.Pretty a => a -> String
+pretty80 = PrettyPrint.pretty 80 . PrettyPrint.ppr
 
 -- TODO doesn't something of this kind exist?
-typeableAppM :: (Typeable a, Typeable b, Monad m) => (b -> m b) -> a -> m a
+typeableAppM
+  :: forall a b m. (Typeable a, Typeable b, Monad m) => (b -> m b) -> a -> m a
 typeableAppM = help eqT
   where
-    help :: (Typeable a, Typeable b, Monad m) => Maybe (a :~: b) -> (b -> m b) -> a -> m a
+    help :: Maybe (a :~: b) -> (b -> m b) -> a -> m a
     help (Just Refl) f x = f x
     help Nothing     _ x = return x
