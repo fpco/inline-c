@@ -380,6 +380,15 @@ cTypeToHsType _ = error "TODO cTypeToHsType"
 --     fromSpec (C.Tchar (Just (C.Tunsigned _)) _) = [t| CUChar |]
 --     fromSpec _ = error "TODO cTypeToHsType"
 
+-- TODO make this complete
+suffixTypes :: [(String, C.Type)]
+suffixTypes =
+  [ ("int", [C.cty| int |])
+  , ("char", [C.cty| char |])
+  , ("float", [C.cty| float |])
+  , ("double", [C.cty| double |])
+  ]
+
 -- Parsing
 
 runCParser :: String -> Parsec.Parser a -> TH.Q a
@@ -509,15 +518,6 @@ parseTypedC p = do
            return (take (length s - length suff - 1) s, ctype)
       | (suff, ctype) <- suffixTypes
       ]
-
--- TODO make this complete
-suffixTypes :: [(String, C.Type)]
-suffixTypes =
-  [ ("int", [C.cty| int |])
-  , ("char", [C.cty| char |])
-  , ("float", [C.cty| float |])
-  , ("double", [C.cty| double |])
-  ]
 
 ------------------------------------------------------------------------
 -- Utils
