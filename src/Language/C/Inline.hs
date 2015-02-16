@@ -7,9 +7,9 @@
 module Language.C.Inline
     ( -- * Build process
       -- $building
-
+      module Language.C.Context
       -- * Manual handling
-      Code(..)
+    , Code(..)
       -- ** Emitting
       -- $emitting
     , emitLiteral
@@ -42,7 +42,7 @@ import           Control.Exception (catch, throwIO)
 import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import           Control.Monad (void, unless, guard, msum)
+import           Control.Monad (void, unless)
 import           System.IO.Error (isDoesNotExistError)
 import           System.Directory (removeFile)
 import           Data.Functor ((<$>))
@@ -51,7 +51,6 @@ import qualified Data.UUID.V4 as UUID
 import qualified Text.Parsec as Parsec
 import qualified Text.Parsec.Pos as Parsec
 import qualified Text.Parsec.String as Parsec
-import           Foreign.C.Types
 import           Data.Loc (Pos(..), locOf)
 import qualified Data.ByteString.UTF8
 import           Control.Applicative ((*>), (<*), (<|>))
@@ -61,7 +60,9 @@ import qualified Data.Map as Map
 import qualified Control.Monad.Trans.State as State
 import           Data.Typeable (Typeable, (:~:)(..), eqT)
 import           Data.Foldable (forM_)
-import           Data.List (isSuffixOf)
+import           Data.Maybe (fromMaybe)
+
+import           Language.C.Context
 
 ------------------------------------------------------------------------
 -- Module compile-time state
@@ -94,28 +95,56 @@ import           Data.List (isSuffixOf)
 -- Note that currently @cabal repl@ is not supported, because the C code
 -- is not compiled and linked appropriately.
 
--- | Records what module we are in.
-{-# NOINLINE currentModuleRef #-}
-currentModuleRef :: IORef (Maybe String)
-currentModuleRef = unsafePerformIO $ newIORef Nothing
+data ModuleState = ModuleState
+  { msModuleName :: String
+  , msContext :: Context
+  }
 
--- | Make sure that 'currentModuleRef' and the respective C file are up
+{-# NOINLINE moduleStateRef #-}
+moduleStateRef :: IORef (Maybe ModuleState)
+moduleStateRef = unsafePerformIO $ newIORef Nothing
+
+-- | Make sure that 'moduleStateRef' and the respective C file are up
 -- to date.
-initialiseModuleState :: TH.Q ()
-initialiseModuleState = do
+initialiseModuleState
+  :: Maybe Context
+  -- ^ The 'Context' to use if we initialise the module.  If 'Nothing',
+  -- 'baseCtx' will be used.
+  -> TH.Q ()
+initialiseModuleState mbContext = do
   cFile <- cSourceLoc
-  mbModule <- TH.runIO $ readIORef currentModuleRef
+  mbModuleState <- TH.runIO $ readIORef moduleStateRef
   thisModule <- TH.loc_module <$> TH.location
   let recordThisModule = TH.runIO $ do
         -- If the file exists and this is the first time we write
         -- something from this module (in other words, if we are
         -- recompiling the module), kill the file first.
         removeIfExists cFile
-        writeIORef currentModuleRef $ Just thisModule
-  case mbModule of
+        writeIORef moduleStateRef $ Just ModuleState
+          { msModuleName = thisModule
+          , msContext = context
+          }
+  case mbModuleState of
     Nothing -> recordThisModule
-    Just currentModule | currentModule == thisModule -> return ()
-    Just _otherModule -> recordThisModule
+    Just ms | msModuleName ms == thisModule -> return ()
+    Just _ms -> recordThisModule
+  where
+    context = fromMaybe baseCtx mbContext
+
+initialiseModuleState_ :: TH.Q ()
+initialiseModuleState_ = initialiseModuleState Nothing
+
+getModuleState :: TH.Q ModuleState
+getModuleState = do
+  mbModuleState <- TH.runIO $ readIORef moduleStateRef
+  thisModule <- TH.loc_module <$> TH.location
+  case mbModuleState of
+    Nothing -> error "inline-c: ModuleState not present"
+    Just ms | msModuleName ms == thisModule -> return ms
+    Just _ms -> error "inline-c: stale ModuleState"
+
+getContext :: TH.Q Context
+getContext = msContext <$> getModuleState
 
 ------------------------------------------------------------------------
 -- Emitting
@@ -150,7 +179,7 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 -- | Simply appends some string to the module's C file.  Use with care.
 emitLiteral :: String -> TH.DecsQ
 emitLiteral s = do
-  initialiseModuleState         -- Make sure that things are up-to-date
+  initialiseModuleState_         -- Make sure that things are up-to-date
   cFile <- cSourceLoc
   TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
   return []
@@ -206,7 +235,7 @@ emitInclude s
 -- @
 embedCode :: Code -> TH.ExpQ
 embedCode Code{..} = do
-  initialiseModuleState         -- Make sure that things are up-to-date
+  initialiseModuleState_         -- Make sure that things are up-to-date
   -- Write out definitions
   void $ emitCode codeDefs
   -- Create and add the FFI declaration.
@@ -332,7 +361,8 @@ genericQuote
   -- 'embedExp' for other args.
   -> TH.QuasiQuoter
 genericQuote pure p build = quoteCode $ \s -> do
-  (cType, cParams, cExp) <- runCParser s $ parseTypedC p
+  suffixTypes <- ctxSuffixTypes <$> getContext
+  (cType, cParams, cExp) <- runCParser s $ parseTypedC suffixTypes p
   let hsType = cFunSigToHsType pure cType $ map snd cParams
   buildFunCall (build hsType cType (map rebuildParam cParams) cExp) $ map fst cParams
   where
@@ -357,37 +387,19 @@ genericQuote pure p build = quoteCode $ \s -> do
 -- Type conversion
 
 cFunSigToHsType :: Bool -> C.Type -> [C.Type] -> TH.TypeQ
-cFunSigToHsType pure retType params0 = go params0
+cFunSigToHsType pure retType params0 = do
+  ctx <- getContext
+  go params0 $ \cTy -> do
+    mbHsTy <- ctxCToHs ctx cTy
+    case mbHsTy of
+      Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
+      Just hsTy -> return hsTy
   where
-    go [] = do
-      let hsType = cTypeToHsType retType
+    go [] cToHs = do
+      let hsType = cToHs retType
       if pure then hsType else [t| IO $hsType |]
-    go (paramType : params) = do
-      [t| $(cTypeToHsType paramType) -> $(go params) |]
-
-cTypeToHsType :: C.Type -> TH.TypeQ
-cTypeToHsType [C.cty| void |] = [t| () |]
-cTypeToHsType [C.cty| int |] = [t| CInt |]
-cTypeToHsType [C.cty| double |] = [t| CDouble |]
-cTypeToHsType _ = error "TODO cTypeToHsType"
-
--- cTypeToHsType (C.Type (C.DeclSpec [] [] tySpec noLoc) (C.DeclRoot _) _) =
---   fromSpec tySpec
---   where
---     fromSpec [C.cty| void |] = [t| () |]
---     fromSpec (C.Tchar Nothing _) = [t| CChar |]
---     fromSpec (C.Tchar (Just (C.Tsigned _)) _) = [t| CChar |]
---     fromSpec (C.Tchar (Just (C.Tunsigned _)) _) = [t| CUChar |]
---     fromSpec _ = error "TODO cTypeToHsType"
-
--- TODO make this complete
-suffixTypes :: [(String, C.Type)]
-suffixTypes =
-  [ ("int", [C.cty| int |])
-  , ("char", [C.cty| char |])
-  , ("float", [C.cty| float |])
-  , ("double", [C.cty| double |])
-  ]
+    go (paramType : params) cToHs = do
+      [t| $(cToHs paramType) -> $(go params cToHs) |]
 
 -- Parsing
 
@@ -426,9 +438,13 @@ parseC parsecPos str p =
 -- Note that we split the input this way because we cannot compose Happy
 -- parsers easily.
 parseTypedC
-  :: forall a. (Data a)
-  => C.P a -> Parsec.Parser (C.Type, [(C.Id, C.Type)], a)
-parseTypedC p = do
+  :: (Data a)
+  => (String -> Maybe C.Type)
+  -- ^ Function to convert variable suffixes to C types
+  -> C.P a
+  -- ^ Parser to parse the body of the typed expression
+  -> Parsec.Parser (C.Type, [(C.Id, C.Type)], a)
+parseTypedC suffixTypes p = do
   -- Get stuff up to parens or brace, and parse it
   typePos <- Parsec.getPosition
   typeStr <- takeTillAnyChar ['(', '{']
@@ -513,11 +529,12 @@ parseTypedC p = do
       error "inline-c: got antiquotation (collectImplParam)"
 
     hasSuffixType :: String -> Maybe (String, C.Type)
-    hasSuffixType s = msum
-      [ do guard (('_' : suff) `isSuffixOf` s)
-           return (take (length s - length suff - 1) s, ctype)
-      | (suff, ctype) <- suffixTypes
-      ]
+    hasSuffixType s =
+      let (afterUnd0, beforeUnd0) = break (== '_') $ reverse s
+          (beforeUnd, afterUnd) = (reverse (tail beforeUnd0), reverse afterUnd0)
+      in if beforeUnd0 == ""
+           then Nothing
+           else (,) beforeUnd <$> suffixTypes afterUnd
 
 ------------------------------------------------------------------------
 -- Utils
