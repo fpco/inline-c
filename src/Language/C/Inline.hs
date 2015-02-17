@@ -317,7 +317,11 @@ embedExp
   -- ^ The C expression
   -> TH.ExpQ
 embedExp callSafety type_ cRetType cParams cExp =
-  embedStm callSafety type_ cRetType cParams [C.cstm| $exp:cExp; |]
+  embedStm callSafety type_ cRetType cParams cStm
+  where
+    cStm = if cRetType == [C.cty| void |]
+           then [C.cstm| $exp:cExp; |]
+           else [C.cstm| return $exp:cExp; |]
 
 embedItems
   :: TH.Safety

@@ -71,6 +71,9 @@ test_suffixType3 x y = [cexp_pure| int(int x){ x + y_int } |]
 test_suffixType4 :: CInt -> CInt -> CInt
 test_suffixType4 x y = [cexp_pure| int(int x){ x_int + y_int } |]
 
+test_voidExp :: IO ()
+test_voidExp = [cexp| void { printf("Hello\n") } |]
+
 main :: IO ()
 main = do
   print test_embedCode
@@ -85,3 +88,4 @@ main = do
   print $ test_suffixType2 1 2
   print $ test_suffixType3 1 2
   print $ test_suffixType4 1 2
+  test_voidExp
