@@ -1,8 +1,9 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RecordWildCards #-}
 module Language.C.Context.Nag
   ( -- * Types
-    Complex
+    Complex(..)
   , NagError
   , Nag_Boolean(..)
     -- * Context
@@ -27,12 +28,21 @@ import           Language.C.Quote.Nag
 
 newtype Nag_Boolean = Nag_Boolean CInt
 
-data Complex
+data Complex = Complex
+  { complRe :: {-# UNPACK #-} !CDouble
+  , complIm :: {-# UNPACK #-} !CDouble
+  } deriving (Show, Read, Eq, Ord)
+
 instance Storable Complex where
   sizeOf _ = (#size Complex)
-  alignment _ = alignment (undefined :: Ptr ())
-  peek _ = error "peek not implemented for Complex"
-  poke _ _ = error "peek not implemented for Complex"
+  alignment _ = alignment (undefined :: Ptr CDouble)
+  peek ptr = do
+    re <- (#peek Complex, re) ptr
+    im <- (#peek Complex, im) ptr
+    return Complex{complRe = re, complIm = im}
+  poke ptr Complex{..} = do
+    (#poke Complex, re) ptr complRe
+    (#poke Complex, im) ptr complIm
 
 data NagError
 instance Storable NagError where

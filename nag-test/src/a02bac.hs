@@ -11,8 +11,10 @@ emitInclude "<stdio.h>"
 emitInclude "<nag_stdlib.h>"
 emitInclude "<naga02.h>"
 
+-- Code dump test
+
 emitCode [C.cunit|
-int nag_test(void)
+int test_emitCode(void)
 {
   Integer     exit_status = 0;
   Complex     v, w, z;
@@ -180,4 +182,5 @@ int nag_test(void)
 
 main :: IO ()
 main = do
-  print =<< [cexp| int{ nag_test() } |]
+  [cexp| void{ test_emitCode() } |]
+

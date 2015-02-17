@@ -8,6 +8,7 @@ module Language.C.Inline
     ( -- * Build process
       -- $building
       module Language.C.Context
+    , setContext
       -- * Manual handling
     , Code(..)
       -- ** Emitting
@@ -20,6 +21,7 @@ module Language.C.Inline
     , embedCode
     , embedStm
     , embedExp
+    , embedItems
       -- * Direct quoting
       -- $quoting
     , cstm
@@ -30,6 +32,10 @@ module Language.C.Inline
     , cexp_unsafe
     , cexp_pure
     , cexp_pure_unsafe
+    , citems
+    , citems_unsafe
+    , citems_pure
+    , citems_pure_unsafe
     ) where
 
 import qualified Language.Haskell.TH as TH
@@ -145,6 +151,11 @@ getModuleState = do
 
 getContext :: TH.Q Context
 getContext = msContext <$> getModuleState
+
+setContext :: Context -> TH.DecsQ
+setContext ctx = do
+  initialiseModuleState $ Just ctx
+  return []
 
 ------------------------------------------------------------------------
 -- Emitting
@@ -286,12 +297,12 @@ embedStm callSafety type_ cRetType cParams cStm = do
 
 -- |
 -- @
--- cos_of_1 :: Double
--- cos_of_1 = $(embedStm
+-- c_cos :: Double -> Double
+-- c_cos = $(embedStm
 --   TH.Unsafe
---   [t| Double |]
---   [cty| double |] []
---   [cstm| cos(1) |])
+--   [t| Double -> Double |]
+--   [cty| double |] [cparams| double x |]
+--   [cstm| return cos(x); |])
 -- @
 embedExp
   :: TH.Safety
@@ -306,7 +317,28 @@ embedExp
   -- ^ The C expression
   -> TH.ExpQ
 embedExp callSafety type_ cRetType cParams cExp =
-  embedStm callSafety type_ cRetType cParams [C.cstm| return $exp:cExp; |]
+  embedStm callSafety type_ cRetType cParams [C.cstm| $exp:cExp; |]
+
+embedItems
+  :: TH.Safety
+  -- ^ Safety of the foreign call
+  -> TH.TypeQ
+  -- ^ Type of the foreign call
+  -> C.Type
+  -- ^ Return type of the C expr
+  -> [C.Param]
+  -- ^ Parameters of the C expr
+  -> [C.BlockItem]
+  -> TH.ExpQ
+embedItems callSafety type_ cRetType cParams cItems = do
+  funName <- TH.runIO uniqueCName
+  let defs = [C.cunit| $ty:cRetType $id:funName($params:cParams) { $items:cItems } |]
+  embedCode $ Code
+    { codeCallSafety = callSafety
+    , codeType = type_
+    , codeFunName = funName
+    , codeDefs = defs
+    }
 
 ------------------------------------------------------------------------
 -- Quoting sugar
@@ -338,6 +370,18 @@ cstm_pure = genericQuote True C.parseStm $ embedStm TH.Safe
 
 cstm_pure_unsafe :: TH.QuasiQuoter
 cstm_pure_unsafe = genericQuote True C.parseStm $ embedStm TH.Unsafe
+
+citems :: TH.QuasiQuoter
+citems = genericQuote False C.parseBlockItems $ embedItems TH.Safe
+
+citems_unsafe :: TH.QuasiQuoter
+citems_unsafe = genericQuote False C.parseBlockItems $ embedItems TH.Unsafe
+
+citems_pure :: TH.QuasiQuoter
+citems_pure = genericQuote True C.parseBlockItems $ embedItems TH.Safe
+
+citems_pure_unsafe :: TH.QuasiQuoter
+citems_pure_unsafe = genericQuote True C.parseBlockItems $ embedItems TH.Unsafe
 
 quoteCode
   :: (String -> TH.ExpQ)
