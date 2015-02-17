@@ -361,9 +361,9 @@ genericQuote
   -- 'embedExp' for other args.
   -> TH.QuasiQuoter
 genericQuote pure p build = quoteCode $ \s -> do
-  suffixTypes <- ctxSuffixTypes <$> getContext
-  (cType, cParams, cExp) <- runCParser s $ parseTypedC suffixTypes p
-  let hsType = cFunSigToHsType pure cType $ map snd cParams
+  context <- getContext
+  (cType, cParams, cExp) <- runCParser s $ parseTypedC context p
+  let hsType = convertCFunSig pure cType $ map snd cParams
   buildFunCall (build hsType cType (map rebuildParam cParams) cExp) $ map fst cParams
   where
     buildFunCall :: TH.ExpQ -> [C.Id] -> TH.ExpQ
@@ -386,11 +386,11 @@ genericQuote pure p build = quoteCode $ \s -> do
 
 -- Type conversion
 
-cFunSigToHsType :: Bool -> C.Type -> [C.Type] -> TH.TypeQ
-cFunSigToHsType pure retType params0 = do
+convertCFunSig :: Bool -> C.Type -> [C.Type] -> TH.TypeQ
+convertCFunSig pure retType params0 = do
   ctx <- getContext
   go params0 $ \cTy -> do
-    mbHsTy <- ctxCToHs ctx cTy
+    mbHsTy <- convertCType ctx cTy
     case mbHsTy of
       Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
       Just hsTy -> return hsTy
@@ -418,8 +418,8 @@ runCParser s p = do
       return res
 
 parseC
-  :: Parsec.SourcePos -> String -> C.P a -> a
-parseC parsecPos str p =
+  :: Context -> Parsec.SourcePos -> String -> C.P a -> a
+parseC context parsecPos str p =
   let pos = Pos
         (Parsec.sourceName parsecPos)
         (Parsec.sourceLine parsecPos)
@@ -427,7 +427,7 @@ parseC parsecPos str p =
         0
       bytes = Data.ByteString.UTF8.fromString str
       -- TODO support user-defined C types.
-      pstate = C.emptyPState [C.Antiquotation] [] bytes pos
+      pstate = C.emptyPState [C.Antiquotation] (ctxCTypes context) bytes pos
   in case C.evalP p pstate of
     Left err ->
       -- TODO consider prefixing with "error while parsing C" or similar
@@ -439,16 +439,15 @@ parseC parsecPos str p =
 -- parsers easily.
 parseTypedC
   :: (Data a)
-  => (String -> Maybe C.Type)
-  -- ^ Function to convert variable suffixes to C types
+  => Context
   -> C.P a
   -- ^ Parser to parse the body of the typed expression
   -> Parsec.Parser (C.Type, [(C.Id, C.Type)], a)
-parseTypedC suffixTypes p = do
+parseTypedC context p = do
   -- Get stuff up to parens or brace, and parse it
   typePos <- Parsec.getPosition
   typeStr <- takeTillAnyChar ['(', '{']
-  let cType = parseC typePos typeStr C.parseType
+  let cType = parseC context typePos typeStr C.parseType
   -- Get stuff for params, and parse them
   let emptyParams = do
         Parsec.try $ do
@@ -461,7 +460,7 @@ parseTypedC suffixTypes p = do
         paramsPos <- Parsec.getPosition
         paramsStr <- takeTillChar ')'
         lex_ $ Parsec.char '{'
-        return $ map cleanupParam $ parseC paramsPos paramsStr C.parseParams
+        return $ map cleanupParam $ parseC context paramsPos paramsStr C.parseParams
   let noParams = do
         lex_ $ Parsec.char '{'
         return []
@@ -469,7 +468,7 @@ parseTypedC suffixTypes p = do
   -- Get the body, and feed it to the given parser
   bodyPos <- Parsec.getPosition
   bodyStr <- takeTillChar '}'
-  let cBody = parseC bodyPos bodyStr p
+  let cBody = parseC context bodyPos bodyStr p
   -- Collect the implicit parameters present in the body
   let paramsMap = mkParamsMap cParams
   let (cBody', paramsMap') = State.runState (collectImplParams cBody) paramsMap
@@ -534,7 +533,7 @@ parseTypedC suffixTypes p = do
           (beforeUnd, afterUnd) = (reverse (tail beforeUnd0), reverse afterUnd0)
       in if beforeUnd0 == ""
            then Nothing
-           else (,) beforeUnd <$> suffixTypes afterUnd
+           else (,) beforeUnd <$> ctxSuffixTypes context afterUnd
 
 ------------------------------------------------------------------------
 -- Utils

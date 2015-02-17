@@ -1,14 +1,94 @@
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Language.C.Context
   ( Context(..)
+  , convertCType
   , baseCtx
   ) where
 
-import           Language.C.Context.Types
-import           Language.C.Context.Base
+import qualified Language.Haskell.TH as TH
+import qualified Language.C as C
+import qualified Language.C.Quote.C as C
+import           Foreign.C.Types
+import           Foreign.Ptr
+import           Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
+import           Control.Monad.Trans.Class (lift)
+import           Control.Monad (mzero)
+import           Data.Monoid (Monoid(..))
+import           Control.Applicative (empty, (<|>))
 
-    -- hasSuffixType :: String -> Maybe (String, C.Type)
-    -- hasSuffixType s = msum
-    --   [ do guard (('_' : suff) `isSuffixOf` s)
-    --        return (take (length s - length suff - 1) s, ctype)
-    --   | (suff, ctype) <- suffixTypes
-    --   ]
+data Context = Context
+  { ctxCTypes :: [String]
+    -- ^ Additional named types for the C parser
+  , ctxConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
+    -- ^ Tries to convert a C type spec to an Haskell type
+  , ctxSuffixTypes :: String -> Maybe C.Type
+    -- ^ Tries to get the C type corresponding to the given suffix
+  }
+
+instance Monoid Context where
+  mempty = Context
+    { ctxCTypes = mempty
+    , ctxConvertCTypeSpec = \_ -> runMaybeT empty
+    , ctxSuffixTypes = \_ -> empty
+    }
+
+  mappend ctx1 ctx2 = Context
+    { ctxCTypes = ctxCTypes ctx1 ++ ctxCTypes ctx2
+    , ctxConvertCTypeSpec = \cty -> runMaybeT $
+        MaybeT (ctxConvertCTypeSpec ctx1 cty) <|> MaybeT (ctxConvertCTypeSpec ctx2 cty)
+    , ctxSuffixTypes = \suff ->
+        ctxSuffixTypes ctx1 suff <|> ctxSuffixTypes ctx2 suff
+    }
+
+-- | Context useful to work with vanilla C.  Used by default.
+baseCtx :: Context
+baseCtx = Context
+  { ctxCTypes = []
+  , ctxConvertCTypeSpec = baseConvertCTypeSpec
+  , ctxSuffixTypes = \s -> lookup s baseSuffixTypes
+  }
+
+-- TODO support everything in 'Foreign.C.Types'
+
+baseConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
+baseConvertCTypeSpec cspec = runMaybeT $ case cspec of
+  C.Tvoid{} -> lift [t| () |]
+  C.Tchar (Just C.Tunsigned{}) _ -> lift [t| CUChar |]
+  C.Tchar _ _ -> lift [t| CChar |]
+  C.Tshort (Just C.Tunsigned{}) _ -> lift [t| CUShort |]
+  C.Tshort _ _ -> lift [t| CShort |]
+  C.Tint (Just C.Tunsigned{}) _ -> lift [t| CUInt |]
+  C.Tint _ _ -> lift [t| CInt |]
+  C.Tlong (Just C.Tunsigned{}) _ -> lift [t| CULong |]
+  C.Tlong _ _ -> lift [t| CLong |]
+  C.Tlong_long (Just C.Tunsigned{}) _ -> lift [t| CULLong |]
+  C.Tlong_long _ _ -> lift [t| CLLong |]
+  C.Tfloat{} -> lift [t| CFloat |]
+  C.Tdouble{} -> lift [t| CDouble |]
+  _ -> mzero
+
+convertCType :: Context -> C.Type -> TH.Q (Maybe TH.Type)
+convertCType ctx (C.Type (C.DeclSpec [] [] cTySpec _) decl0 _) = runMaybeT $ do
+  hsTy <- MaybeT $ ctxConvertCTypeSpec ctx cTySpec
+  lift $ go hsTy decl0
+  where
+    go :: TH.Type -> C.Decl -> TH.TypeQ
+    go hsTy decl = case decl of
+      C.DeclRoot _ -> return hsTy
+      C.Ptr [] decl' _ -> [t| Ptr $(go hsTy decl') |]
+      C.Array [] _ decl' _ -> [t| Ptr $(go hsTy decl') |]
+      _ -> error "TODO mkCPtrTypes"
+convertCType _ _ = error "inline-c: malformed type (mkCPtrTypes)"
+
+baseSuffixTypes :: [(String, C.Type)]
+baseSuffixTypes =
+  [ ("int", [C.cty| int |])
+  , ("uint", [C.cty| unsigned int |])
+  , ("long", [C.cty| long |])
+  , ("ulong", [C.cty| unsigned long |])
+  , ("char", [C.cty| char |])
+  , ("uchar", [C.cty| unsigned char |])
+  , ("float", [C.cty| float |])
+  , ("double", [C.cty| double |])
+  ]

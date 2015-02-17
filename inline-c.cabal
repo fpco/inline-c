@@ -14,8 +14,6 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Language.C.Inline
                      , Language.C.Context
-  other-modules:       Language.C.Context.Types
-                     , Language.C.Context.Base
   ghc-options:         -Wall -O
   ghc-prof-options:    -auto-all
   build-depends:       base >=4.7 && <4.8

@@ -3,8 +3,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 import           Language.C.Inline
 import qualified Language.C as C
-import qualified Language.C.Quote.C as C
-import           Text.RawString.QQ
+import qualified Language.C.Quote.Nag as C
 import           Foreign.C.Types
 
 emitInclude "<nag.h>"
@@ -12,7 +11,7 @@ emitInclude "<stdio.h>"
 emitInclude "<nag_stdlib.h>"
 emitInclude "<naga02.h>"
 
-emitLiteral [r|
+emitCode [C.cunit|
 int nag_test(void)
 {
   Integer     exit_status = 0;
@@ -178,11 +177,6 @@ int nag_test(void)
   return exit_status;
 }
 |]
-
-nag_test :: IO ()
-nag_test = do
-  let exit_status :: CLong = 1
-  
 
 main :: IO ()
 main = do
