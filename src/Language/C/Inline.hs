@@ -554,7 +554,7 @@ parseTypedC context p = do
 
     collectImplParam :: C.Id -> State.State (Map.Map C.Id C.Type) C.Id
     collectImplParam name0@(C.Id str loc) = do
-      case hasSuffixType str of
+      case ctxGetSuffixType context str of
         Nothing -> return name0
         Just (str', type_) -> do
           let name = C.Id str' loc
@@ -574,14 +574,6 @@ parseTypedC context p = do
                 " at " ++ show (locOf prevName) ++ "."
     collectImplParam (C.AntiId _ _) = do
       error "inline-c: got antiquotation (collectImplParam)"
-
-    hasSuffixType :: String -> Maybe (String, C.Type)
-    hasSuffixType s =
-      let (afterUnd0, beforeUnd0) = break (== '_') $ reverse s
-          (beforeUnd, afterUnd) = (reverse (tail beforeUnd0), reverse afterUnd0)
-      in if beforeUnd0 == ""
-           then Nothing
-           else (,) beforeUnd <$> ctxSuffixTypes context afterUnd
 
 ------------------------------------------------------------------------
 -- Utils

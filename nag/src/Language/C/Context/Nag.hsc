@@ -17,9 +17,10 @@ import           Foreign.Ptr (Ptr)
 import           Data.Monoid ((<>))
 import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import           Control.Monad.Trans.Class (lift)
-import           Control.Monad (mzero)
+import           Control.Monad (mzero, guard, msum)
 import           Data.Loc (noLoc)
 import           Foreign.Storable (Storable(..))
+import           Data.List (isSuffixOf)
 
 import           Language.C.Context
 import           Language.C.Quote.Nag
@@ -55,7 +56,7 @@ nagCtx :: Context
 nagCtx = baseCtx <> Context
   { ctxCTypes = nagTypes
   , ctxConvertCTypeSpec = nagConvertCTypeSpec
-  , ctxSuffixTypes = \s -> lookup s nagSuffixTypes
+  , ctxGetSuffixType = nagGetSuffixType
   }
 
 nagConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
@@ -68,10 +69,21 @@ nagConvertCTypeSpec cspec = runMaybeT $
     [cty| Complex |] -> lift [t| Complex |]
     _ -> mzero
 
-nagSuffixTypes :: [(String, C.Type)]
-nagSuffixTypes =
-  [ ("nint", [cty| Integer |])
-  , ("ncompl", [cty| Complex* |])
-  , ("nbool", [cty| Nag_Boolean |])
-  , ("nfail", [cty| NagError* |])
+nagGetSuffixType :: String -> Maybe (String, C.Type)
+nagGetSuffixType s = msum
+  [ do guard (('_' : suff) `isSuffixOf` s)
+       return (take (length s - length suff - 1) s, ctype)
+  | (suff, ctype) <- table
   ]
+  where
+  table =
+    [ ("nint", [cty| Integer |])
+    , ("ncompl", [cty| Complex |])
+    , ("nbool", [cty| Nag_Boolean |])
+    , ("nfail", [cty| NagError |])
+
+    , ("nint_ptr", [cty| Integer* |])
+    , ("ncompl_ptr", [cty| Complex* |])
+    , ("nbool_ptr", [cty| Nag_Boolean* |])
+    , ("nfail_ptr", [cty| NagError* |])
+    ]

@@ -29,18 +29,18 @@ fi = fromIntegral
 
 parseBounds :: IO (Int64, Int64)
 parseBounds =
-  alloca $ \mPtr -> alloca $ \nPtr -> do
-    [cexp| void(Integer *mPtr, Integer *nPtr) { scanf("%*[^\n] %ld%ld%*[^\n]", mPtr, nPtr) } |]
-    (,) <$> (fi <$> peek mPtr) <*> (fi <$> peek nPtr)
+  alloca $ \m -> alloca $ \n -> do
+    [cexp| void{ scanf("%*[^\n] %ld%ld%*[^\n]", m_long_ptr, n_long_ptr) } |]
+    (,) <$> (fi <$> peek m) <*> (fi <$> peek n)
 
 parseData :: (Int64, Int64) -> IO (A.StorableArray (Int64, Int64) Complex)
 parseData (m0, n0) = do
   x <- A.newArray ((0, 0), (m0, n0)) $ Complex 0 0
   let (m, n) = (fi m0, fi n0)
-  A.withStorableArray x $ \ptr -> [citems| void(Complex *ptr) {
+  A.withStorableArray x $ \x -> [citems| void {
       int i;
       for (i = 0; i < m_nint*n_nint; i++)
-        scanf(" ( %lf , %lf ) ", &ptr[i].re, &ptr[i].im);
+        scanf(" ( %lf , %lf ) ", &x_ncompl_ptr[i].re, &x[i].im);
     } |]
   return x
 
@@ -49,12 +49,12 @@ printGenComplxMat
 printGenComplxMat str x = do
   ((0, 0), (m0, n0)) <- A.getBounds x
   let (m, n) = (fi m0, fi n0)
-  withCString str $ \str_ptr -> A.withStorableArray x $ \x_ptr ->
-    [citems| int(Complex *x_ptr, char *str_ptr) {
+  withCString str $ \str -> A.withStorableArray x $ \x ->
+    [citems| int {
       NagError fail; INIT_FAIL(fail);
       nag_gen_complx_mat_print_comp(
         Nag_RowMajor, Nag_GeneralMatrix, Nag_NonUnitDiag, n_nint, m_nint,
-        x_ptr, m_nint, Nag_BracketForm, "%6.3f", str_ptr,
+        x_ncompl_ptr, m_nint, Nag_BracketForm, "%6.3f", str_char_ptr,
         Nag_NoLabels, 0, Nag_NoLabels, 0, 80, 0, NULL, &fail);
       return fail.code != NE_NOERROR;
     } |]
@@ -64,9 +64,9 @@ sumFftComplex2d
 sumFftComplex2d flag x = do
   ((0, 0), (m0, n0)) <- A.getBounds x
   let (m, n) = (fi m0, fi n0)
-  A.withStorableArray x $ \ptr -> [citems| int(Complex *ptr) {
+  A.withStorableArray x $ \x -> [citems| int {
     NagError fail; INIT_FAIL(fail);
-    nag_sum_fft_complex_2d(flag_int, m_nint, n_nint, ptr, &fail);
+    nag_sum_fft_complex_2d(flag_int, m_nint, n_nint, x_ncompl_ptr, &fail);
     return fail.code != NE_NOERROR;
   } |]
 
@@ -79,4 +79,3 @@ main = do
   void $ printGenComplxMat "\n Components of discrete Fourier transform\n" x
   void $ sumFftComplex2d [cexp_pure| int{ Nag_BackwardTransform } |] x
   void $ printGenComplxMat "\n Original sequence as restored by inverse transform\n" x
-
