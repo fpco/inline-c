@@ -7,7 +7,8 @@ import qualified Language.C.Quote as C
 import qualified Language.C.Quote.C as C
 import           Foreign.C.Types
 
-emitInclude "math.h"
+emitInclude "<math.h>"
+emitInclude "<stdio.h>"
 
 test_embedCode :: Int
 test_embedCode = c_add 1 2
@@ -19,13 +20,13 @@ test_embedCode = c_add 1 2
       -- C Code
       [C.cunit| int francescos_add(int x, int y) { int z = x + y; return z; } |])
 
-test_embedStm :: Double
-test_embedStm = $(embedStm
+test_embedItems :: Double
+test_embedItems = $(embedItems
   TH.Unsafe
   [t| Double -> Double |]
   [C.cty| double |]
   [C.cparams| double x |]
-  [C.cstm| return cos(x); |]) 1
+  [C.citems| return cos(x); |]) 1
 
 test_embedExp :: Double
 test_embedExp = $(embedExp
@@ -77,7 +78,7 @@ test_voidExp = [cexp| void { printf("Hello\n") } |]
 main :: IO ()
 main = do
   print test_embedCode
-  print test_embedStm
+  print test_embedItems
   print test_embedExp
   print $ francescos_mul 3 4
   print =<< test_cexp 3 4

@@ -7,27 +7,14 @@
 module Language.C.Inline
     ( -- * Build process
       -- $building
+
+      -- * Context
+      -- $context
       module Language.C.Context
     , setContext
-      -- * Manual handling
-    , Code(..)
-      -- ** Emitting
-      -- $emitting
-    , emitLiteral
-    , emitInclude
-    , emitCode
-      -- ** Embedding
-      -- $embedding
-    , embedCode
-    , embedStm
-    , embedExp
-    , embedItems
-      -- * Direct quoting
+
+      -- * Inline C
       -- $quoting
-    , cstm
-    , cstm_unsafe
-    , cstm_pure
-    , cstm_pure_unsafe
     , cexp
     , cexp_unsafe
     , cexp_pure
@@ -36,6 +23,25 @@ module Language.C.Inline
     , citems_unsafe
     , citems_pure
     , citems_pure_unsafe
+
+      -- * Direct handling
+      --
+      -- | The functions in this section let us access more the C file
+      -- associated with the current module.  They can be used to build
+      -- additional features on top of the basic machinery, and make no 
+      -- use of the 'Context'.
+
+      -- ** Emitting C code
+    , emitLiteral
+    , emitInclude
+    , emitCode
+
+      -- ** Embedding C code
+      -- $embedding
+    , Code(..)
+    , embedCode
+    , embedExp
+    , embedItems
     ) where
 
 import qualified Language.Haskell.TH as TH
@@ -67,6 +73,7 @@ import qualified Control.Monad.Trans.State as State
 import           Data.Typeable (Typeable, (:~:)(..), eqT)
 import           Data.Foldable (forM_)
 import           Data.Maybe (fromMaybe)
+import           Data.Char (isSpace)
 
 import           Language.C.Context
 
@@ -75,11 +82,12 @@ import           Language.C.Context
 
 -- $building
 --
--- Each module that uses at least one of the TH functions below gets
--- a C file associated to it.  This C file must be built after the
--- Haskell code and linked appropriately.  If you use cabal, all you
--- have to do is declare each associated C file in the @.cabal@ file and
--- you are good.
+-- Each module that uses at least one of the TH functions in this module
+-- gets a C file associated to it, where the filename of said file will
+-- be the same as the module but with a C extension.  This C file must
+-- be built after the Haskell code and linked appropriately.  If you use
+-- cabal, all you have to do is declare each associated C file in the
+-- @.cabal@ file and you are good.
 --
 -- For example we might have
 --
@@ -100,7 +108,17 @@ import           Language.C.Context
 --
 -- Note that currently @cabal repl@ is not supported, because the C code
 -- is not compiled and linked appropriately.
-
+--
+-- If we were to compile the above manaully we could do
+--
+-- @
+-- $ ghc -c Main.hs
+-- $ cc -c Main.c -o Main_c.o
+-- $ ghc Foo.hs
+-- $ ghc Bar.hs
+-- $ cc -c Bar.c -o Bar_c.o
+-- $ ghc Main.o Foo.o Bar.o Main_c.o Bar_c.o -lm -o Main
+-- @
 data ModuleState = ModuleState
   { msModuleName :: String
   , msContext :: Context
@@ -152,30 +170,26 @@ getModuleState = do
 getContext :: TH.Q Context
 getContext = msContext <$> getModuleState
 
+-- $context
+--
+-- The inline C functions ('cexp', 'citems', etc.) need a 'Context' to
+-- operate.  Said context can be explicitely set with 'setContext'.
+-- Otherwise, at the first usage of one of the TH functions in this
+-- module the 'Context' is implicitely set to 'baseCtx'.
+
+-- | Sets the 'Context' for the current module.  This function, if
+-- called, must be called before any of the other TH functions in this
+-- module.  Fails if that's not the case.
 setContext :: Context -> TH.DecsQ
 setContext ctx = do
+  mbModuleState <- TH.runIO $ readIORef moduleStateRef
+  forM_ mbModuleState $ \_moduleState -> do
+    error "setContext: the module has already been initialised."
   initialiseModuleState $ Just ctx
   return []
 
 ------------------------------------------------------------------------
 -- Emitting
-
--- $emitting
---
--- TODO document
-
--- | Data type representing some C code with a typed and named entry
--- function.
-data Code = Code
-  { codeCallSafety :: TH.Safety
-    -- ^ Safety of the foreign call
-  , codeType :: TH.TypeQ
-    -- ^ Type of the foreign call
-  , codeFunName :: String
-    -- ^ Name of the function to call in the code above.
-  , codeDefs :: [C.Definition]
-    -- ^ The C code.
-  }
 
 cSourceLoc :: TH.Q FilePath
 cSourceLoc = do
@@ -227,6 +241,21 @@ emitInclude s
 --
 -- TODO document
 
+-- | Data type representing a list of C definitions with a typed and named entry
+-- function.
+--
+-- We use it as a basis to embed and call C code.
+data Code = Code
+  { codeCallSafety :: TH.Safety
+    -- ^ Safety of the foreign call
+  , codeType :: TH.TypeQ
+    -- ^ Type of the foreign call
+  , codeFunName :: String
+    -- ^ Name of the function to call in the code below.
+  , codeDefs :: [C.Definition]
+    -- ^ The C code.
+  }
+
 -- TODO use the #line CPP macro to have the functions in the C file
 -- refer to the source location in the Haskell file they come from.
 --
@@ -234,6 +263,12 @@ emitInclude s
 
 -- | Embeds a piece of code inline.  The resulting 'TH.Exp' will have
 -- the type specified in the 'codeType'.
+--
+-- In practice, this function outputs the C code to the module's C file,
+-- and then inserts a foreign call of type 'codeType' calling the
+-- provided 'codeFunName'.
+--
+-- Example:
 --
 -- @
 -- c_add :: Int -> Int -> Int
@@ -264,45 +299,15 @@ uniqueCName = do
   unique <- filter (/= '-') . UUID.toString <$> UUID.nextRandom
   return $ "inline_c_" ++ unique
 
--- |
+-- | Same as 'embedItems', but with a single expression.
+--
 -- @
 -- c_cos :: Double -> Double
--- c_cos = $(embedStm
+-- c_cos = $(embedExp
 --   TH.Unsafe
 --   [t| Double -> Double |]
 --   [cty| double |] [cparams| double x |]
---   [cstm| return cos(x); |])
--- @
-embedStm
-  :: TH.Safety
-  -- ^ Safety of the foreign call
-  -> TH.TypeQ
-  -- ^ Type of the foreign call
-  -> C.Type
-  -- ^ Return type of the C expr
-  -> [C.Param]
-  -- ^ Parameters of the C expr
-  -> C.Stm
-  -- ^ The C statement
-  -> TH.ExpQ
-embedStm callSafety type_ cRetType cParams cStm = do
-  funName <- TH.runIO uniqueCName
-  let defs = [C.cunit| $ty:cRetType $id:funName($params:cParams) { $stm:cStm } |]
-  embedCode $ Code
-    { codeCallSafety = callSafety
-    , codeType = type_
-    , codeFunName = funName
-    , codeDefs = defs
-    }
-
--- |
--- @
--- c_cos :: Double -> Double
--- c_cos = $(embedStm
---   TH.Unsafe
---   [t| Double -> Double |]
---   [cty| double |] [cparams| double x |]
---   [cstm| return cos(x); |])
+--   [cexp| cos(x) |])
 -- @
 embedExp
   :: TH.Safety
@@ -317,12 +322,24 @@ embedExp
   -- ^ The C expression
   -> TH.ExpQ
 embedExp callSafety type_ cRetType cParams cExp =
-  embedStm callSafety type_ cRetType cParams cStm
+  embedItems callSafety type_ cRetType cParams cItems
   where
-    cStm = if cRetType == [C.cty| void |]
-           then [C.cstm| $exp:cExp; |]
-           else [C.cstm| return $exp:cExp; |]
+    cItems = if cRetType == [C.cty| void |]
+             then [C.citems| $exp:cExp; |]
+             else [C.citems| return $exp:cExp; |]
 
+-- | Same as 'embedCode', but accepts a list of 'C.BlockItem's instead than a
+-- full-blown 'Code'.  A function containing the provided statement will be
+-- automatically generated.
+--
+-- @
+-- c_cos :: Double -> Double
+-- c_cos = $(embedItems
+--   TH.Unsafe
+--   [t| Double -> Double |]
+--   [cty| double |] [cparams| double x |]
+--   [citems| return cos(x); |])
+-- @
 embedItems
   :: TH.Safety
   -- ^ Safety of the foreign call
@@ -349,7 +366,83 @@ embedItems callSafety type_ cRetType cParams cItems = do
 
 -- $quoting
 --
--- TODO document
+-- The functions below are the main interface to this library, and let
+-- you easily embed C code in Haskell.
+--
+-- In general, they are used like so:
+--
+-- @
+-- [cXXX| int(double x, float y) { \<C code\> } |]
+-- @
+--
+-- Where @cXXX@ is one of the quasi-quoters defined in this section.
+--
+-- The syntax is essentially representing an anonymous C function:
+--
+-- * The first type to appear (@int@ in the example) is the return type
+--   of said function.
+--
+-- * The arguments list (@(double x, float y)@ in the example) captures
+--   Haskell variables currently in scope, and makes them available from
+--   the C code.  If no parameters are present, the parentheses can be
+--   omitted.
+--
+-- * The syntax of the @\<C code\>@ depends on the quasi-quoter used,
+--   but generally speaking it will be either a C expression of the
+--   specified return type or a list of C statements @return@ing
+--   something of the specified return type.
+--
+-- The Haskell type of the inlined expression will be determined by the
+-- return type specified.  The conversion between the C type and the
+-- Haskell type is performed according to the current 'Context' -- see
+-- 'ctxConvertCTypeSpec'.  Moreover, the type will be in 'IO' by
+-- default, but "@pure@" quasi-quoters are provided if the C code is
+-- pure.  Obviously this facility should be used with care, since if the
+-- code is not pure you can break referential transparency.
+--
+-- Similarly, when capturing Haskell variables using the parameters
+-- list, their type is assumed to be of the Haskell type corresponding
+-- to the C type provided.  For example, if we capture variable @x@
+-- using @double x@ in the parameter list, the code will expect a
+-- variable @x@ of type @CDouble@ in Haskell.
+--
+-- Finally, @unsafe@ variants of the quasi-quoters are provided to call
+-- the C code unsafely, in the sense that the C code will block the RTS,
+-- with the advantage of a faster call to the foreign code. See
+-- <https://www.haskell.org/onlinereport/haskell2010/haskellch8.html#x15-1590008.4.3>
+-- for more info.
+--
+-- == Examples
+--
+-- === Inline C expression
+--
+-- @
+-- c_cos :: CDouble -> CDouble
+-- c_cos x = [cexp_pure_unsafe| double(double x) { cos(x) } |]
+-- @
+--
+-- === Inline C statements
+--
+-- @
+-- {-\# LANGUAGE TemplateHaskell \#-}
+-- {-\# LANGUAGE QuasiQuotes \#-}
+-- import qualified Data.Vector.Storable.Mutable as V
+-- import           Foreign.C.Types
+-- import           Language.C.Inline
+--
+-- emitInclude "\<stdio.h\>"
+--
+-- parseVector :: CInt -> IO (V.IOVector CDouble)
+-- parseVector len = do
+--   vec <- V.new $ fromIntegral len0
+--   V.unsafeWith vec $ \\ptr -> [citems| void(int len, double *ptr) {
+--     int i;
+--     for (i = 0; i < len; i++) {
+--       scanf("%lf ", &ptr[i]);
+--     }
+--   } |]
+--   return vec
+-- @
 
 cexp :: TH.QuasiQuoter
 cexp = genericQuote False C.parseExp $ embedExp TH.Safe
@@ -362,18 +455,6 @@ cexp_pure = genericQuote True C.parseExp $ embedExp TH.Safe
 
 cexp_pure_unsafe :: TH.QuasiQuoter
 cexp_pure_unsafe = genericQuote True C.parseExp $ embedExp TH.Unsafe
-
-cstm :: TH.QuasiQuoter
-cstm = genericQuote False C.parseStm $ embedStm TH.Safe
-
-cstm_unsafe :: TH.QuasiQuoter
-cstm_unsafe = genericQuote False C.parseStm $ embedStm TH.Unsafe
-
-cstm_pure :: TH.QuasiQuoter
-cstm_pure = genericQuote True C.parseStm $ embedStm TH.Safe
-
-cstm_pure_unsafe :: TH.QuasiQuoter
-cstm_pure_unsafe = genericQuote True C.parseStm $ embedStm TH.Unsafe
 
 citems :: TH.QuasiQuoter
 citems = genericQuote False C.parseBlockItems $ embedItems TH.Safe
