@@ -409,6 +409,7 @@ genericQuote
   -- 'embedExp' for other args.
   -> TH.QuasiQuoter
 genericQuote pure p build = quoteCode $ \s -> do
+  initialiseModuleState_
   context <- getContext
   (cType, cParams, cExp) <- runCParser s $ parseTypedC context p
   let hsType = convertCFunSig pure cType $ map snd cParams
@@ -515,7 +516,7 @@ parseTypedC context p = do
   cParams <- emptyParams <|> someParams <|> noParams
   -- Get the body, and feed it to the given parser
   bodyPos <- Parsec.getPosition
-  bodyStr <- takeTillChar '}'
+  bodyStr <- restOfInputNoBrace
   let cBody = parseC context bodyPos bodyStr p
   -- Collect the implicit parameters present in the body
   let paramsMap = mkParamsMap cParams
@@ -536,6 +537,14 @@ parseTypedC context p = do
       str <- takeTillAnyChar [ch]
       lex_ $ Parsec.char ch
       return str
+
+    restOfInputNoBrace :: Parsec.Parser String
+    restOfInputNoBrace = do
+      inp <- Parsec.many1 $ Parsec.satisfy $ \_ -> True
+      let revInp = dropWhile isSpace $ reverse inp
+      case revInp of
+        '}' : revInp' -> return $ reverse revInp'
+        _ -> fail "No closing brace!"
 
     cleanupParam :: C.Param -> (C.Id, C.Type)
     cleanupParam param = case param of
