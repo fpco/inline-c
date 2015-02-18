@@ -4,6 +4,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-} -- This is used for IsString C.Id
 module Language.C.Inline
     ( -- * Build process
       -- $building
@@ -28,7 +30,7 @@ module Language.C.Inline
       --
       -- | The functions in this section let us access more the C file
       -- associated with the current module.  They can be used to build
-      -- additional features on top of the basic machinery, and make no 
+      -- additional features on top of the basic machinery, and make no
       -- use of the 'Context'.
 
       -- ** Emitting C code
@@ -42,6 +44,9 @@ module Language.C.Inline
     , embedCode
     , embedExp
     , embedItems
+
+      -- * Tests
+    , tests
     ) where
 
 import qualified Language.Haskell.TH as TH
@@ -50,7 +55,7 @@ import qualified Language.Haskell.TH.Quote as TH
 import qualified Text.PrettyPrint.Mainland as PrettyPrint
 import qualified Language.C as C
 import qualified Language.C.Quote.C as C
-import           Control.Exception (catch, throwIO)
+import           Control.Exception (catch, throwIO, evaluate)
 import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
@@ -63,7 +68,7 @@ import qualified Data.UUID.V4 as UUID
 import qualified Text.Parsec as Parsec
 import qualified Text.Parsec.Pos as Parsec
 import qualified Text.Parsec.String as Parsec
-import           Data.Loc (Pos(..), locOf)
+import           Data.Loc (Pos(..), locOf, noLoc)
 import qualified Data.ByteString.UTF8
 import           Control.Applicative ((*>), (<*), (<|>))
 import           Data.Data (Data)
@@ -74,6 +79,9 @@ import           Data.Typeable (Typeable, (:~:)(..), eqT)
 import           Data.Foldable (forM_)
 import           Data.Maybe (fromMaybe)
 import           Data.Char (isSpace)
+import qualified Test.Hspec as Hspec
+import           Text.RawString.QQ (r)
+import           Data.String (IsString(..))
 
 import           Language.C.Context
 
@@ -387,13 +395,13 @@ embedItems callSafety type_ cRetType cParams cItems = do
 --   the C code.  If no parameters are present, the parentheses can be
 --   omitted.
 --
--- * The syntax of the @\<C code\>@ depends on the quasi-quoter used,
---   but generally speaking it will be either a C expression of the
---   specified return type or a list of C statements @return@ing
---   something of the specified return type.
+-- * The syntax of the @\<C code\>@ depends on the quasi-quoter used.
+--   @cexp@ functions accept a C expression.  @citems@ functions accept
+--   'C.BlockItem's, which are basically what goes inside a C
+--   function.
 --
 -- The Haskell type of the inlined expression will be determined by the
--- return type specified.  The conversion between the C type and the
+-- C return type specified.  The conversion between the C type and the
 -- Haskell type is performed according to the current 'Context' -- see
 -- 'ctxConvertCTypeSpec'.  Moreover, the type will be in 'IO' by
 -- default, but "@pure@" quasi-quoters are provided if the C code is
@@ -666,6 +674,52 @@ parseTypedC context p = do
       error "inline-c: got antiquotation (collectImplParam)"
 
 ------------------------------------------------------------------------
+-- Test
+
+tests :: IO ()
+tests = Hspec.hspec $ do
+  Hspec.describe "parsing" $ do
+    Hspec.it "parses simple C expression" $ do
+      (retType, params, cExp) <- goodParse C.parseExp [r|
+          int(double x, float y) { (int) ceil(x + ((double) y)) }
+        |]
+      retType `Hspec.shouldBe` [C.cty| int |]
+      params `Hspec.shouldMatchList` [("x", [C.cty| double |]), ("y", [C.cty| float |])]
+      cExp `Hspec.shouldBe` [C.cexp| (int) ceil(x + ((double) y)) |]
+    Hspec.it "empty argument list (1)" $ do
+      void $ goodParse C.parseExp [r| int{ 4 } |]
+    Hspec.it "empty argument list (2)" $ do
+      void $ goodParse C.parseExp [r| int(){ 4 } |]
+    Hspec.it "does not accept conflicting declarations (1)" $ do
+      badParse C.parseExp [r| int(int x, double x) { x } |]
+    Hspec.it "does not accept conflicting declarations (2)" $ do
+      badParse C.parseExp [r| int(int x) { x_double } |]
+    Hspec.it "accepts agreeing declarations, if with suffix" $ do
+      void $ goodParse C.parseExp [r| int(int x) { x_int } |]
+    Hspec.it "rejects duplicate agreeing declarations, in params list" $ do
+      badParse C.parseExp [r| int(int x, int x) { x } |]
+    Hspec.it "accepts suffix types" $ do
+      void $ goodParse C.parseExp [r| int { x_int } |]
+    Hspec.it "rejects if bad braces (1)" $ do
+      badParse C.parseExp [r| int(int x) x |]
+    Hspec.it "rejects if bad braces (2)" $ do
+      badParse C.parseExp [r| int(int x) { x |]
+  Hspec.describe "type conversion" $ do
+    return ()
+  where
+    -- We use show + length to fully evaluate the result -- there
+    -- might be exceptions hiding.  TODO get rid of exceptions.
+    strictParse p s =
+      case Parsec.runParser (parseTypedC baseCtx p <* Parsec.eof) () "test" s of
+        Left err -> error $ "Parse error (strictParse): " ++ show err
+        Right x -> do
+          void $ evaluate $ length $ show x
+          return x
+
+    goodParse = strictParse
+    badParse p s = strictParse p s `Hspec.shouldThrow` Hspec.anyException
+
+------------------------------------------------------------------------
 -- Utils
 
 pretty80 :: PrettyPrint.Pretty a => a -> String
@@ -679,3 +733,6 @@ typeableAppM = help eqT
     help :: Maybe (a :~: b) -> (b -> m b) -> a -> m a
     help (Just Refl) f x = f x
     help Nothing     _ x = return x
+
+instance IsString C.Id where
+  fromString s = C.Id s noLoc
