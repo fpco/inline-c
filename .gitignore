@@ -1,4 +1,2 @@
-/dist/
-/nag-test/dist/
-/sample-cabal-project/dist/
-/nag/dist/
+/*/dist/
+
