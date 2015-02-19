@@ -236,38 +236,3 @@ simplifyCType cTy0 = case cTy0 of
       C.AntiTypeDecl{} ->
         error "inline-c: got antiquotation (simplifyCType)"
 
-{-
-convertCType ctx cTy = runMaybeT $ case cTy of
-  C.Type (C.DeclSpec _storage _quals cTySpec _) decl0 _ -> do
-    hsTy <- MaybeT $ ctxConvertCTypeSpec ctx cTySpec
-    lift $ go hsTy decl0
-  _ -> do
-    error "inline-c: got antiquotation (convertCType)"
-  where
-    -- We do not support sized arrays because they don't have a quick
-    -- Haskell representation.  For example, morally @int [][4]@ is an
-    -- unboxed vector of quadruples in Haskell, but we cannot conjure
-    -- such types easily.
-
-    go :: TH.Type -> C.Decl -> TH.TypeQ
-    go hsTy decl = case decl of
-      C.DeclRoot _ ->
-        return hsTy
-      C.Ptr _quals decl' _ ->
-        [t| Ptr $(go hsTy decl') |]
-      C.Array _ (C.ArraySize _ _ _) _ _ ->
-        error "inline-c: Sized array not supported (convertCType)"
-      C.Array _ (C.VariableArraySize _) _ _ ->
-        error "inline-c: Variably sized array not supported (convertCType)"
-      C.Array _quals (C.NoArraySize _) decl' _ ->
-        -- Note that we cannot have arrays of functions.
-        [t| CArray $(go hsTy decl') |]
-      C.Proto decl' params _ ->
-        error "TODO mkCPtrTypes Proto"
-      C.OldProto _ _ _ ->
-        error "TODO mkCPtrTypes OldProto"
-      C.BlockPtr _ _ _ ->
-        error "inline-c: Blocks not supported (convertCType)"
-      C.AntiTypeDecl _ _ ->
-        error "inline-c: got antiquotation (convertCType)"
--}
