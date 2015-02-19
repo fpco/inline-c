@@ -1,4 +1,4 @@
-name:                nag-test
+name:                nag-examples
 version:             0.1.0.0
 license:             AllRightsReserved
 author:              Francesco Mazzoli
@@ -13,7 +13,7 @@ executable a02bac
   build-depends:       base >=4.7 && <4.8
                      , inline-c
                      , language-c-quote
-                     , nag
+                     , inline-c-nag
   hs-source-dirs:      src
   default-language:    Haskell2010
   cc-options:          -O2 -m64
@@ -27,7 +27,7 @@ executable c06puce
   build-depends:       base >=4.7 && <4.8
                      , inline-c
                      , language-c-quote
-                     , nag
+                     , inline-c-nag
                      , array
                      , raw-strings-qq
   hs-source-dirs:      src
