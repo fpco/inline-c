@@ -715,28 +715,31 @@ tests = Hspec.hspec $ do
       shouldBeType [C.cty| int |] [t| CInt |]
     Hspec.it "converts simple type correctly (2)" $ do
       shouldBeType [C.cty| char |] [t| CChar |]
+    Hspec.it "converts void" $ do
+      shouldBeType [C.cty| void |] [t| () |]
     Hspec.it "converts single ptr type" $ do
       shouldBeType [C.cty| long* |] [t| Ptr CLong |]
     Hspec.it "converts double ptr type" $ do
-      shouldBeType [C.cty| long** |] [t| Ptr (Ptr CLong) |]
+      shouldBeType [C.cty| unsigned long** |] [t| Ptr (Ptr CULong) |]
     Hspec.it "converts arrays" $ do
       shouldBeType [C.cty| double[] |] [t| CArray CDouble |]
     Hspec.it "converts named things" $ do
-      shouldBeType [C.cty| double foo[] |] [t| CArray CDouble |]
+      shouldBeType [C.cty| unsigned int foo[] |] [t| CArray CUInt |]
     Hspec.it "converts arrays of pointers" $ do
       shouldBeType
         [C.cty| unsigned short *foo[] |] [t| CArray (Ptr CUShort) |]
     Hspec.it "ignores qualifiers" $ do
       shouldBeType [C.cty| const short* |] [t| Ptr CShort |]
     Hspec.it "ignores storage information" $ do
-      shouldBeType [C.cty| extern unsigned short |] [t| CUShort |]
+      shouldBeType [C.cty| extern unsigned long |] [t| CULong |]
     Hspec.it "rejects sized arrays" $ do
       badConvert [C.cty| float[4] |]
     Hspec.it "rejects variably sized arrays" $ do
       badConvert [C.cty| float[*] |]
     Hspec.it "converts function pointers" $ do
       shouldBeType
-        [C.cty| int (*f)(int, int) |] [t| FunPtr (CInt -> CInt -> IO CInt) |]
+        [C.cty| int (*f)(unsigned char, float) |]
+        [t| FunPtr (CUChar -> CFloat -> IO CInt) |]
     Hspec.it "converts complicated stuff (1)" $ do
       -- pointer to function returning pointer to function returning int
       shouldBeType
