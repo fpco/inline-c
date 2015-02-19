@@ -1,6 +1,6 @@
 name:                inline-c
 version:             0.1.0.0
-synopsis:            Let's you embed C code into Haskell.
+synopsis:            Lets you embed C code into Haskell.
 -- description:         
 license:             AllRightsReserved
 author:              Francesco Mazzoli
