@@ -736,23 +736,23 @@ tests = Hspec.hspec $ do
       badConvert [C.cty| float[*] |]
     Hspec.it "converts function pointers" $ do
       shouldBeType
-        [C.cty| int (*f)(int, int) |] [t| FunPtr (Int -> Int -> Int) |]
+        [C.cty| int (*f)(int, int) |] [t| FunPtr (CInt -> CInt -> IO CInt) |]
     Hspec.it "converts complicated stuff (1)" $ do
       -- pointer to function returning pointer to function returning int
       shouldBeType
-        [C.cty| int (*(*)())() |] [t| FunPtr (FunPtr Int) |]
+        [C.cty| int (*(*)())() |] [t| FunPtr (IO (FunPtr (IO CInt))) |]
     Hspec.it "converts complicated stuff (2)" $ do
       -- foo is an array of pointer to pointer to function returning
       -- pointer to array of pointer to char
       shouldBeType
         [C.cty| char *(*(**foo [])())[] |]
-        [t| CArray (Ptr (FunPtr (Ptr (CArray (Ptr CChar))))) |]
+        [t| CArray (Ptr (FunPtr (IO (Ptr (CArray (Ptr CChar)))))) |]
     Hspec.it "converts complicated stuff (3)" $ do
       -- foo is an array of pointer to pointer to function taking int
       -- returning pointer to array of pointer to char
       shouldBeType
         [C.cty| char *(*(**foo [])(int x))[] |]
-        [t| CArray (Ptr (FunPtr (CInt -> Ptr (CArray (Ptr CChar))))) |]
+        [t| CArray (Ptr (FunPtr (CInt -> IO (Ptr (CArray (Ptr CChar)))))) |]
   where
     -- We use show + length to fully evaluate the result -- there
     -- might be exceptions hiding.  TODO get rid of exceptions.

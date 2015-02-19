@@ -140,6 +140,103 @@ type CArray = Ptr
 -- | Given a 'Context', it uses its 'ctxConvertCTypeSpec' to convert
 -- arbitrary C types.
 convertCType :: Context -> C.Type -> TH.Q (Maybe TH.Type)
+convertCType ctx cTy = runMaybeT $ go $ simplifyCType cTy
+  where
+    go :: SimpleCType -> MaybeT TH.Q TH.Type
+    go sTy = case sTy of
+      SCTSpec cSpec -> MaybeT $ ctxConvertCTypeSpec ctx cSpec
+      SCTPtr sTy' -> do
+        hsTy <- go sTy'
+        lift [t| Ptr $(return hsTy) |]
+      SCTArray sTy' -> do
+        hsTy <- go sTy'
+        lift [t| CArray $(return hsTy) |]
+      SCTFunPtr retType pars -> do
+        hsRetType <- go retType
+        hsPars <- mapM go pars
+        lift [t| FunPtr $(buildArr hsPars hsRetType) |]
+
+    buildArr [] hsRetType =
+      [t| IO $(return hsRetType) |]
+    buildArr (hsPar : hsPars) hsRetType =
+      [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
+
+
+baseGetSuffixType :: String -> Maybe (String, C.Type)
+baseGetSuffixType s = msum
+  [ do guard (('_' : suff) `isSuffixOf` s)
+       return (take (length s - length suff - 1) s, ctype)
+  | (suff, ctype) <- table
+  ]
+  where
+    table =
+      [ ("int", [C.cty| int |])
+      , ("uint", [C.cty| unsigned int |])
+      , ("long", [C.cty| long |])
+      , ("ulong", [C.cty| unsigned long |])
+      , ("char", [C.cty| char |])
+      , ("uchar", [C.cty| unsigned char |])
+      , ("float", [C.cty| float |])
+      , ("double", [C.cty| double |])
+
+      , ("int_ptr", [C.cty| int* |])
+      , ("uint_ptr", [C.cty| unsigned int* |])
+      , ("long_ptr", [C.cty| long* |])
+      , ("ulong_ptr", [C.cty| unsigned long* |])
+      , ("char_ptr", [C.cty| char* |])
+      , ("uchar_ptr", [C.cty| unsigned char* |])
+      , ("float_ptr", [C.cty| float* |])
+      , ("double_ptr", [C.cty| double* |])
+      ]
+
+------------------------------------------------------------------------
+-- Simple C types conversion
+
+data SimpleCType
+  = SCTSpec C.TypeSpec
+  | SCTPtr SimpleCType
+  | SCTArray SimpleCType
+  | SCTFunPtr SimpleCType [SimpleCType]
+  deriving (Show, Eq)
+
+simplifyCType :: C.Type -> SimpleCType
+simplifyCType cTy0 = case cTy0 of
+  C.Type (C.DeclSpec _storage _quals cTySpec _) decl _ ->
+    go cTySpec decl
+  _ ->
+    error "inline-c: got antiquotation (simplifyCType)"
+  where
+    go :: C.TypeSpec -> C.Decl -> SimpleCType
+    go cTySpec decl0 = case decl0 of
+      C.DeclRoot _ ->
+        SCTSpec cTySpec
+      C.Ptr _quals (C.Proto decl (C.Params params _ _) _) _ ->
+        let processParam param = case param of
+              C.Param _ (C.DeclSpec _ _ spec _) decl' _ -> go spec decl'
+              _ -> error "inline-c: got antiquotation (simplifyCType)"
+        in SCTFunPtr (go cTySpec decl) $ map processParam params
+      C.Ptr _quals (C.OldProto decl [] _) _ ->
+        SCTFunPtr (go cTySpec decl) []
+      C.Ptr _quals C.OldProto{} _ ->
+        error "inline-c: Old prototypes not supported (simplifyCType)"
+      C.Ptr _quals decl _ ->
+        SCTPtr $ go cTySpec decl
+      C.Array _ C.ArraySize{} _ _ ->
+        error "inline-c: Sized array not supported (simplifyCType)"
+      C.Array _ C.VariableArraySize{} _ _ ->
+        error "inline-c: Variably sized array not supported (simplifyCType)"
+      C.Array _quals C.NoArraySize{} decl _ ->
+        SCTArray $ go cTySpec decl
+      C.Proto{} ->
+        error "inline-c: Non-pointer function prototype (simplifyCType)"
+      C.OldProto{} ->
+        error "inline-c: Non-pointer function prototype (simplifyCType)"
+      C.BlockPtr{} ->
+        error "inline-c: Blocks not supported (simplifyCType)"
+      C.AntiTypeDecl{} ->
+        error "inline-c: got antiquotation (simplifyCType)"
+
+{-
 convertCType ctx cTy = runMaybeT $ case cTy of
   C.Type (C.DeclSpec _storage _quals cTySpec _) decl0 _ -> do
     hsTy <- MaybeT $ ctxConvertCTypeSpec ctx cTySpec
@@ -173,30 +270,4 @@ convertCType ctx cTy = runMaybeT $ case cTy of
         error "inline-c: Blocks not supported (convertCType)"
       C.AntiTypeDecl _ _ ->
         error "inline-c: got antiquotation (convertCType)"
-
-baseGetSuffixType :: String -> Maybe (String, C.Type)
-baseGetSuffixType s = msum
-  [ do guard (('_' : suff) `isSuffixOf` s)
-       return (take (length s - length suff - 1) s, ctype)
-  | (suff, ctype) <- table
-  ]
-  where
-    table =
-      [ ("int", [C.cty| int |])
-      , ("uint", [C.cty| unsigned int |])
-      , ("long", [C.cty| long |])
-      , ("ulong", [C.cty| unsigned long |])
-      , ("char", [C.cty| char |])
-      , ("uchar", [C.cty| unsigned char |])
-      , ("float", [C.cty| float |])
-      , ("double", [C.cty| double |])
-
-      , ("int_ptr", [C.cty| int* |])
-      , ("uint_ptr", [C.cty| unsigned int* |])
-      , ("long_ptr", [C.cty| long* |])
-      , ("ulong_ptr", [C.cty| unsigned long* |])
-      , ("char_ptr", [C.cty| char* |])
-      , ("uchar_ptr", [C.cty| unsigned char* |])
-      , ("float_ptr", [C.cty| float* |])
-      , ("double_ptr", [C.cty| double* |])
-      ]
+-}
