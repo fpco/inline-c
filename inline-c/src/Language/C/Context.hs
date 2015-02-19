@@ -83,7 +83,7 @@ instance Monoid Context where
 
 -- | Context useful to work with vanilla C.  Used by default.
 --
--- 'ctxCTypes': @"FILE"@.
+-- 'ctxCTypes': None.
 --
 -- 'ctxConvertCTypeSpec': converts C basic types to their counterparts
 -- in "Foreign.C.Types" (TODO currently slightly incomplete).
@@ -111,7 +111,7 @@ instance Monoid Context where
 -- @
 baseCtx :: Context
 baseCtx = Context
-  { ctxCTypes = ["FILE"]
+  { ctxCTypes = []
   , ctxConvertCTypeSpec = baseConvertCTypeSpec
   , ctxGetSuffixType = baseGetSuffixType
   }
@@ -131,7 +131,6 @@ baseConvertCTypeSpec cspec = runMaybeT $ case cspec of
   C.Tlong_long _ _ -> lift [t| CLLong |]
   C.Tfloat{} -> lift [t| CFloat |]
   C.Tdouble{} -> lift [t| CDouble |]
-  C.Tnamed (C.Id "FILE" _) [] _ -> lift [t| CFile |]
   _ -> mzero
 
 -- | An alias for 'Ptr'.
