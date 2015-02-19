@@ -82,6 +82,8 @@ import           Data.Char (isSpace)
 import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
 import           Data.String (IsString(..))
+import           Foreign.C.Types
+import           Foreign.Ptr (Ptr, FunPtr)
 
 import           Language.C.Context
 
@@ -192,7 +194,7 @@ setContext :: Context -> TH.DecsQ
 setContext ctx = do
   mbModuleState <- TH.runIO $ readIORef moduleStateRef
   forM_ mbModuleState $ \_moduleState -> do
-    error "setContext: the module has already been initialised."
+    error "inline-c: The module has already been initialised (setContext)."
   initialiseModuleState $ Just ctx
   return []
 
@@ -238,7 +240,7 @@ emitCode defs = do
 -- @
 emitInclude :: String -> TH.DecsQ
 emitInclude s
-  | null s = error "emitImport: empty string"
+  | null s = error "inline-c: empty string (emitInclude)"
   | head s == '<' = emitLiteral $ "#include " ++ s
   | otherwise = emitLiteral $ "#include \"" ++ s ++ "\""
 
@@ -482,9 +484,9 @@ quoteCode
   -> TH.QuasiQuoter
 quoteCode p = TH.QuasiQuoter
   { TH.quoteExp = p
-  , TH.quotePat = error "quoteCode: quotePat not implemented"
-  , TH.quoteType = error "quoteCode: quoteType not implemented"
-  , TH.quoteDec = error "quoteCode: quoteDec not implemeted"
+  , TH.quotePat = error "inline-c: quotePat not implemented (quoteCode)"
+  , TH.quoteType = error "inline-c: quoteType not implemented (quoteCode)"
+  , TH.quoteDec = error "inline-c: quoteDec not implemeted (quoteCode)"
   }
 
 genericQuote
@@ -637,7 +639,7 @@ parseTypedC context p = do
 
     cleanupParam :: C.Param -> (C.Id, C.Type)
     cleanupParam param = case param of
-      C.Param Nothing _ _ _        -> error "Cannot capture Haskell variable if you don't give a name."
+      C.Param Nothing _ _ _        -> error "inline-c: Cannot capture Haskell variable if you don't give a name."
       C.Param (Just name) ds d loc -> (name, C.Type ds d loc)
       _                            -> error "inline-c: got antiquotation (parseTypedC)"
 
@@ -646,7 +648,7 @@ parseTypedC context p = do
       let m = Map.fromList cParams
       in if Map.size m == length cParams
            then m
-           else error "Duplicated variable in parameter list"
+           else error "inline-c: Duplicated variable in parameter list"
 
     collectImplParams = everywhereM (typeableAppM collectImplParam)
 
@@ -704,8 +706,53 @@ tests = Hspec.hspec $ do
       badParse C.parseExp [r| int(int x) x |]
     Hspec.it "rejects if bad braces (2)" $ do
       badParse C.parseExp [r| int(int x) { x |]
+    Hspec.it "rejects void params list" $ do
+      badParse C.parseExp [r| int(void) { 4 } |]
+    Hspec.it "rejects unnamed parameters" $ do
+      badParse C.parseExp [r| int(int, double) { 4 } |]
   Hspec.describe "type conversion" $ do
-    return ()
+    Hspec.it "converts simple type correctly (1)" $ do
+      shouldBeType [C.cty| int |] [t| CInt |]
+    Hspec.it "converts simple type correctly (2)" $ do
+      shouldBeType [C.cty| char |] [t| CChar |]
+    Hspec.it "converts single ptr type" $ do
+      shouldBeType [C.cty| long* |] [t| Ptr CLong |]
+    Hspec.it "converts double ptr type" $ do
+      shouldBeType [C.cty| long** |] [t| Ptr (Ptr CLong) |]
+    Hspec.it "converts arrays" $ do
+      shouldBeType [C.cty| double[] |] [t| CArray CDouble |]
+    Hspec.it "converts named things" $ do
+      shouldBeType [C.cty| double foo[] |] [t| CArray CDouble |]
+    Hspec.it "converts arrays of pointers" $ do
+      shouldBeType
+        [C.cty| unsigned short *foo[] |] [t| CArray (Ptr CUShort) |]
+    Hspec.it "ignores qualifiers" $ do
+      shouldBeType [C.cty| const short* |] [t| Ptr CShort |]
+    Hspec.it "ignores storage information" $ do
+      shouldBeType [C.cty| extern unsigned short |] [t| CUShort |]
+    Hspec.it "rejects sized arrays" $ do
+      badConvert [C.cty| float[4] |]
+    Hspec.it "rejects variably sized arrays" $ do
+      badConvert [C.cty| float[*] |]
+    Hspec.it "converts function pointers" $ do
+      shouldBeType
+        [C.cty| int (*f)(int, int) |] [t| FunPtr (Int -> Int -> Int) |]
+    Hspec.it "converts complicated stuff (1)" $ do
+      -- pointer to function returning pointer to function returning int
+      shouldBeType
+        [C.cty| int (*(*)())() |] [t| FunPtr (FunPtr Int) |]
+    Hspec.it "converts complicated stuff (2)" $ do
+      -- foo is an array of pointer to pointer to function returning
+      -- pointer to array of pointer to char
+      shouldBeType
+        [C.cty| char *(*(**foo [])())[] |]
+        [t| CArray (Ptr (FunPtr (Ptr (CArray (Ptr CChar))))) |]
+    Hspec.it "converts complicated stuff (3)" $ do
+      -- foo is an array of pointer to pointer to function taking int
+      -- returning pointer to array of pointer to char
+      shouldBeType
+        [C.cty| char *(*(**foo [])(int x))[] |]
+        [t| CArray (Ptr (FunPtr (CInt -> Ptr (CArray (Ptr CChar))))) |]
   where
     -- We use show + length to fully evaluate the result -- there
     -- might be exceptions hiding.  TODO get rid of exceptions.
@@ -718,6 +765,19 @@ tests = Hspec.hspec $ do
 
     goodParse = strictParse
     badParse p s = strictParse p s `Hspec.shouldThrow` Hspec.anyException
+
+    goodConvert cTy = do
+      mbHsTy <- TH.runQ $ convertCType baseCtx cTy
+      case mbHsTy of
+        Nothing   -> error $ "Could not convert type (goodConvert)"
+        Just hsTy -> return hsTy
+
+    badConvert cTy = goodConvert cTy `Hspec.shouldThrow` Hspec.anyException
+
+    shouldBeType cTy hsTy = do
+      x <- goodConvert cTy
+      y <- TH.runQ hsTy
+      x `Hspec.shouldBe` y
 
 ------------------------------------------------------------------------
 -- Utils

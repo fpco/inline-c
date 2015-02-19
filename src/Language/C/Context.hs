@@ -9,6 +9,7 @@
 -- interpret said types correctly.
 module Language.C.Context
   ( Context(..)
+  , CArray
   , convertCType
   , baseCtx
   ) where
@@ -133,20 +134,45 @@ baseConvertCTypeSpec cspec = runMaybeT $ case cspec of
   C.Tnamed (C.Id "FILE" _) [] _ -> lift [t| CFile |]
   _ -> mzero
 
+-- | An alias for 'Ptr'.
+type CArray = Ptr
+
 -- | Given a 'Context', it uses its 'ctxConvertCTypeSpec' to convert
 -- arbitrary C types.
 convertCType :: Context -> C.Type -> TH.Q (Maybe TH.Type)
-convertCType ctx (C.Type (C.DeclSpec [] [] cTySpec _) decl0 _) = runMaybeT $ do
-  hsTy <- MaybeT $ ctxConvertCTypeSpec ctx cTySpec
-  lift $ go hsTy decl0
+convertCType ctx cTy = runMaybeT $ case cTy of
+  C.Type (C.DeclSpec _storage _quals cTySpec _) decl0 _ -> do
+    hsTy <- MaybeT $ ctxConvertCTypeSpec ctx cTySpec
+    lift $ go hsTy decl0
+  _ -> do
+    error "inline-c: got antiquotation (convertCType)"
   where
+    -- We do not support sized arrays because they don't have a quick
+    -- Haskell representation.  For example, morally @int [][4]@ is an
+    -- unboxed vector of quadruples in Haskell, but we cannot conjure
+    -- such types easily.
+
     go :: TH.Type -> C.Decl -> TH.TypeQ
     go hsTy decl = case decl of
-      C.DeclRoot _ -> return hsTy
-      C.Ptr [] decl' _ -> [t| Ptr $(go hsTy decl') |]
-      C.Array [] _ decl' _ -> [t| Ptr $(go hsTy decl') |]
-      _ -> error "TODO mkCPtrTypes"
-convertCType _ _ = error "inline-c: malformed type (mkCPtrTypes)"
+      C.DeclRoot _ ->
+        return hsTy
+      C.Ptr _quals decl' _ ->
+        [t| Ptr $(go hsTy decl') |]
+      C.Array _ (C.ArraySize _ _ _) _ _ ->
+        error "inline-c: Sized array not supported (convertCType)"
+      C.Array _ (C.VariableArraySize _) _ _ ->
+        error "inline-c: Variably sized array not supported (convertCType)"
+      C.Array _quals (C.NoArraySize _) decl' _ ->
+        -- Note that we cannot have arrays of functions.
+        [t| CArray $(go hsTy decl') |]
+      C.Proto decl' params _ ->
+        error "TODO mkCPtrTypes Proto"
+      C.OldProto _ _ _ ->
+        error "TODO mkCPtrTypes OldProto"
+      C.BlockPtr _ _ _ ->
+        error "inline-c: Blocks not supported (convertCType)"
+      C.AntiTypeDecl _ _ ->
+        error "inline-c: got antiquotation (convertCType)"
 
 baseGetSuffixType :: String -> Maybe (String, C.Type)
 baseGetSuffixType s = msum
