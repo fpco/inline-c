@@ -27,6 +27,9 @@ module Language.C.Inline
     , citems_pure_unsafe
 
       -- * 'FunPtr' utils
+      --
+      -- | The functions in this section provide facilities to quickly
+      -- get 'FunPtr's from Haskell functions, and vice-versa.
     , mkFunPtr
     , peekFunPtr
 
@@ -253,7 +256,15 @@ emitInclude s
 
 -- $embedding
 --
--- TODO document
+-- We use the 'Code' data structure to represent some C code that we
+-- want to emit to the module's C file and immediately generate a
+-- foreign call to.  For this reason, 'Code' includes both some C
+-- definition, and enough information to be able to generate a foreign
+-- call -- specifically the name of the function to call and the Haskell
+-- type.
+--
+-- All the quasi-quoters work by constructing a 'Code' and calling
+-- 'embedCode'.
 
 -- | Data type representing a list of C definitions with a typed and named entry
 -- function.
@@ -408,19 +419,38 @@ embedItems callSafety type_ cRetType cParams cItems = do
 --   'C.BlockItem's, which are basically what goes inside a C
 --   function.
 --
+-- === Variable capturing and type conversion.
+--
 -- The Haskell type of the inlined expression will be determined by the
 -- C return type specified.  The conversion between the C type and the
 -- Haskell type is performed according to the current 'Context' -- see
--- 'ctxConvertCTypeSpec'.  Moreover, the type will be in 'IO' by
--- default, but "@pure@" quasi-quoters are provided if the C code is
--- pure.  Obviously this facility should be used with care, since if the
--- code is not pure you can break referential transparency.
+-- 'ctxConvertCTypeSpec'.  C pointers and arrays are both converted to
+-- Haskell @'Ptr'@s, and function pointers are converted to @'FunPtr'@s.
+-- Sized arrays are not supported.
 --
 -- Similarly, when capturing Haskell variables using the parameters
 -- list, their type is assumed to be of the Haskell type corresponding
 -- to the C type provided.  For example, if we capture variable @x@
 -- using @double x@ in the parameter list, the code will expect a
 -- variable @x@ of type @CDouble@ in Haskell.
+--
+-- === @pure@ and impure calls
+--
+-- Both @cexp@ and @citems@ quasi-quoters are present in impure (the
+-- default) and pure (postfixed with @_pure@) versions.  The impure
+-- version will generate expressions of type @'IO' a@, where @a@ is the
+-- specified return type.  On the other hand, @pure@ versions will
+-- generate pure code.  Moreover, this difference will also carry over
+-- to function pointers.  Impure quasi-quoters will convert C function
+-- pointers to @'IO'@ functions in Haskell.  For example, if an argument
+-- is of type @int (*add)(int, int)@, the impure quasi-quoters will
+-- expect a @'FunPtr' ('CInt' -> 'CInt' -> 'IO' 'CInt')@, while the pure
+-- ones a @'FunPtr' ('CInt' -> 'CInt' -> 'IO' 'CInt')@.
+--
+-- Obviously pure quoters should be used with care, since if the C code
+-- is not pure you can break referential transparency.
+--
+-- === Safe and @unsafe@ calls
 --
 -- Finally, @unsafe@ variants of the quasi-quoters are provided to call
 -- the C code unsafely, in the sense that the C code will block the RTS,
@@ -498,7 +528,7 @@ quoteCode p = TH.QuasiQuoter
 genericQuote
   :: (Data a)
   => Bool
-  -- ^ Whether the call should be pure or not
+  -- ^ Whether the call and the function pointers should be pure or not.
   -> C.P a
   -- ^ Parser producing something
   -> (TH.TypeQ -> C.Type -> [C.Param] -> a -> TH.ExpQ)
@@ -536,7 +566,7 @@ convertCFunSig :: Bool -> C.Type -> [C.Type] -> TH.TypeQ
 convertCFunSig pure retType params0 = do
   ctx <- getContext
   go params0 $ \cTy -> do
-    mbHsTy <- convertCType ctx cTy
+    mbHsTy <- convertCType ctx pure cTy
     case mbHsTy of
       Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
       Just hsTy -> return hsTy
@@ -700,7 +730,7 @@ parseTypedC context p = do
 ------------------------------------------------------------------------
 -- FFI wrappers
 
--- | @'mkFunPtr' :: 'CDouble' -> 'IO' 'CDouble'@ generates a foreign import
+-- | @$('mkFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |] @ generates a foreign import
 -- wrapper of type
 --
 -- @
@@ -715,7 +745,7 @@ mkFunPtr hsTy = do
   TH.addTopDecls [dec]
   TH.varE ffiImportName
 
--- | @'mkFunPtr' :: 'CDouble' -> 'IO' 'CDouble'@ generates a foreign import
+-- | @$('mkFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |])@ generates a foreign import
 -- dynamic of type
 --
 -- @
@@ -845,7 +875,7 @@ tests = do
     badParse p s = strictParse p s `Hspec.shouldThrow` Hspec.anyException
 
     goodConvert cTy = do
-      mbHsTy <- TH.runQ $ convertCType baseCtx cTy
+      mbHsTy <- TH.runQ $ convertCType baseCtx False cTy
       case mbHsTy of
         Nothing   -> error $ "Could not convert type (goodConvert)"
         Just hsTy -> return hsTy

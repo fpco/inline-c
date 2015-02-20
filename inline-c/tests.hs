@@ -75,11 +75,16 @@ main = Hspec.hspec $ do
     Hspec.it "void exp" $ do
       [cexp| void { printf("Hello\n") } |]
     Hspec.it "function pointer argument" $ do
-      add <- $(mkFunPtr [t| CInt -> CInt -> IO CInt |]) $ \x y -> return $ x + y
+      let ackermann m n
+            | m == 0 = n + 1
+            | m > 0 && n == 0 = ackermann (m - 1) 1
+            | m > 0 && n > 0 = ackermann (m - 1) (ackermann m (n - 1))
+            | otherwise = error "ackermann"
+      ackermannPtr <- $(mkFunPtr [t| CInt -> CInt -> CInt |]) ackermann
       let x = 3
       let y = 4
-      z <- [cexp| int(int (*add)(int, int)) { add(x_int, y_int) } |]
-      z `Hspec.shouldBe` 7
+      let z = [cexp_pure| int(int (*ackermannPtr)(int, int)) { ackermannPtr(x_int, y_int) } |]
+      z `Hspec.shouldBe` ackermann x y
     Hspec.it "function pointer result" $ do
       c_cos <- [cexp| double (*)(double) { &cos } |]
       x <- $(peekFunPtr [t| CDouble -> IO CDouble |]) c_cos 1
