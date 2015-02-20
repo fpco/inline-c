@@ -14,17 +14,17 @@ module Language.C.Context
   , baseCtx
   ) where
 
-import qualified Language.Haskell.TH as TH
+import           Control.Applicative (empty, (<|>))
+import           Control.Monad (mzero, msum, guard)
+import           Control.Monad.Trans.Class (lift)
+import           Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
+import           Data.List (isSuffixOf)
+import           Data.Monoid (Monoid(..))
+import           Foreign.C.Types
+import           Foreign.Ptr (Ptr, FunPtr)
 import qualified Language.C as C
 import qualified Language.C.Quote.C as C
-import           Foreign.C.Types
-import           Foreign.Ptr
-import           Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
-import           Control.Monad.Trans.Class (lift)
-import           Control.Monad (mzero, msum, guard)
-import           Data.Monoid (Monoid(..))
-import           Control.Applicative (empty, (<|>))
-import           Data.List (isSuffixOf)
+import qualified Language.Haskell.TH as TH
 
 -- | A 'Context' stores information needed to:
 --
