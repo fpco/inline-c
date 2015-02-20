@@ -138,8 +138,13 @@ type CArray = Ptr
 
 -- | Given a 'Context', it uses its 'ctxConvertCTypeSpec' to convert
 -- arbitrary C types.
-convertCType :: Context -> C.Type -> TH.Q (Maybe TH.Type)
-convertCType ctx cTy = runMaybeT $ go $ simplifyCType cTy
+convertCType
+  :: Context
+  -> Bool
+  -- ^ Whether function pointers should be pure or not.
+  -> C.Type
+  -> TH.Q (Maybe TH.Type)
+convertCType ctx pure cTy = runMaybeT $ go $ simplifyCType cTy
   where
     go :: SimpleCType -> MaybeT TH.Q TH.Type
     go sTy = case sTy of
@@ -156,7 +161,7 @@ convertCType ctx cTy = runMaybeT $ go $ simplifyCType cTy
         lift [t| FunPtr $(buildArr hsPars hsRetType) |]
 
     buildArr [] hsRetType =
-      [t| IO $(return hsRetType) |]
+      if pure then [t| $(return hsRetType) |] else [t| IO $(return hsRetType) |]
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
 
