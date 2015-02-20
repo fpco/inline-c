@@ -26,6 +26,10 @@ module Language.C.Inline
     , citems_pure
     , citems_pure_unsafe
 
+      -- * 'FunPtr' utils
+    , mkFunPtr
+    , peekFunPtr
+
       -- * Direct handling
       --
       -- | The functions in this section let us access more the C file
@@ -295,13 +299,15 @@ embedCode Code{..} = do
   -- Write out definitions
   void $ emitCode codeDefs
   -- Create and add the FFI declaration.
-  -- TODO absurdly, I need to
-  -- 'newName' twice for things to work.  I found this hack in
-  -- language-c-inline.  Why is this?
-  ffiImportName <- TH.newName . show =<< TH.newName "inline_c_ffi"
+  ffiImportName <- uniqueFfiImportName
   dec <- TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType
   TH.addTopDecls [dec]
-  [| $(TH.varE ffiImportName) |]
+  TH.varE ffiImportName
+
+-- TODO absurdly, I need to 'newName' twice for things to work.  I found
+-- this hack in language-c-inline.  Why is this?
+uniqueFfiImportName :: TH.Q TH.Name
+uniqueFfiImportName = TH.newName . show =<< TH.newName "inline_c_ffi"
 
 uniqueCName :: IO String
 uniqueCName = do
@@ -692,6 +698,39 @@ parseTypedC context p = do
       error "inline-c: got antiquotation (collectImplParam)"
 
 ------------------------------------------------------------------------
+-- FFI wrappers
+
+-- | @'mkFunPtr' :: 'CDouble' -> 'IO' 'CDouble'@ generates a foreign import
+-- wrapper of type
+--
+-- @
+-- ('CDouble' -> 'IO' 'CDouble') -> 'IO' ('FunPtr' ('CDouble' -> 'IO' 'CDouble'))
+-- @
+--
+-- And invokes it.
+mkFunPtr :: TH.TypeQ -> TH.ExpQ
+mkFunPtr hsTy = do
+  ffiImportName <- uniqueFfiImportName
+  dec <- TH.forImpD TH.CCall TH.Safe "wrapper" ffiImportName [t| $(hsTy) -> IO (FunPtr $(hsTy)) |]
+  TH.addTopDecls [dec]
+  TH.varE ffiImportName
+
+-- | @'mkFunPtr' :: 'CDouble' -> 'IO' 'CDouble'@ generates a foreign import
+-- dynamic of type
+--
+-- @
+-- 'FunPtr' ('CDouble' -> 'IO' 'CDouble') -> ('CDouble' -> 'IO' 'CDouble')
+-- @
+--
+-- And invokes it.
+peekFunPtr :: TH.TypeQ -> TH.ExpQ
+peekFunPtr hsTy = do
+  ffiImportName <- uniqueFfiImportName
+  dec <- TH.forImpD TH.CCall TH.Safe "dynamic" ffiImportName [t| FunPtr $(hsTy) -> $(hsTy) |]
+  TH.addTopDecls [dec]
+  TH.varE ffiImportName
+
+------------------------------------------------------------------------
 -- Test
 
 tests :: IO ()
@@ -739,7 +778,13 @@ tests = Hspec.hspec $ do
         goodParse C.parseExp [r| double (*f(int dummy))(double) { &cos } |]
       retType `Hspec.shouldBe` [C.cty| double (*)(double) |]
       params `Hspec.shouldMatchList` [("dummy", [C.cty| int |])]
-      cExp `Hspec.shouldBe` [C.cexp| & cos |]
+      cExp `Hspec.shouldBe` [C.cexp| &cos |]
+    Hspec.it "parses named function type" $ do
+      (retType, params, cExp) <-
+        goodParse C.parseExp [r| double c_cos(double x) { cos(x) } |]
+      retType `Hspec.shouldBe` [C.cty| double |]
+      params `Hspec.shouldMatchList` [("x", [C.cty| double |])]
+      cExp `Hspec.shouldBe` [C.cexp| cos(x) |]
   Hspec.describe "type conversion" $ do
     Hspec.it "converts simple type correctly (1)" $ do
       shouldBeType [C.cty| int |] [t| CInt |]

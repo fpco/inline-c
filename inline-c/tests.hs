@@ -75,21 +75,15 @@ test_suffixType4 x y = [cexp_pure| int(int x){ x_int + y_int } |]
 test_voidExp :: IO ()
 test_voidExp = [cexp| void { printf("Hello\n") } |]
 
-foreign import ccall "wrapper"
-  binary_cint :: (CInt -> CInt -> IO CInt) -> IO (FunPtr (CInt -> CInt -> IO CInt))
-
 test_funPtr1 :: IO ()
 test_funPtr1 = do
-  add <- binary_cint $ \x y -> return $ x + y
+  add <- $(mkFunPtr [t| CInt -> CInt -> IO CInt |]) $ \x y -> return $ x + y
   print =<< [cexp| int(int (*add)(int, int)) { add(3, 4) } |]
-
-foreign import ccall "dynamic"
-  unary_double :: FunPtr (CDouble -> IO CDouble) -> (CDouble -> IO CDouble)
 
 test_funPtr2 :: IO ()
 test_funPtr2 = do
   c_cos <- [cexp| double (*)(double) { &cos } |]
-  print =<< unary_double c_cos 1
+  print =<< $(peekFunPtr [t| CDouble -> IO CDouble |]) c_cos 1
 
 main :: IO ()
 main = do
