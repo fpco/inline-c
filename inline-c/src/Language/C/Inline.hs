@@ -60,41 +60,41 @@ module Language.C.Inline
     , tests
     ) where
 
-import qualified Language.Haskell.TH as TH
-import qualified Language.Haskell.TH.Syntax as TH
-import qualified Language.Haskell.TH.Quote as TH
-import qualified Text.PrettyPrint.Mainland as PrettyPrint
-import qualified Language.C as C
-import qualified Language.C.Quote.C as C
+import           Control.Applicative ((*>), (<*))
 import           Control.Exception (catch, throwIO, evaluate)
-import           System.FilePath (addExtension, dropExtension)
-import           System.IO.Unsafe (unsafePerformIO)
-import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import           Control.Monad (void, unless)
-import           System.IO.Error (isDoesNotExistError)
-import           System.Directory (removeFile)
+import qualified Control.Monad.Trans.State as State
+import qualified Data.ByteString.UTF8
+import           Data.Char (isSpace)
+import           Data.Data (Data)
+import           Data.Foldable (forM_)
 import           Data.Functor ((<$>))
+import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import           Data.Loc (Pos(..), locOf, noLoc)
+import qualified Data.Map as Map
+import           Data.Maybe (fromMaybe)
+import           Data.String (IsString(..))
+import           Data.Typeable (Typeable, (:~:)(..), eqT)
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
+import           Foreign.C.Types
+import           Foreign.Ptr (Ptr, FunPtr)
+import           Generics.SYB (everywhereM)
+import qualified Language.C as C
+import qualified Language.C.Quote.C as C
+import qualified Language.Haskell.TH as TH
+import qualified Language.Haskell.TH.Quote as TH
+import qualified Language.Haskell.TH.Syntax as TH
+import           System.Directory (removeFile)
+import           System.FilePath (addExtension, dropExtension)
+import           System.IO.Error (isDoesNotExistError)
+import           System.IO.Unsafe (unsafePerformIO)
+import qualified Test.Hspec as Hspec
 import qualified Text.Parsec as Parsec
 import qualified Text.Parsec.Pos as Parsec
 import qualified Text.Parsec.String as Parsec
-import           Data.Loc (Pos(..), locOf, noLoc)
-import qualified Data.ByteString.UTF8
-import           Control.Applicative ((*>), (<*))
-import           Data.Data (Data)
-import           Generics.SYB (everywhereM)
-import qualified Data.Map as Map
-import qualified Control.Monad.Trans.State as State
-import           Data.Typeable (Typeable, (:~:)(..), eqT)
-import           Data.Foldable (forM_)
-import           Data.Maybe (fromMaybe)
-import           Data.Char (isSpace)
-import qualified Test.Hspec as Hspec
+import qualified Text.PrettyPrint.Mainland as PrettyPrint
 import           Text.RawString.QQ (r)
-import           Data.String (IsString(..))
-import           Foreign.C.Types
-import           Foreign.Ptr (Ptr, FunPtr)
 
 import           Language.C.Context
 
