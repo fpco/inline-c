@@ -6,6 +6,11 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-} -- This is used for IsString C.Id
+
+-- | The main goal of this module is to allow painless embedding of C
+-- code in Haskell code.  If you're interested in how to use the
+-- library, skip to the "Inline C" section.  To build, read the first
+-- two sections.
 module Language.C.Inline
     ( -- * Build process
       -- $building
@@ -37,8 +42,7 @@ module Language.C.Inline
       --
       -- | The functions in this section let us access more the C file
       -- associated with the current module.  They can be used to build
-      -- additional features on top of the basic machinery, and make no
-      -- use of the 'Context'.
+      -- additional features on top of the basic machinery.
 
       -- ** Emitting C code
     , emitLiteral
@@ -463,8 +467,15 @@ embedItems callSafety type_ cRetType cParams cItems = do
 -- === Inline C expression
 --
 -- @
--- c_cos :: CDouble -> CDouble
--- c_cos x = [cexp_pure_unsafe| double(double x) { cos(x) } |]
+-- {-\# LANGUAGE TemplateHaskell \#-}
+-- {-\# LANGUAGE QuasiQuotes \#-}
+-- import           "Foreign.C.Types"
+-- import           "Language.C.Inline"
+--
+-- 'emitInclude' "\<math.h\>"
+--
+-- c_cos :: 'CDouble' -> 'CDouble'
+-- c_cos x = ['cexp_pure_unsafe'| double(double x) { cos(x) } |]
 -- @
 --
 -- === Inline C statements
@@ -473,21 +484,21 @@ embedItems callSafety type_ cRetType cParams cItems = do
 -- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
 -- import qualified Data.Vector.Storable.Mutable as V
--- import           Foreign.C.Types
--- import           Language.C.Inline
+-- import           "Foreign.C.Types"
+-- import           "Language.C.Inline"
 --
--- emitInclude "\<stdio.h\>"
+-- 'emitInclude' "\<stdio.h\>"
 --
--- parseVector :: CInt -> IO (V.IOVector CDouble)
+-- parseVector :: 'CInt' -> 'IO' (V.IOVector 'CDouble')
 -- parseVector len = do
---   vec <- V.new $ fromIntegral len0
---   V.unsafeWith vec $ \\ptr -> [citems| void(int len, double *ptr) {
+--   vec <- V.new $ 'fromIntegral' len0
+--   V.unsafeWith vec $ \\ptr -> ['citems'| void(int len, double *ptr) {
 --     int i;
 --     for (i = 0; i < len; i++) {
 --       scanf("%lf ", &ptr[i]);
 --     }
 --   } |]
---   return vec
+--   'return' vec
 -- @
 
 cexp :: TH.QuasiQuoter
