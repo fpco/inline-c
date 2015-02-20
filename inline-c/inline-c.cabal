@@ -17,7 +17,7 @@ library
   ghc-options:         -Wall -O
   ghc-prof-options:    -auto-all
   build-depends:       base >=4.7 && <4.8
-                     , language-c-quote > 0.10.1.3
+                     , language-c-quote >= 0.10.2
                      , template-haskell
                      , mainland-pretty
                      , filepath
@@ -37,6 +37,9 @@ library
 test-suite tests
   type:                exitcode-stdio-1.0
   main-is:             tests.hs
+  c-sources:           tests.c
   build-depends:       base >=4.7 && <4.8
                      , inline-c
+                     , language-c-quote
+                     , template-haskell
   default-language:    Haskell2010

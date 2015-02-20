@@ -70,7 +70,7 @@ import qualified Text.Parsec.Pos as Parsec
 import qualified Text.Parsec.String as Parsec
 import           Data.Loc (Pos(..), locOf, noLoc)
 import qualified Data.ByteString.UTF8
-import           Control.Applicative ((*>), (<*), (<|>))
+import           Control.Applicative ((*>), (<*))
 import           Data.Data (Data)
 import           Generics.SYB (everywhereM)
 import qualified Data.Map as Map
@@ -586,46 +586,27 @@ parseTypedC
 parseTypedC context p = do
   -- Get stuff up to parens or brace, and parse it
   typePos <- Parsec.getPosition
-  typeStr <- takeTillAnyChar ['(', '{']
+  typeStr <- takeTillChar '{'
   let cType = parseC context typePos typeStr C.parseType
-  -- Get stuff for params, and parse them
-  let emptyParams = do
-        Parsec.try $ do
-          lex_ $ Parsec.char '('
-          lex_ $ Parsec.char ')'
-        lex_ $ Parsec.char '{'
-        return []
-  let someParams = do
-        lex_ $ Parsec.char '('
-        paramsPos <- Parsec.getPosition
-        paramsStr <- takeTillChar ')'
-        lex_ $ Parsec.char '{'
-        return $ map cleanupParam $ parseC context paramsPos paramsStr C.parseParams
-  let noParams = do
-        lex_ $ Parsec.char '{'
-        return []
-  cParams <- emptyParams <|> someParams <|> noParams
+  let (cRetType, cParams) = processType cType
   -- Get the body, and feed it to the given parser
   bodyPos <- Parsec.getPosition
   bodyStr <- restOfInputNoBrace
   let cBody = parseC context bodyPos bodyStr p
   -- Collect the implicit parameters present in the body
-  let paramsMap = mkParamsMap cParams
+  let paramsMap = mkParamsMap $ map cleanupParam $ cParams
   let (cBody', paramsMap') = State.runState (collectImplParams cBody) paramsMap
   -- Whew
-  return (cType, Map.toList paramsMap', cBody')
+  return (cRetType, Map.toList paramsMap', cBody')
   where
     lex_ :: Parsec.Parser b -> Parsec.Parser ()
     lex_ p' = do
       void p'
       Parsec.spaces
 
-    takeTillAnyChar :: [Char] -> Parsec.Parser String
-    takeTillAnyChar chs = Parsec.many $ Parsec.satisfy $ \ch -> all (/= ch) chs
-
     takeTillChar :: Char -> Parsec.Parser String
     takeTillChar ch = do
-      str <- takeTillAnyChar [ch]
+      str <- Parsec.many $ Parsec.satisfy (/= ch)
       lex_ $ Parsec.char ch
       return str
 
@@ -635,7 +616,42 @@ parseTypedC context p = do
       let revInp = dropWhile isSpace $ reverse inp
       case revInp of
         '}' : revInp' -> return $ reverse revInp'
-        _ -> fail "No closing brace!"
+        _ -> fail $ "No closing }!"
+
+    processType :: C.Type -> (C.Type, [C.Param])
+    processType cTy = case cTy of
+      C.Type (C.DeclSpec storage quals cTySpec specSrc) decl0 typeSrc ->
+        go decl0 $ \decl' ->
+          C.Type (C.DeclSpec storage quals cTySpec specSrc) decl' typeSrc
+      _ ->
+        error "inline-c: got antiquotation (processType)"
+      where
+        -- We stop at the first proto not preceded by a Ptr.  TODO check
+        -- if this is actually a good heuristic.
+        go :: C.Decl -> (C.Decl -> C.Type) -> (C.Type, [C.Param])
+        go decl0 cont = case decl0 of
+          C.DeclRoot rootSrc ->
+            (cont (C.DeclRoot rootSrc), [])
+          C.Proto decl (C.Params params _ _) _ ->
+            (cont decl, params)
+          C.OldProto decl [] _ ->
+            (cont decl, [])
+          C.OldProto _ _ _ ->
+            error "inline-c: Old prototypes not supported (processTye)"
+          -- If we get a function pointers, we consider it part of the
+          -- return type
+          C.Ptr quals (C.Proto decl params protoSrc) ptrSrc ->
+            go decl $ \decl' -> cont $ C.Ptr quals (C.Proto decl' params protoSrc) ptrSrc
+          C.Ptr quals (C.OldProto decl pars protoSrc) ptrSrc ->
+            go decl $ \decl' -> cont $ C.Ptr quals (C.OldProto decl' pars protoSrc) ptrSrc
+          C.Ptr quals decl ptrSrc ->
+            go decl $ \decl' -> cont $ C.Ptr quals decl' ptrSrc
+          C.Array quals size decl arraySrc ->
+            go decl $ \decl' -> cont $ C.Array quals size decl' arraySrc
+          C.BlockPtr quals decl blockPtrSrc ->
+            go decl $ \decl' -> cont $ C.BlockPtr quals decl' blockPtrSrc
+          C.AntiTypeDecl{} ->
+            error "inline-c: got antiquotation (processType)"
 
     cleanupParam :: C.Param -> (C.Id, C.Type)
     cleanupParam param = case param of
@@ -710,6 +726,20 @@ tests = Hspec.hspec $ do
       badParse C.parseExp [r| int(void) { 4 } |]
     Hspec.it "rejects unnamed parameters" $ do
       badParse C.parseExp [r| int(int, double) { 4 } |]
+    Hspec.it "parses function pointers" $ do
+      void $ goodParse C.parseExp [r| int(int (*add)(int, int)) { add(3, 4) } |]
+    Hspec.it "parses returning function pointers without parameters" $ do
+      (retType, params, cExp) <-
+        goodParse C.parseExp [r| double (*)(double) { &cos } |]
+      retType `Hspec.shouldBe` [C.cty| double (*)(double) |]
+      params `Hspec.shouldMatchList` []
+      cExp `Hspec.shouldBe` [C.cexp| &cos |]
+    Hspec.it "parses returning function pointers with parameters" $ do
+      (retType, params, cExp) <-
+        goodParse C.parseExp [r| double (*f(int dummy))(double) { &cos } |]
+      retType `Hspec.shouldBe` [C.cty| double (*)(double) |]
+      params `Hspec.shouldMatchList` [("dummy", [C.cty| int |])]
+      cExp `Hspec.shouldBe` [C.cexp| & cos |]
   Hspec.describe "type conversion" $ do
     Hspec.it "converts simple type correctly (1)" $ do
       shouldBeType [C.cty| int |] [t| CInt |]
