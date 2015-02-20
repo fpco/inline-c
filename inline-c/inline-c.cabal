@@ -43,4 +43,5 @@ test-suite tests
                      , hspec
                      , language-c-quote
                      , template-haskell
+                     , vector
   default-language:    Haskell2010

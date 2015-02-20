@@ -6,6 +6,7 @@ import           Language.C.Inline
 import qualified Language.Haskell.TH as TH
 import           Foreign.C.Types
 import qualified Test.Hspec as Hspec
+import qualified Data.Vector.Storable.Mutable as V
 
 emitInclude "<math.h>"
 emitInclude "<stdio.h>"
@@ -89,3 +90,14 @@ main = Hspec.hspec $ do
       c_cos <- [cexp| double (*)(double) { &cos } |]
       x <- $(peekFunPtr [t| CDouble -> IO CDouble |]) c_cos 1
       x `Hspec.shouldBe` cos 1
+    Hspec.it "vectors" $ do
+      let n = 10
+      vec <- V.replicate (fromIntegral n) 3
+      sum <- V.unsafeWith vec $ \ptr -> [citems| void(int *ptr) {
+        int i;
+        for (i = 0; i < n_int; i++) {
+          scanf("%lf ", &ptr[i]);
+        }
+      } |]
+      sum `Hspec.shouldBe` 3 * 10
+
