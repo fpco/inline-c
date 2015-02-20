@@ -93,11 +93,12 @@ main = Hspec.hspec $ do
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3
-      sum <- V.unsafeWith vec $ \ptr -> [citems| void(int *ptr) {
+      sum <- V.unsafeWith vec $ \ptr -> [citems| int(int *ptr) {
         int i;
+        int x = 0;
         for (i = 0; i < n_int; i++) {
-          scanf("%lf ", &ptr[i]);
+          x += ptr[i];
         }
+        return x;
       } |]
       sum `Hspec.shouldBe` 3 * 10
-
