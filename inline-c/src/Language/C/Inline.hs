@@ -733,8 +733,8 @@ peekFunPtr hsTy = do
 ------------------------------------------------------------------------
 -- Test
 
-tests :: IO ()
-tests = Hspec.hspec $ do
+tests :: Hspec.SpecWith ()
+tests = do
   Hspec.describe "parsing" $ do
     Hspec.it "parses simple C expression" $ do
       (retType, params, cExp) <- goodParse C.parseExp [r|

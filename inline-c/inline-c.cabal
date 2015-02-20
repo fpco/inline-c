@@ -42,4 +42,5 @@ test-suite tests
                      , inline-c
                      , language-c-quote
                      , template-haskell
+                     , hspec
   default-language:    Haskell2010
