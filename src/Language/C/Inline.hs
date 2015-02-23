@@ -79,18 +79,15 @@ import           Language.C.Inline.Context
 import           Language.C.Inline.Internal
 import           Language.C.Inline.FunPtr
 
-------------------------------------------------------------------------
--- Module compile-time state
-
 -- $building
 --
 -- Each module that uses at least one of the TH functions in this module gets
 -- a C file associated to it, where the filename of said file will be the same
--- as the module but with a C extension. This C file must be built after the
+-- as the module but with a `.c` extension. This C file must be built after the
 -- Haskell code and linked appropriately. If you use cabal, all you have to do
--- is declare each associated C file in the @.cabal@ file and you are good.
+-- is declare each associated C file in the @.cabal@ file.
 --
--- For example we might have
+-- For example:
 --
 -- @
 -- executable foo
@@ -110,7 +107,7 @@ import           Language.C.Inline.FunPtr
 -- Note that currently @cabal repl@ is not supported, because the C code is not
 -- compiled and linked appropriately.
 --
--- If we were to compile the above manaully we could do
+-- If we were to compile the above manaully, we could:
 --
 -- @
 -- $ ghc -c Main.hs
