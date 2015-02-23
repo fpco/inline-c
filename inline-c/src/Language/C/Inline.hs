@@ -792,8 +792,12 @@ tests = do
       badParse C.parseExp [r| int(int x, double x) { x } |]
     Hspec.it "does not accept conflicting declarations (2)" $ do
       badParse C.parseExp [r| int(int x) { x_double } |]
-    Hspec.it "accepts agreeing declarations, if with suffix" $ do
+    Hspec.it "does not accept conflicting declarations (3)" $ do
+      badParse C.parseExp [r| int { x_double + x_int } |]
+    Hspec.it "accepts agreeing declarations, if with suffix (1)" $ do
       void $ goodParse C.parseExp [r| int(int x) { x_int } |]
+    Hspec.it "accepts agreeing declarations, if with suffix (2)" $ do
+      void $ goodParse C.parseExp [r| int { x_int + y_int } |]
     Hspec.it "rejects duplicate agreeing declarations, in params list" $ do
       badParse C.parseExp [r| int(int x, int x) { x } |]
     Hspec.it "accepts suffix types" $ do
