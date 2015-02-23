@@ -8,13 +8,14 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
--- | A 'Context' is used to define the capabilities of the
--- TemplateHaskell code that handles the inline C code.  See the
--- documentation of the data type for more details.
+-- | A 'Context' is used to define the capabilities of the Template Haskell code
+-- that handles the inline C code. See the documentation of the data type for
+-- more details.
 --
--- In practice, a 'Context' will have to be defined for each library
--- that defines new C types, to allow the TemplateHaskell code to
--- interpret said types correctly.
+-- In practice, a 'Context' will have to be defined for each library that
+-- defines new C types, to allow the TemplateHaskell code to interpret said
+-- types correctly.
+
 module Language.C.Inline.Context
   ( -- * 'TypesTable'
     TypesTable
@@ -74,20 +75,20 @@ type TypesTable = Map.Map C.TypeSpecifier TH.TypeQ
 -- parseable by the respective 'aqParser'.
 data AntiQuoter a = AntiQuoter
   { aqParser :: forall m. C.CParser m => m (String, C.Type, a)
-    -- ^ Parses the body of the antiquotation, returning an hint for the
-    -- name to assign to the variable that will replace the
-    -- anti-quotation, the type of said variable, and some arbitrary
-    -- data which will then be fed to 'aqMarshaller'.
+    -- ^ Parses the body of the antiquotation, returning an hint for the name to
+    -- assign to the variable that will replace the anti-quotation, the type of
+    -- said variable, and some arbitrary data which will then be fed to
+    -- 'aqMarshaller'.
   , aqMarshaller :: TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
-    -- ^ Takes the type and the body returned by 'aqParser', together
-    -- with the current 'TypesTable'.
+    -- ^ Takes the type and the body returned by 'aqParser', together with the
+    -- current 'TypesTable'.
     --
-    -- Returns the Haskell type for the parameter, and the Haskell
-    -- expression that will be passed in as the parameter.
+    -- Returns the Haskell type for the parameter, and the Haskell expression
+    -- that will be passed in as the parameter.
     --
-    -- If the the type returned is @ty@, the 'TH.Exp' __must__ have type
-    -- @forall a. (ty -> IO a) -> IO a@.  This allows to do resource
-    -- handling when preparing C values.
+    -- If the the type returned is @ty@, the 'TH.Exp' __must__ have type @forall
+    -- a. (ty -> IO a) -> IO a@. This allows to do resource handling when
+    -- preparing C values.
   }
 
 -- | An identifier for a 'AntiQuoter'.
@@ -101,9 +102,8 @@ type AntiQuoters = Map.Map AntiQuoterId SomeAntiQuoter
 -- | A 'Context' stores various information needed to produce the files with
 -- the C code derived from the inline C snippets.
 --
--- 'Context's can be composed with their 'Monoid' instance, where
--- 'mappend' is right-biased -- in @'mappend' x y@ @y@ will take
--- precedence over @x@.
+-- 'Context's can be composed with their 'Monoid' instance, where 'mappend' is
+-- right-biased -- in @'mappend' x y@ @y@ will take precedence over @x@.
 data Context = Context
   { ctxTypesTable :: TypesTable
     -- ^ Needed to convert C types to Haskell types.
@@ -133,7 +133,7 @@ instance Monoid Context where
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     }
 
--- | Context useful to work with vanilla C.  Used by default.
+-- | Context useful to work with vanilla C. Used by default.
 --
 -- 'ctxTypesTable': converts C basic types to their counterparts in
 -- "Foreign.C.Types".

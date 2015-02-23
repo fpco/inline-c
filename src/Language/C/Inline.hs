@@ -1,19 +1,24 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 
--- | The main goal of this module is to allow painless embedding of C
--- code in Haskell code.  If you're interested in how to use the
--- library, skip to the "Inline C" section.  To build, read the first
--- two sections.
+{-# OPTIONS_GHC -fno-warn-orphans #-} -- This is used for IsString C.Id
+
+-- | The main goal of this module is to allow painless embedding of C code in
+-- Haskell code. If you're interested in how to use the library, skip to the
+-- "Inline C" section. To build, read the first two sections.
 --
--- This module is supposed to be imported qualified:
+-- This module is intended to be imported qualified:
 --
 -- @
 -- import qualified "Language.C.Inline" as C
 -- @
+
 module Language.C.Inline
     ( -- * Build process
       -- $building
@@ -42,20 +47,18 @@ module Language.C.Inline
 
       -- * 'FunPtr' utils
       --
-      -- | Functions to quickly convert from/to 'FunPtr's.  They're provided
-      -- here since they can be useful to work with Haskell functions
-      -- in C, and vice-versa.  However, consider using 'funCtx' if you're
-      -- doing this a lot.
+      -- Functions to quickly convert from/to 'FunPtr's. They're provided here
+      -- since they can be useful to work with Haskell functions in C, and
+      -- vice-versa. However, consider using 'funCtx' if you're doing this
+      -- a lot.
     , mkFunPtr
     , mkFunPtrFromName
     , peekFunPtr
 
       -- * C types re-exports
       --
-      -- | We re-export these since when `inline-c` generates FFI calls GHC
-      -- needs the constructors for those types.  So if we don't
-      -- re-export them you get really confusing errors about @CInt@ not
-      -- being an acceptable argument when you never even mentioned @CInt@.
+      -- Re-export these to avoid errors when `inline-c` generates FFI calls GHC
+      -- needs the constructors for those types.
     , module Foreign.C.Types
     ) where
 
@@ -81,12 +84,11 @@ import           Language.C.Inline.FunPtr
 
 -- $building
 --
--- Each module that uses at least one of the TH functions in this module
--- gets a C file associated to it, where the filename of said file will
--- be the same as the module but with a C extension.  This C file must
--- be built after the Haskell code and linked appropriately.  If you use
--- cabal, all you have to do is declare each associated C file in the
--- @.cabal@ file and you are good.
+-- Each module that uses at least one of the TH functions in this module gets
+-- a C file associated to it, where the filename of said file will be the same
+-- as the module but with a C extension. This C file must be built after the
+-- Haskell code and linked appropriately. If you use cabal, all you have to do
+-- is declare each associated C file in the @.cabal@ file and you are good.
 --
 -- For example we might have
 --
@@ -105,8 +107,8 @@ import           Language.C.Inline.FunPtr
 --   ...
 -- @
 --
--- Note that currently @cabal repl@ is not supported, because the C code
--- is not compiled and linked appropriately.
+-- Note that currently @cabal repl@ is not supported, because the C code is not
+-- compiled and linked appropriately.
 --
 -- If we were to compile the above manaully we could do
 --
