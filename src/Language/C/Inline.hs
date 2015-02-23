@@ -9,9 +9,9 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-} -- This is used for IsString C.Id
 
--- | The main goal of this module is to allow painless embedding of C code in
--- Haskell code. If you're interested in how to use the library, skip to the
--- "Inline C" section. To build, read the first two sections.
+-- | Enable painless embedding of C code in Haskell code. If you're interested
+-- in how to use the library, skip to the "Inline C" section. To build, read the
+-- first two sections.
 --
 -- This module is intended to be imported qualified:
 --
@@ -20,47 +20,47 @@
 -- @
 
 module Language.C.Inline
-    ( -- * Build process
-      -- $building
+  ( -- * Build process
+    -- $building
 
-      -- * Contexts
-      Context
-    , baseCtx
-    , funCtx
-    , vecCtx
-    , bsCtx
-    , context
+    -- * Contexts
+    Context
+  , baseCtx
+  , funCtx
+  , vecCtx
+  , bsCtx
+  , context
 
-      -- * Inline C
-      -- $quoting
-    , exp
-    , exp_unsafe
-    , stmts
-    , stmts_unsafe
-    , include
-    , literal
+    -- * Inline C
+    -- $quoting
+  , exp
+  , exp_unsafe
+  , stmts
+  , stmts_unsafe
+  , include
+  , literal
 
-      -- * 'Ptr' utils
-    , withPtr
-    , withPtr_
-    , WithPtrs(..)
+    -- * 'Ptr' utils
+  , withPtr
+  , withPtr_
+  , WithPtrs(..)
 
-      -- * 'FunPtr' utils
-      --
-      -- Functions to quickly convert from/to 'FunPtr's. They're provided here
-      -- since they can be useful to work with Haskell functions in C, and
-      -- vice-versa. However, consider using 'funCtx' if you're doing this
-      -- a lot.
-    , mkFunPtr
-    , mkFunPtrFromName
-    , peekFunPtr
+    -- * 'FunPtr' utils
+    --
+    -- Functions to quickly convert from/to 'FunPtr's. They're provided here
+    -- since they can be useful to work with Haskell functions in C, and
+    -- vice-versa. However, consider using 'funCtx' if you're doing this
+    -- a lot.
+  , mkFunPtr
+  , mkFunPtrFromName
+  , peekFunPtr
 
-      -- * C types re-exports
-      --
-      -- Re-export these to avoid errors when `inline-c` generates FFI calls GHC
-      -- needs the constructors for those types.
-    , module Foreign.C.Types
-    ) where
+    -- * C types re-exports
+    --
+    -- Re-export these to avoid errors when `inline-c` generates FFI calls GHC
+    -- needs the constructors for those types.
+  , module Foreign.C.Types
+  ) where
 
 import           Prelude hiding (exp)
 
