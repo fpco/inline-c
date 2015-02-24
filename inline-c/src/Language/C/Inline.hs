@@ -356,8 +356,8 @@ embedExp callSafety type_ cRetType cParams cExp =
   embedItems callSafety type_ cRetType cParams cItems
   where
     cItems = if cRetType == [C.cty| void |]
-             then [C.citems| $exp:cExp; |]
-             else [C.citems| return $exp:cExp; |]
+      then [C.citems| $exp:cExp; |]
+      else [C.citems| return $exp:cExp; |]
 
 -- | Same as 'embedCode', but accepts a list of 'C.BlockItem's instead than a
 -- full-blown 'Code'.  A function containing the provided statement will be
@@ -852,10 +852,10 @@ tests = do
       shouldBeType [C.cty| const short* |] [t| Ptr CShort |]
     Hspec.it "ignores storage information" $ do
       shouldBeType [C.cty| extern unsigned long |] [t| CULong |]
-    Hspec.it "rejects sized arrays" $ do
-      badConvert [C.cty| float[4] |]
-    Hspec.it "rejects variably sized arrays" $ do
-      badConvert [C.cty| float[*] |]
+    Hspec.it "converts sized arrays" $ do
+      shouldBeType [C.cty| float[4] |] [t| CArray CFloat |]
+    Hspec.it "converts variably sized arrays" $ do
+      shouldBeType [C.cty| float[*] |] [t| CArray CFloat |]
     Hspec.it "converts function pointers" $ do
       shouldBeType
         [C.cty| int (*f)(unsigned char, float) |]
