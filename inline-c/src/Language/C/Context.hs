@@ -165,7 +165,6 @@ convertCType ctx pure cTy = runMaybeT $ go $ simplifyCType cTy
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
 
-
 baseGetSuffixType :: String -> Maybe (String, C.Type)
 baseGetSuffixType s = msum
   [ do guard (('_' : suff) `isSuffixOf` s)
@@ -225,11 +224,7 @@ simplifyCType cTy0 = case cTy0 of
         error "inline-c: Old prototypes not supported (simplifyCType)"
       C.Ptr _quals decl _ ->
         SCTPtr $ go cTySpec decl
-      C.Array _ C.ArraySize{} _ _ ->
-        error "inline-c: Sized array not supported (simplifyCType)"
-      C.Array _ C.VariableArraySize{} _ _ ->
-        error "inline-c: Variably sized array not supported (simplifyCType)"
-      C.Array _quals C.NoArraySize{} decl _ ->
+      C.Array _quals _size decl _ ->
         SCTArray $ go cTySpec decl
       C.Proto{} ->
         error "inline-c: Non-pointer function prototype (simplifyCType)"
@@ -239,4 +234,3 @@ simplifyCType cTy0 = case cTy0 of
         error "inline-c: Blocks not supported (simplifyCType)"
       C.AntiTypeDecl{} ->
         error "inline-c: got antiquotation (simplifyCType)"
-
