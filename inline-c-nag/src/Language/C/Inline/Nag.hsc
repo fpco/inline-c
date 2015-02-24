@@ -1,11 +1,13 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
-module Language.C.Context.Nag
+module Language.C.Inline.Nag
   ( -- * Types
     Complex(..)
   , NagError
   , Nag_Boolean(..)
+  , Nag_Comm
+  , Nag_E05State
     -- * Context
   , nagCtx
   ) where
@@ -22,12 +24,12 @@ import           Data.Loc (noLoc)
 import           Foreign.Storable (Storable(..))
 import           Data.List (isSuffixOf)
 
-import           Language.C.Context
+import           Language.C.Inline
 import           Language.C.Quote.Nag
 
 #include <nag.h>
 
-newtype Nag_Boolean = Nag_Boolean CInt
+-- * Records
 
 data Complex = Complex
   { complRe :: {-# UNPACK #-} !CDouble
@@ -47,10 +49,32 @@ instance Storable Complex where
 
 data NagError
 instance Storable NagError where
-  sizeOf _ = (#size NagError)
-  alignment _ = alignment (undefined :: Ptr ())
-  peek _ = error "peek not implemented for NagError"
-  poke _ _ = error "poke not implemented for NagError"
+    sizeOf _ = (#size NagError)
+    alignment _ = alignment (undefined :: Ptr ())
+    peek _ = error "peek not implemented for NagError"
+    poke _ _ = error "poke not implemented for NagError"
+
+data Nag_Comm
+instance Storable Nag_Comm where
+    sizeOf _ = (#size Nag_Comm)
+    alignment _ = alignment (undefined :: Ptr ())
+    peek _ = error "peek not implemented for Nag_Comm"
+    poke _ _ = error "poke not implemented for Nag_Comm"
+
+data Nag_E05State
+instance Storable Nag_E05State where
+    sizeOf _ = (#size Nag_E05State)
+    alignment _ = alignment (undefined :: Ptr ())
+    peek _ = error "peek not implemented for Nag_E05State"
+    poke _ _ = error "poke not implemented for Nag_E05State"
+
+-- * Enums
+
+type Nag_Boolean = CInt
+type Nag_BoundType = CInt
+type Nag_MCSInitMethod = CInt
+
+-- * Context
 
 nagCtx :: Context
 nagCtx = baseCtx <> Context
@@ -64,9 +88,11 @@ nagConvertCTypeSpec cspec = runMaybeT $
   case C.Type (C.DeclSpec [] [] cspec noLoc) (C.DeclRoot noLoc) noLoc of
     -- TODO this might not be a long, see nag_types.h
     [cty| Integer |] -> lift [t| CLong |]
-    [cty| Nag_Boolean |] -> lift [t| Nag_Boolean |]
-    [cty| NagError |] -> lift [t| NagError |]
     [cty| Complex |] -> lift [t| Complex |]
+    [cty| NagError |] -> lift [t| NagError |]
+    [cty| Nag_Boolean |] -> lift [t| Nag_Boolean |]
+    [cty| Nag_Comm |] -> lift [t| Nag_Comm |]
+    [cty| Nag_E05State |] -> lift [t| Nag_E05State |]
     _ -> mzero
 
 nagGetSuffixType :: String -> Maybe (String, C.Type)

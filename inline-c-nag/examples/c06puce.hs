@@ -1,21 +1,21 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-import           Language.C.Inline
-import qualified Language.C as C
-import qualified Language.C.Quote.Nag as C
-import           Language.C.Context.Nag
-import           Foreign.C.Types
+import           Control.Applicative ((<*>))
+import           Control.Monad (void)
 import qualified Data.Array.Storable as A
-import           Text.RawString.QQ (r)
+import           Data.Functor ((<$>))
+import           Data.Int (Int64)
+import           Foreign.C.String (withCString)
+import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
 import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek)
-import           Data.Functor ((<$>))
-import           Control.Applicative ((<*>))
-import           Data.Int (Int64)
-import           Control.Monad (void)
-import           Foreign.C.String (withCString)
+import qualified Language.C as C
+import           Language.C.Inline
+import           Language.C.Inline.Nag
+import qualified Language.C.Quote.Nag as C
+import           Text.RawString.QQ (r)
 
 setContext nagCtx
 

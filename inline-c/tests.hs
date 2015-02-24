@@ -3,6 +3,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 import qualified Language.C.Quote.C as C
 import           Language.C.Inline
+import           Language.C.Inline.Tests
 import qualified Language.Haskell.TH as TH
 import           Foreign.C.Types
 import qualified Test.Hspec as Hspec

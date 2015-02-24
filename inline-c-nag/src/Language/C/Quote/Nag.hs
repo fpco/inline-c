@@ -12,7 +12,7 @@ import qualified Language.C.Quote.C as C
 import qualified Language.C.Quote.Base as C
 
 nagTypes :: [String]
-nagTypes = ["Integer", "Complex", "Nag_Boolean", "NagError"]
+nagTypes = ["Integer", "Complex", "NagError", "Nag_Boolean", "Nag_Comm", "Nag_E05State"]
 
 cty :: TH.QuasiQuoter
 cty = C.quasiquote [C.Antiquotation] nagTypes C.parseType
