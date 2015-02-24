@@ -151,20 +151,19 @@ import           Language.C.Inline.FunPtr
 --
 -- See also the @tutorial.md@ file for more documentation.
 --
--- === Variable capturing and type conversion.
+-- === Variable capture and the typing relation
 --
--- The Haskell type of the inlined expression will be determined by the
--- C return type specified.  The conversion between the C type and the
--- Haskell type is performed according to the current 'Context' -- see
--- 'convertCType'.  C pointers and arrays are both converted to
--- Haskell @'Ptr'@s, and function pointers are converted to @'FunPtr'@s.
--- Sized arrays are not supported.
+-- The Haskell type of the inlined expression is determined by the specified
+-- C return type. The relation between the C type and the Haskell type is
+-- defined in the current 'Context' -- see 'convertCType'. C pointers and
+-- arrays are both converted to Haskell @'Ptr'@s, and function pointers are
+-- converted to @'FunPtr'@s. Sized arrays are not supported.
 --
--- Similarly, when capturing Haskell variables using the parameters
--- list, their type is assumed to be of the Haskell type corresponding
--- to the C type provided.  For example, if we capture variable @x@
--- using @double x@ in the parameter list, the code will expect a
--- variable @x@ of type @CDouble@ in Haskell.
+-- Similarly, when capturing Haskell variables in the parameter list, their type
+-- is assumed to be of the Haskell type corresponding to the C type provided.
+-- For example, if we capture variable @x@ using @double x@ in the parameter
+-- list, the code will expect a variable @x@ of type @CDouble@ in Haskell (when
+-- using 'baseCtx').
 --
 -- === Anti-quoters
 --
@@ -182,19 +181,19 @@ import           Language.C.Inline.FunPtr
 --
 -- Parameter list capturing and anti-quoting can be freely mixed.
 --
--- The @$@ character can be used in C expressions using @$$@.
+-- The @$@ character can be expressed in C expressions using @$$@.
 --
 -- == Function purity
 --
--- Everything in @inline-c@ happens in IO.  If you know the embedded C
--- code is pure, wrap it inside an @unsafePerformIO@ as you would do
--- with standard impure-but-pure Haskell code.
+-- All @inline-c@ quasiquotes live in 'IO'. If you know the embedded C code is
+-- pure, wrap it inside an @unsafePerformIO@ as you would do with standard
+-- impure-but-pure Haskell code.
 --
 -- === Safe and @unsafe@ calls
 --
--- Finally, @unsafe@ variants of the quasi-quoters are provided to call
--- the C code unsafely, in the sense that the C code will block the RTS,
--- with the advantage of a faster call to the foreign code. See
+-- @unsafe@ variants of the quasi-quoters are provided to call the C code
+-- unsafely, in the sense that the C code will block the RTS, with the advantage
+-- of a faster call to the foreign code. See
 -- <https://www.haskell.org/onlinereport/haskell2010/haskellch8.html#x15-1590008.4.3>
 -- for more info.
 --
@@ -203,7 +202,6 @@ import           Language.C.Inline.FunPtr
 -- === Inline C expression
 --
 -- @
--- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
 -- import qualified "Language.C.Inline" as C
 -- import           "Foreign.C.Types"
@@ -217,8 +215,8 @@ import           Language.C.Inline.FunPtr
 -- === Inline C statements
 --
 -- @
--- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
+-- {-\# LANGUAGE TemplateHaskell \#-}
 -- import qualified Data.Vector.Storable.Mutable as V
 -- import qualified "Language.C.Inline" as C
 -- import           "Foreign.C.Types"
