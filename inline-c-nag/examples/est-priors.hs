@@ -32,8 +32,8 @@ nelderMead
   -> CLong
   -- ^ Maximum number of iterations (must be >= 1).
   -> IO (Maybe (V.Vector CDouble))
-  -- ^ Position of the minimum.  Error code and error message if
-  -- something goes wrong.
+  -- ^ Position of the minimum.  'Nothing' if something went wrong
+  -- (prints the error message)
 nelderMead x pureFunct maxcal = do
     let n = fromIntegral $ V.length x
     -- Create mutable input/output vector for C code
@@ -56,6 +56,9 @@ nelderMead x pureFunct maxcal = do
           nag_opt_simplex_easy(
             n_nint, xMutPtr_double_ptr, fPtr_double_ptr, tolf, tolx,
             funct, NULL, maxcal_nint, &comm, &fail);
+          if (fail.code != NE_NOERROR) {
+            printf("Error from nag_opt_simplex_easy (e04cbc).\n%s\n", fail.message);
+          }
           return fail.code != NE_NOERROR;
       }
     |]
@@ -70,5 +73,4 @@ main = do
             x1 = x V.! 1
         in exp x0 * (4*x0*(x0+x1)+2*x1*(x1+1.0)+1.0)
       start = V.fromList [-1, 1]
-  Just best <- nelderMead start funct 100
-  print best
+  print =<< nelderMead start funct 100
