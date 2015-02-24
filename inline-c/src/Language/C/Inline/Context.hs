@@ -7,7 +7,7 @@
 -- In practice, a 'Context' will have to be defined for each library
 -- that defines new C types, to allow the TemplateHaskell code to
 -- interpret said types correctly.
-module Language.C.Context
+module Language.C.Inline.Context
   ( Context(..)
   , CArray
   , convertCType
@@ -195,6 +195,8 @@ baseGetSuffixType s = msum
 ------------------------------------------------------------------------
 -- Simple C types conversion
 
+-- | Captures a fragment of the full 'C.Type' data type, and precisely
+-- what we can easily convert to an Haskell type.
 data SimpleCType
   = SCTSpec C.TypeSpec
   | SCTPtr SimpleCType
