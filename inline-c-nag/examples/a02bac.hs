@@ -1,11 +1,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+import           Foreign.C.Types
+import qualified Language.C as C
 import           Language.C.Inline
 import           Language.C.Inline.Nag
-import qualified Language.C as C
 import qualified Language.C.Quote.Nag as C
-import           Foreign.C.Types
 
 emitInclude "<nag.h>"
 emitInclude "<stdio.h>"

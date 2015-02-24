@@ -2,8 +2,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 module Language.C.Inline.Nag
-  ( -- * Types
-    Complex(..)
+  ( module Language.C.Inline
+    -- * Types
+  , Complex(..)
   , NagError
   , Nag_Boolean(..)
   , Nag_Comm
