@@ -82,48 +82,48 @@ tests = do
       cExp `Hspec.shouldBe` [C.cexp| cos(x) |]
   Hspec.describe "type conversion" $ do
     Hspec.it "converts simple type correctly (1)" $ do
-      shouldBeType [C.cty| int |] [t| CInt |]
+      shouldBeType baseCtx [C.cty| int |] [t| CInt |]
     Hspec.it "converts simple type correctly (2)" $ do
-      shouldBeType [C.cty| char |] [t| CChar |]
+      shouldBeType baseCtx [C.cty| char |] [t| CChar |]
     Hspec.it "converts void" $ do
-      shouldBeType [C.cty| void |] [t| () |]
+      shouldBeType baseCtx [C.cty| void |] [t| () |]
     Hspec.it "converts single ptr type" $ do
-      shouldBeType [C.cty| long* |] [t| Ptr CLong |]
+      shouldBeType baseCtx [C.cty| long* |] [t| Ptr CLong |]
     Hspec.it "converts double ptr type" $ do
-      shouldBeType [C.cty| unsigned long** |] [t| Ptr (Ptr CULong) |]
+      shouldBeType baseCtx [C.cty| unsigned long** |] [t| Ptr (Ptr CULong) |]
     Hspec.it "converts arrays" $ do
-      shouldBeType [C.cty| double[] |] [t| CArray CDouble |]
+      shouldBeType baseCtx [C.cty| double[] |] [t| CArray CDouble |]
     Hspec.it "converts named things" $ do
-      shouldBeType [C.cty| unsigned int foo[] |] [t| CArray CUInt |]
+      shouldBeType baseCtx [C.cty| unsigned int foo[] |] [t| CArray CUInt |]
     Hspec.it "converts arrays of pointers" $ do
-      shouldBeType
+      shouldBeType baseCtx
         [C.cty| unsigned short *foo[] |] [t| CArray (Ptr CUShort) |]
     Hspec.it "ignores qualifiers" $ do
-      shouldBeType [C.cty| const short* |] [t| Ptr CShort |]
+      shouldBeType baseCtx [C.cty| const short* |] [t| Ptr CShort |]
     Hspec.it "ignores storage information" $ do
-      shouldBeType [C.cty| extern unsigned long |] [t| CULong |]
+      shouldBeType baseCtx [C.cty| extern unsigned long |] [t| CULong |]
     Hspec.it "converts sized arrays" $ do
-      shouldBeType [C.cty| float[4] |] [t| CArray CFloat |]
+      shouldBeType baseCtx [C.cty| float[4] |] [t| CArray CFloat |]
     Hspec.it "converts variably sized arrays" $ do
-      shouldBeType [C.cty| float[*] |] [t| CArray CFloat |]
+      shouldBeType baseCtx [C.cty| float[*] |] [t| CArray CFloat |]
     Hspec.it "converts function pointers" $ do
-      shouldBeType
+      shouldBeType baseCtx
         [C.cty| int (*f)(unsigned char, float) |]
         [t| FunPtr (CUChar -> CFloat -> IO CInt) |]
-    Hspec.it "converts complicated stuff (1)" $ do
+    Hspec.it "converts complicated function pointers (1)" $ do
       -- pointer to function returning pointer to function returning int
-      shouldBeType
+      shouldBeType baseCtx
         [C.cty| int (*(*)())() |] [t| FunPtr (IO (FunPtr (IO CInt))) |]
-    Hspec.it "converts complicated stuff (2)" $ do
+    Hspec.it "converts complicated function pointerst (2)" $ do
       -- foo is an array of pointer to pointer to function returning
       -- pointer to array of pointer to char
-      shouldBeType
+      shouldBeType baseCtx
         [C.cty| char *(*(**foo [])())[] |]
         [t| CArray (Ptr (FunPtr (IO (Ptr (CArray (Ptr CChar)))))) |]
-    Hspec.it "converts complicated stuff (3)" $ do
+    Hspec.it "converts complicated function pointers (3)" $ do
       -- foo is an array of pointer to pointer to function taking int
       -- returning pointer to array of pointer to char
-      shouldBeType
+      shouldBeType baseCtx
         [C.cty| char *(*(**foo [])(int x))[] |]
         [t| CArray (Ptr (FunPtr (CInt -> IO (Ptr (CArray (Ptr CChar)))))) |]
   where
@@ -139,14 +139,14 @@ tests = do
     goodParse = strictParse
     badParse p s = strictParse p s `Hspec.shouldThrow` Hspec.anyException
 
-    goodConvert cTy = do
-      mbHsTy <- TH.runQ $ convertCType baseCtx False cTy
+    goodConvert ctx cTy = do
+      mbHsTy <- TH.runQ $ convertCType ctx False cTy
       case mbHsTy of
         Nothing   -> error $ "Could not convert type (goodConvert)"
         Just hsTy -> return hsTy
 
-    shouldBeType cTy hsTy = do
-      x <- goodConvert cTy
+    shouldBeType ctx cTy hsTy = do
+      x <- goodConvert ctx cTy
       y <- TH.runQ hsTy
       x `Hspec.shouldBe` y
 
