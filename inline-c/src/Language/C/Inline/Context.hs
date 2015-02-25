@@ -12,6 +12,7 @@ module Language.C.Inline.Context
   , CArray
   , convertCType
   , baseCtx
+  , funPtrCtx
   ) where
 
 import           Control.Applicative (empty, (<|>))
@@ -25,6 +26,10 @@ import           Foreign.Ptr (Ptr, FunPtr)
 import qualified Language.C as C
 import qualified Language.C.Quote.C as C
 import qualified Language.Haskell.TH as TH
+import           Data.Functor ((<$>))
+import           System.IO.Unsafe (unsafePerformIO)
+
+import           Language.C.Inline.FunPtr
 
 -- | A 'Context' stores information needed to:
 --
@@ -33,13 +38,13 @@ import qualified Language.Haskell.TH as TH
 -- * Interpret suffix types.
 --
 -- 'Context's can be composed with their 'Monoid' instance, where
--- 'mappend' is left-biased -- the lhs of 'mappend' will take precedence
--- in 'ctxConvertCTypeSpec' and 'ctxGetSuffixType'.
+-- 'mappend' is right-biased -- in @'mappend' x y@ @y@ will take
+-- precedence over @x@.
 data Context = Context
   { ctxCTypes :: [String]
     -- ^ Additional named types for the C parser.  Currently, every type
     -- beyond standard C needs to be declared explicitely for the parser
-    -- to work.
+    -- to work, see <http://en.wikipedia.org/wiki/The_lexer_hack>.
     --
     -- For example, if some library defines the type @Complex@, the
     -- string @"Complex"@ will have to be included.
@@ -64,6 +69,15 @@ data Context = Context
     -- @
     -- 'ctxGetSuffixType' ctx "n_int" ==> 'Just' ("n", [cty| int |])
     -- @
+  , ctxMarshaller :: TH.Type -> TH.Exp -> TH.Q (Maybe TH.Exp)
+    -- ^ The marshaller takes the expected type of a captured variable
+    -- and the 'TH.Exp' representing the captured variable itself and
+    -- processes it into something else.
+    --
+    -- In 'baseCtx', the marshaller simply returns the expression
+    -- unchanged, but for example the 'funPtrCtx' processes 'FunPtr'
+    -- arguments so that Haskell functions are automatically converted
+    -- to 'FunPtr's.
   }
 
 instance Monoid Context where
@@ -71,14 +85,17 @@ instance Monoid Context where
     { ctxCTypes = mempty
     , ctxConvertCTypeSpec = \_ -> runMaybeT empty
     , ctxGetSuffixType = \_ -> empty
+    , ctxMarshaller = \_ _ -> runMaybeT empty
     }
 
-  mappend ctx1 ctx2 = Context
+  mappend ctx2 ctx1 = Context
     { ctxCTypes = ctxCTypes ctx1 ++ ctxCTypes ctx2
     , ctxConvertCTypeSpec = \cty -> runMaybeT $
         MaybeT (ctxConvertCTypeSpec ctx1 cty) <|> MaybeT (ctxConvertCTypeSpec ctx2 cty)
     , ctxGetSuffixType = \suff ->
         ctxGetSuffixType ctx1 suff <|> ctxGetSuffixType ctx2 suff
+    , ctxMarshaller = \hsTy hsArg -> runMaybeT $
+        MaybeT (ctxMarshaller ctx1 hsTy hsArg) <|> MaybeT (ctxMarshaller ctx2 hsTy hsArg)
     }
 
 -- | Context useful to work with vanilla C.  Used by default.
@@ -114,6 +131,7 @@ baseCtx = Context
   { ctxCTypes = []
   , ctxConvertCTypeSpec = baseConvertCTypeSpec
   , ctxGetSuffixType = baseGetSuffixType
+  , ctxMarshaller = \_ hsExp -> return $ Just hsExp
   }
 
 baseConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
@@ -236,3 +254,26 @@ simplifyCType cTy0 = case cTy0 of
         error "inline-c: Blocks not supported (simplifyCType)"
       C.AntiTypeDecl{} ->
         error "inline-c: got antiquotation (simplifyCType)"
+
+-- Function pointer removal
+
+-- | This 'Context' includes a 'ctxMarshaller' that removes the need for
+-- explicitely creating 'FunPtr's.
+--
+-- For example, if we capture a variable of C type @int (*f)(int, int)@
+-- from the C code, the derived Haskell type will be @'FunPtr' ('Int' ->
+-- 'Int' -> 'IO' 'Int')@.
+--
+-- Using the 'funPtrCtx' captured things of type @'Int' -> 'Int' -> 'IO'
+-- 'Int'@ will automatically be converted to a 'FunPtr'.
+funPtrCtx :: Context
+funPtrCtx = mempty{ctxMarshaller = convertFunPtrs}
+  where
+    convertFunPtrs :: TH.Type -> TH.Exp -> TH.Q (Maybe TH.Exp)
+    convertFunPtrs hsTy hsExp = case hsTy of
+      -- TODO I think this is safe, given that the arguments to the FFI
+      -- call are passed immediately and do not leak anywhere else.  But
+      -- check.
+      TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr ->
+        Just <$> [| unsafePerformIO ($(mkFunPtr (return hsTy')) $(return hsExp)) |]
+      _ -> return Nothing

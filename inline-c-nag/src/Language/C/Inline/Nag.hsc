@@ -24,6 +24,7 @@ import           Control.Monad (mzero, guard, msum)
 import           Data.Loc (noLoc)
 import           Foreign.Storable (Storable(..))
 import           Data.List (isSuffixOf)
+import           Data.Monoid (mempty)
 
 import           Language.C.Inline
 import           Language.C.Quote.Nag
@@ -78,11 +79,13 @@ type Nag_MCSInitMethod = CInt
 -- * Context
 
 nagCtx :: Context
-nagCtx = baseCtx <> Context
-  { ctxCTypes = nagTypes
-  , ctxConvertCTypeSpec = nagConvertCTypeSpec
-  , ctxGetSuffixType = nagGetSuffixType
-  }
+nagCtx = baseCtx <> funPtrCtx <> ctx
+  where
+    ctx = mempty
+      { ctxCTypes = nagTypes
+      , ctxConvertCTypeSpec = nagConvertCTypeSpec
+      , ctxGetSuffixType = nagGetSuffixType
+      }
 
 nagConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
 nagConvertCTypeSpec cspec = runMaybeT $

@@ -44,24 +44,20 @@ nelderMead x pureFunct maxcal = do
     let n = fromIntegral $ V.length x
     -- Create mutable input/output vector for C code
     xMut <- V.thaw x
-    -- Create function that the C code will use
-    funct <-
-      $(mkFunPtr [t| CLong -> CConst (Ptr CDouble) -> Ptr CDouble -> Ptr Nag_Comm -> IO () |]) $
-      \n' xPtr fPtr _comm -> do
-        xFPtr <- newForeignPtr_ xPtr
-        let f = pureFunct $ V.unsafeFromForeignPtr0 xFPtr $ fromIntegral n'
-        poke fPtr f
     alloca $ \fPtr -> alloca $ \ncallsPtr -> VM.unsafeWith xMut $ \xMutPtr -> do
+      -- Create function that the C code will use
+      let funct n' xPtr fPtr _comm = do
+            xFPtr <- newForeignPtr_ xPtr
+            let f = pureFunct $ V.unsafeFromForeignPtr0 xFPtr $ fromIntegral n'
+            poke fPtr f
       -- Create monitoring function, to record number of calls
-      monit <-
-        $(mkFunPtr [t| CDouble -> CDouble -> CConst (CArray CDouble) -> CLong -> CLong -> CDouble -> CDouble -> Ptr Nag_Comm -> IO () |]) $
-        \_fmin _fmax _sim _n ncall _serror _vratio _comm -> poke ncallsPtr ncall
+      let monit _fmin _fmax _sim _n ncall _serror _vratio _comm = do
+            poke ncallsPtr ncall
       -- Call the C code
       res <- [citems|
         int(void (*funct)(Integer n, const double *xc, double *fc, Nag_Comm *comm),
             void (*monit)(double fmin, double fmax, const double sim[], Integer n, Integer ncall, double serror, double vratio, Nag_Comm *comm)) {
-            NagError fail;
-            INIT_FAIL(fail);
+            NagError fail; INIT_FAIL(fail);
             Nag_Comm comm;
             double tolf = sqrt(nag_machine_precision);
             double tolx = sqrt(tolf);

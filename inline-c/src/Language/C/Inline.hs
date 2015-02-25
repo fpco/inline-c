@@ -54,7 +54,7 @@ module Language.C.Inline
     ) where
 
 import           Control.Exception (catch, throwIO)
-import           Control.Monad (void, unless)
+import           Control.Monad (void, unless, forM)
 import           Data.Data (Data)
 import           Data.Foldable (forM_)
 import           Data.Functor ((<$>))
@@ -62,7 +62,6 @@ import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import           Data.Maybe (fromMaybe)
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-import           Foreign.Ptr (FunPtr)
 import qualified Language.C as C
 import qualified Language.C.Quote.C as C
 import qualified Language.Haskell.TH as TH
@@ -76,6 +75,7 @@ import qualified Text.PrettyPrint.Mainland as PrettyPrint
 
 import           Language.C.Inline.Context
 import           Language.C.Inline.Parse
+import           Language.C.Inline.FunPtr
 
 ------------------------------------------------------------------------
 -- Module compile-time state
@@ -297,11 +297,6 @@ embedCode Code{..} = do
   dec <- TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType
   TH.addTopDecls [dec]
   TH.varE ffiImportName
-
--- TODO absurdly, I need to 'newName' twice for things to work.  I found
--- this hack in language-c-inline.  Why is this?
-uniqueFfiImportName :: TH.Q TH.Name
-uniqueFfiImportName = TH.newName . show =<< TH.newName "inline_c_ffi"
 
 uniqueCName :: IO String
 uniqueCName = do
@@ -527,15 +522,24 @@ genericQuote
   -> TH.QuasiQuoter
 genericQuote pure p build = quoteCode $ \s -> do
   initialiseModuleState_
-  context <- getContext
-  (cType, cParams, cExp) <- runParserInQ s $ parseTypedC context p
-  let hsType = convertCFunSig pure cType $ map snd cParams
-  buildFunCall (build hsType cType (map rebuildParam cParams) cExp) $ map fst cParams
+  ctx <- getContext
+  (cType, cParams, cExp) <- runParserInQ s $ parseTypedC ctx p
+  hsType <- cToHs ctx cType
+  hsParams <- forM cParams $ \(cId, cTy) -> (,) cId <$> cToHs ctx cTy
+  let hsFunType = convertCFunSig hsType $ map snd hsParams
+  buildFunCall ctx (build hsFunType cType (map rebuildParam cParams) cExp) hsParams
   where
-    buildFunCall :: TH.ExpQ -> [C.Id] -> TH.ExpQ
-    buildFunCall f [] =
+    cToHs :: Context -> C.Type -> TH.TypeQ
+    cToHs ctx cTy = do
+      mbHsTy <- convertCType ctx pure cTy
+      case mbHsTy of
+        Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
+        Just hsTy -> return hsTy
+
+    buildFunCall :: Context -> TH.ExpQ -> [(C.Id, TH.Type)] -> TH.ExpQ
+    buildFunCall _ctx f [] =
       f
-    buildFunCall f (name : params) = do
+    buildFunCall ctx f ((name, hsTy) : params) = do
       mbHsName <- TH.lookupValueName $ case name of
         C.Id s _ -> s
         C.AntiId _ _ -> error "inline-c: got antiquotation (buildFunCall)"
@@ -544,61 +548,23 @@ genericQuote pure p build = quoteCode $ \s -> do
           error $ "Cannot capture Haskell variable " ++ show name ++
                   ", because it's not in scope."
         Just hsName -> do
-          buildFunCall [| $f $(TH.varE hsName) |] params
+          mbExp <- ctxMarshaller ctx hsTy =<< TH.varE hsName
+          case mbExp of
+            Nothing -> error  $ "Could not marshal variable " ++ show name
+            Just exp' -> buildFunCall ctx [| $f $(return exp') |] params
 
     rebuildParam :: (C.Id, C.Type) -> C.Param
     rebuildParam (name, C.Type ds d loc) = C.Param (Just name) ds d loc
     rebuildParam (_, _) = error "inline-c: got antiquotation (rebuildParam)"
 
--- Type conversion
-
-convertCFunSig :: Bool -> C.Type -> [C.Type] -> TH.TypeQ
-convertCFunSig pure retType params0 = do
-  ctx <- getContext
-  go params0 $ \cTy -> do
-    mbHsTy <- convertCType ctx pure cTy
-    case mbHsTy of
-      Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
-      Just hsTy -> return hsTy
-  where
-    go [] cToHs = do
-      let hsType = cToHs retType
-      if pure then hsType else [t| IO $hsType |]
-    go (paramType : params) cToHs = do
-      [t| $(cToHs paramType) -> $(go params cToHs) |]
-
-------------------------------------------------------------------------
--- FFI wrappers
-
--- | @$('mkFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |] @ generates a foreign import
--- wrapper of type
---
--- @
--- ('CDouble' -> 'IO' 'CDouble') -> 'IO' ('FunPtr' ('CDouble' -> 'IO' 'CDouble'))
--- @
---
--- And invokes it.
-mkFunPtr :: TH.TypeQ -> TH.ExpQ
-mkFunPtr hsTy = do
-  ffiImportName <- uniqueFfiImportName
-  dec <- TH.forImpD TH.CCall TH.Safe "wrapper" ffiImportName [t| $(hsTy) -> IO (FunPtr $(hsTy)) |]
-  TH.addTopDecls [dec]
-  TH.varE ffiImportName
-
--- | @$('mkFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |])@ generates a foreign import
--- dynamic of type
---
--- @
--- 'FunPtr' ('CDouble' -> 'IO' 'CDouble') -> ('CDouble' -> 'IO' 'CDouble')
--- @
---
--- And invokes it.
-peekFunPtr :: TH.TypeQ -> TH.ExpQ
-peekFunPtr hsTy = do
-  ffiImportName <- uniqueFfiImportName
-  dec <- TH.forImpD TH.CCall TH.Safe "dynamic" ffiImportName [t| FunPtr $(hsTy) -> $(hsTy) |]
-  TH.addTopDecls [dec]
-  TH.varE ffiImportName
+    convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
+    convertCFunSig retType params0 = do
+      go params0
+      where
+        go [] = do
+          if pure then return retType else [t| IO $(return retType) |]
+        go (paramType : params) = do
+          [t| $(return paramType) -> $(go params) |]
 
 ------------------------------------------------------------------------
 -- Utils

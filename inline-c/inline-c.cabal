@@ -14,6 +14,7 @@ library
                      , Language.C.Inline.Context
                      , Language.C.Inline.Tests
   other-modules:       Language.C.Inline.Parse
+                     , Language.C.Inline.FunPtr
   ghc-options:         -Wall -O
   ghc-prof-options:    -auto-all
   build-depends:       base >=4 && <5
