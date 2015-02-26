@@ -172,6 +172,26 @@ parseTypedC context p = do
     collectImplParam (C.AntiId _ _) = do
       error "inline-c: got antiquotation (collectImplParam)"
 
+parseCBody :: Context -> Parsec.Parser ([(C.Id, C.Type)], String)
+parseCBody ctx = do
+  s <- Parsec.many1 $ satisfy (/= '$')
+  msum
+    [ do Parsec.eof
+         return ([], s)
+    , do Parsec.char '$'
+         msum
+           [ do Parsec.char '$'
+                (ids, s') <- parseCBody
+                return (ids, s ++ ['$'] ++ s')
+           , do captured <- parseCapture
+                (ids, s') parseCBody
+                return (captured : ids, s ++ s')
+           ]
+    ]
+  where
+    parseCapture :: Parsec.Parser (C.Id, C.Type)
+    parseCapture = error "TODO"
+
 ------------------------------------------------------------------------
 -- Utils
 

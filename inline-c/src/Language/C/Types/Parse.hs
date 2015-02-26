@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Language.C.Types.Parse
   ( Identifier
   , TypeQual(..)
@@ -18,6 +19,8 @@ import           Control.Applicative ((<*>), (<|>))
 import           Text.Trifecta
 import qualified Data.HashSet as HashSet
 import           Text.Parser.Token.Highlight
+import           Data.Either (partitionEithers)
+import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 ------------------------------------------------------------------------
 -- Types
@@ -44,11 +47,11 @@ data TypeSpec
   | Enum Identifier
   deriving (Eq, Show)
 
-data DeclarationSpec = DeclarationSpec [Either TypeQual TypeSpec]
+data DeclarationSpec = DeclarationSpec [TypeQual] [TypeSpec]
   deriving (Eq, Show)
 
 data Declarator
-  = DeclaratorRoot String
+  = DeclaratorRoot Identifier
   | Ptr [TypeQual] Declarator
   | Array (Maybe ArraySize) Declarator
   | Proto Declarator [Declaration]
@@ -105,17 +108,23 @@ parseTypeQual = msum
   , Volatile <$ reserve identStyle "volatile"
   ]
 
+-- | The second value will be @'Just'@ if the last token to be parse is
+-- an identifier.  This is because we cannot decide immediately whether
+-- the last token is a type or the name of the declaration.
 parseDeclarationSpec
   :: Parser (DeclarationSpec, Maybe (DeclarationSpec, Identifier))
 parseDeclarationSpec = do
   let many1 p = (:) <$> p <*> many p
   qualOrSpecs <- many1 $ (Left <$> parseTypeQual) <|> (Right <$> parseTypeSpec)
   let mbLastId = case qualOrSpecs of
-        [] -> Nothing
+        [] ->
+          Nothing
         _ -> case last qualOrSpecs of
-          Right (TypeName s) -> Just (DeclarationSpec (init qualOrSpecs), s)
-          _ -> Nothing
-  return (DeclarationSpec qualOrSpecs, mbLastId)
+          Right (TypeName s) ->
+            Just (uncurry DeclarationSpec (partitionEithers (init qualOrSpecs)), s)
+          _ ->
+            Nothing
+  return (uncurry DeclarationSpec (partitionEithers qualOrSpecs), mbLastId)
 
 -- Intermediate structure to parse damned declarations
 
@@ -187,16 +196,6 @@ parseDeclaration = do
 parseParams :: Parser [Declaration]
 parseParams = sepBy parseDeclaration $ symbolic ','
 
-------------------------------------------------------------------------
--- Proper declaration
-
--- data PDeclaration = PDeclaration Identifier Type
-
--- data Type
---   = TypeSpec TypeSpec
---   | Ptr [TypeQual] Type
---   | Array (Maybe ArraySize) Type
---   | Proto Type [Type]
 
 ------------------------------------------------------------------------
 -- Tests
@@ -204,3 +203,21 @@ parseParams = sepBy parseDeclaration $ symbolic ','
 -- tests :: IO ()
 -- tests = do
 --   Hspec.it "parses simple type"
+
+------------------------------------------------------------------------
+-- Pretty printing
+
+instance PP.Pretty TypeSpec where
+  pretty tySpec = case tySpec of
+    Void -> "void"
+    Char -> "char"
+    Short -> "short"
+    Int -> "int"
+    Long -> "long"
+    Float -> "float"
+    Double -> "double"
+    Signed -> "signed"
+    Unsigned -> "unsigned"
+    TypeName s -> PP.text s
+    Struct s -> "struct" PP.<+> PP.text s
+    Enum s -> "enum" PP.<+> PP.text s
