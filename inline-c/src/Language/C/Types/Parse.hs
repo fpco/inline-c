@@ -24,7 +24,9 @@ import           Text.Parser.Token.Highlight
 
 type Identifier = String
 
-data TypeQual = Const
+data TypeQual
+  = Const
+  | Volatile
   deriving (Eq, Show)
 
 data TypeSpec
@@ -37,7 +39,9 @@ data TypeSpec
   | Double
   | Signed
   | Unsigned
-  | TypeName String
+  | TypeName Identifier
+  | Struct Identifier
+  | Enum Identifier
   deriving (Eq, Show)
 
 data DeclarationSpec = DeclarationSpec [Either TypeQual TypeSpec]
@@ -90,12 +94,16 @@ parseTypeSpec = msum
   , Double <$ reserve identStyle "double"
   , Signed <$ reserve identStyle "signed"
   , Unsigned <$ reserve identStyle "unsigned"
+  , Struct <$> (reserve identStyle "struct" >> ident identStyle)
+  , Enum <$> (reserve identStyle "enum" >> ident identStyle)
   , TypeName <$> ident identStyle
   ]
 
 parseTypeQual :: Parser TypeQual
 parseTypeQual = msum
-  [ Const <$ reserve identStyle "const" ]
+  [ Const <$ reserve identStyle "const"
+  , Volatile <$ reserve identStyle "volatile"
+  ]
 
 parseDeclarationSpec
   :: Parser (DeclarationSpec, Maybe (DeclarationSpec, Identifier))
@@ -121,15 +129,15 @@ data RawDeclaratorTrailing
   deriving (Show, Eq)
 
 fromRawDecl :: RawDeclarator -> Declarator
-fromRawDecl (RawDeclarator ptrs0 root trailings0) = goTrailing trailings0
+fromRawDecl (RawDeclarator ptrs0 root trailings0) = goPtrs $ reverse ptrs0
   where
     goPtrs :: [[TypeQual]] -> Declarator
-    goPtrs []             = root
+    goPtrs []             = goTrailing $ reverse trailings0
     goPtrs (quals : ptrs) = Ptr quals $ goPtrs ptrs
 
     goTrailing :: [RawDeclaratorTrailing] -> Declarator
     goTrailing [] =
-      goPtrs ptrs0
+      root
     goTrailing (trailing : trailings) = case trailing of
       RawDeclaratorArray mbSize -> Array mbSize $ goTrailing trailings
       RawDeclaratorProto decls -> Proto (goTrailing trailings) decls
@@ -137,23 +145,19 @@ fromRawDecl (RawDeclarator ptrs0 root trailings0) = goTrailing trailings0
 parseRawDeclarator :: Parser RawDeclarator
 parseRawDeclarator = do
   ptrs <- many pointer
-  identOrDec <- root
+  x <- root
   trailings <- many parseRawDeclaratorTrailing
-  return $ case identOrDec of
-    Left s ->
-      RawDeclarator ptrs (DeclaratorRoot s) trailings
-    Right (RawDeclarator ptrs' x trailings') ->
-      RawDeclarator ptrs' (fromRawDecl (RawDeclarator ptrs x trailings)) trailings'
+  return $ RawDeclarator ptrs x trailings
   where
     pointer :: Parser [TypeQual]
     pointer = do
       void $ symbolic '*'
       many parseTypeQual
 
-    root :: Parser (Either Identifier RawDeclarator)
+    root :: Parser Declarator
     root = msum
-      [ Left <$> ident identStyle
-      , Right <$> parens parseRawDeclarator
+      [ DeclaratorRoot <$> ident identStyle
+      , fromRawDecl <$> parens parseRawDeclarator
       ]
 
 parseRawDeclaratorTrailing :: Parser RawDeclaratorTrailing
@@ -167,7 +171,9 @@ parseDeclaration :: Parser Declaration
 parseDeclaration = do
   (decSpec, mbLastIdDeclSpec) <- parseDeclarationSpec
   declaratorOrNoRootDeclarator <-
-    (Left <$> parseRawDeclarator) <|> (Right <$> many parseRawDeclaratorTrailing)
+    (Left <$> try parseRawDeclarator) <|>
+    (Right <$> many parseRawDeclaratorTrailing) <?>
+    "declarator or prototype/array specification"
   (decSpec', declarator) <-
     case (mbLastIdDeclSpec, declaratorOrNoRootDeclarator) of
       (_, Left rawDeclarator) ->
@@ -191,3 +197,10 @@ parseParams = sepBy parseDeclaration $ symbolic ','
 --   | Ptr [TypeQual] Type
 --   | Array (Maybe ArraySize) Type
 --   | Proto Type [Type]
+
+------------------------------------------------------------------------
+-- Tests
+
+-- tests :: IO ()
+-- tests = do
+--   Hspec.it "parses simple type"
