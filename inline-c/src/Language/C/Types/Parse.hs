@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Language.C.Types.Parse
-  ( Identifier
+  ( Id
   , TypeQual(..)
   , TypeSpec(..)
   , DeclarationSpec(..)
@@ -8,9 +8,8 @@ module Language.C.Types.Parse
   , ArraySize
   , Declaration(..)
 
-  , Parser
   , parseDeclaration
-  , parseParams
+  , parseAbstractDeclaration
   ) where
 
 import           Control.Monad (msum, void)
@@ -20,12 +19,13 @@ import           Text.Trifecta
 import qualified Data.HashSet as HashSet
 import           Text.Parser.Token.Highlight
 import           Data.Either (partitionEithers)
+import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 ------------------------------------------------------------------------
 -- Types
 
-type Identifier = String
+type Id = String
 
 data TypeQual
   = Const
@@ -42,16 +42,16 @@ data TypeSpec
   | Double
   | Signed
   | Unsigned
-  | TypeName Identifier
-  | Struct Identifier
-  | Enum Identifier
+  | TypeName Id
+  | Struct Id
+  | Enum Id
   deriving (Eq, Show)
 
 data DeclarationSpec = DeclarationSpec [TypeQual] [TypeSpec]
   deriving (Eq, Show)
 
 data Declarator
-  = DeclaratorRoot Identifier
+  = DeclaratorRoot (Maybe Id)
   | Ptr [TypeQual] Declarator
   | Array (Maybe ArraySize) Declarator
   | Proto Declarator [Declaration]
@@ -112,7 +112,7 @@ parseTypeQual = msum
 -- an identifier.  This is because we cannot decide immediately whether
 -- the last token is a type or the name of the declaration.
 parseDeclarationSpec
-  :: Parser (DeclarationSpec, Maybe (DeclarationSpec, Identifier))
+  :: Parser (DeclarationSpec, Maybe (DeclarationSpec, Id))
 parseDeclarationSpec = do
   let many1 p = (:) <$> p <*> many p
   qualOrSpecs <- many1 $ (Left <$> parseTypeQual) <|> (Right <$> parseTypeSpec)
@@ -165,7 +165,7 @@ parseRawDeclarator = do
 
     root :: Parser Declarator
     root = msum
-      [ DeclaratorRoot <$> ident identStyle
+      [ DeclaratorRoot . Just <$> ident identStyle
       , fromRawDecl <$> parens parseRawDeclarator
       ]
 
@@ -188,21 +188,39 @@ parseDeclaration = do
       (_, Left rawDeclarator) ->
         return (decSpec, fromRawDecl rawDeclarator)
       (Just (decSpec', s), Right trailings) ->
-        return (decSpec', fromRawDecl $ RawDeclarator [] (DeclaratorRoot s) trailings)
+        return (decSpec', fromRawDecl $ RawDeclarator [] (DeclaratorRoot (Just s)) trailings)
       (Nothing, Right _) ->
         fail "Malformed declaration"
   return $ Declaration decSpec' declarator
 
+parseAbstractRawDeclarator :: Parser RawDeclarator
+parseAbstractRawDeclarator = do
+  ptrs <- many pointer
+  x <- root
+  trailings <- many parseRawDeclaratorTrailing
+  return $ RawDeclarator ptrs x trailings
+  where
+    pointer :: Parser [TypeQual]
+    pointer = do
+      void $ symbolic '*'
+      many parseTypeQual
+
+    root :: Parser Declarator
+    root = msum
+      [ -- The 'try' is here because this conflicts with the trailings
+        -- (they might start with parens as well).
+        fromRawDecl <$> try (parens parseRawDeclarator)
+      , return $ DeclaratorRoot Nothing
+      ]
+
+parseAbstractDeclaration :: Parser Declaration
+parseAbstractDeclaration = do
+  (decSpec, _) <- parseDeclarationSpec
+  declarator <- parseAbstractRawDeclarator
+  return $ Declaration decSpec $ fromRawDecl declarator
+
 parseParams :: Parser [Declaration]
 parseParams = sepBy parseDeclaration $ symbolic ','
-
-
-------------------------------------------------------------------------
--- Tests
-
--- tests :: IO ()
--- tests = do
---   Hspec.it "parses simple type"
 
 ------------------------------------------------------------------------
 -- Pretty printing
@@ -219,5 +237,10 @@ instance PP.Pretty TypeSpec where
     Signed -> "signed"
     Unsigned -> "unsigned"
     TypeName s -> PP.text s
-    Struct s -> "struct" PP.<+> PP.text s
-    Enum s -> "enum" PP.<+> PP.text s
+    Struct s -> "struct" <+> PP.text s
+    Enum s -> "enum" <+> PP.text s
+
+instance PP.Pretty TypeQual where
+  pretty tyQual = case tyQual of
+    Const -> "const"
+    Volatile -> "volatile"

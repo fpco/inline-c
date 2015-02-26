@@ -1,23 +1,24 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Language.C.Types
   ( -- * Types
-    P.Identifier
+    P.Id
   , P.TypeQual(..)
   , TypeSpec(..)
   , Type(..)
   , P.ArraySize
   , Sign(..)
-  , P.Declaration(..)
+  , Declaration(..)
 
     -- * Parsing
   , parseDeclaration
-  , parseParams
+  , parseAbstractDeclaration
   ) where
 
 import qualified Language.C.Types.Parse as P
 import           Control.Monad (when, unless)
 import           Data.Maybe (fromMaybe)
 import           Data.List (partition)
+import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Data.Monoid ((<>))
 import           Text.Trifecta
@@ -35,9 +36,9 @@ data TypeSpec
   | Float
   | Double
   | LDouble
-  | TypeName P.Identifier
-  | Struct P.Identifier
-  | Enum P.Identifier
+  | TypeName P.Id
+  | Struct P.Id
+  | Enum P.Id
   deriving (Show, Eq)
 
 data Type
@@ -52,7 +53,8 @@ data Sign
   | Unsigned
   deriving (Show, Eq)
 
-data Declaration = Declaration P.Identifier [P.TypeQual] Type
+-- | If the 'P.Id' is not present, the declaration is abstract.
+data Declaration = Declaration (Maybe P.Id) [P.TypeQual] Type
   deriving (Show, Eq)
 
 ------------------------------------------------------------------------
@@ -142,9 +144,9 @@ processParsedTySpecs pTySpecs = do
       error $ "processParsedDecl: impossible: " ++ show dataType
 
 processDeclarator
-  :: Type -> P.Declarator -> Either ConversionErr (P.Identifier, Type)
+  :: Type -> P.Declarator -> Either ConversionErr (Maybe P.Id, Type)
 processDeclarator ty declarator0 = case declarator0 of
-  P.DeclaratorRoot s -> return (s, ty)
+  P.DeclaratorRoot mbS -> return (mbS, ty)
   P.Ptr quals declarator -> processDeclarator (Ptr quals ty) declarator
   P.Array mbSize declarator -> processDeclarator (Array mbSize ty) declarator
   P.Proto declarator declarations -> do
@@ -161,8 +163,12 @@ parseDeclaration = do
     Left e -> fail $ PP.displayS (PP.renderPretty 0.8 80 (PP.pretty e)) ""
     Right decl -> return decl
 
-parseParams :: Parser [Declaration]
-parseParams = sepBy parseDeclaration $ symbolic ','
+parseAbstractDeclaration :: Parser Declaration
+parseAbstractDeclaration = do
+  pDecl <- P.parseAbstractDeclaration
+  case processParsedDecl pDecl of
+    Left e -> fail $ PP.displayS (PP.renderPretty 0.8 80 (PP.pretty e)) ""
+    Right decl -> return decl
 
 ------------------------------------------------------------------------
 -- Pretty printing
@@ -170,6 +176,34 @@ parseParams = sepBy parseDeclaration $ symbolic ','
 instance PP.Pretty ConversionErr where
   pretty e = case e of
     MultipleDataTypes types ->
-      "Multiple data types in declaration:" PP.<+> PP.prettyList types
+      "Multiple data types in declaration:" <+> PP.prettyList types
     IllegalSpecifiers msg specs ->
-      "Illegal specifiers," PP.<+> PP.text msg <> ":" <> PP.prettyList specs
+      "Illegal specifiers," <+> PP.text msg <> ":" <> PP.prettyList specs
+
+instance PP.Pretty TypeSpec where
+  pretty tySpec = case tySpec of
+    Void -> "void"
+    Char Nothing -> "char"
+    Char (Just Signed) -> "signed char"
+    Char (Just Unsigned) -> "unsigned char"
+    Short Signed -> "short"
+    Short Unsigned -> "unsigned short"
+    Int Signed -> "int"
+    Int Unsigned -> "unsigned"
+    Long Signed -> "long"
+    Long Unsigned -> "unsigned long"
+    LLong Signed -> "long long"
+    LLong Unsigned -> "unsigned long long"
+    Float -> "float"
+    Double -> "double"
+    LDouble -> "long double"
+    TypeName s -> PP.text s
+    Struct s -> "struct" <+> PP.text s
+    Enum s -> "enum" <+> PP.text s
+
+-- instance PP.Pretty Declaration where
+--   pretty (Declaration s quals ty0) = PP.hsep quals <+> go ty0
+--     where
+--       go :: Type -> PP.Doc
+--       go ty = case ty of
+        
