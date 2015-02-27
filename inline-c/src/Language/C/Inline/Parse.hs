@@ -1,188 +1,119 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 module Language.C.Inline.Parse (runParserInQ, parseTypedC) where
 
-import           Control.Applicative ((*>), (<*))
-import           Control.Monad (void)
-import qualified Control.Monad.Trans.State as State
-import qualified Data.ByteString.UTF8
-import           Data.Char (isSpace)
-import           Data.Data (Data)
-import           Data.Loc (Pos(..), locOf)
+import           Control.Applicative ((<*), (<|>))
+import           Control.Monad (void, msum)
+import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.Map as Map
-import           Data.Typeable (Typeable, (:~:)(..), eqT)
-import           Generics.SYB (everywhereM)
-import qualified Language.C as C
 import qualified Language.Haskell.TH as TH
-import qualified Text.Parsec as Parsec
-import qualified Text.Parsec.Pos as Parsec
-import qualified Text.Parsec.String as Parsec
-import qualified Text.PrettyPrint.Mainland as PrettyPrint
+import qualified Text.Trifecta as Trifecta
+import qualified Text.Trifecta.Delta as Trifecta
+import qualified Text.Parser.LookAhead as Trifecta
+import           Data.Monoid ((<>))
+import           Text.PrettyPrint.ANSI.Leijen ((<+>))
+import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           Data.Either (partitionEithers)
 
-import           Language.C.Inline.Context
+import qualified Language.C.Types as C
 
 -- Parsing
 
-runParserInQ :: String -> Parsec.Parser a -> TH.Q a
+runParserInQ :: String -> Trifecta.Parser a -> TH.Q a
 runParserInQ s p = do
   loc <- TH.location
   let (line, col) = TH.loc_start loc
-  let parsecLoc = Parsec.newPos (TH.loc_filename loc) line col
-  let p' = Parsec.setPosition parsecLoc *> p <* Parsec.eof
-  let errOrRes = Parsec.runParser  p' () (TH.loc_filename loc) s
-  case errOrRes of
-    Left err -> do
+  let d = Trifecta.Directed
+        (UTF8.fromString (TH.loc_filename loc)) (fromIntegral line)
+        (fromIntegral col) 0 0
+  case Trifecta.parseString (p <* Trifecta.eof) d s of
+    Trifecta.Failure err -> do
       -- TODO consider prefixing with "error while parsing C" or similar
-      error $ show err
-    Right res -> do
+      error $ pretty80 err
+    Trifecta.Success res -> do
       return res
 
-parseC
-  :: Context -> Parsec.SourcePos -> String -> C.P a -> a
-parseC context parsecPos str p =
-  let pos = Pos
-        (Parsec.sourceName parsecPos)
-        (Parsec.sourceLine parsecPos)
-        (Parsec.sourceColumn parsecPos)
-        0
-      bytes = Data.ByteString.UTF8.fromString str
-      -- TODO support user-defined C types.
-      pstate = C.emptyPState [C.Antiquotation] (ctxCTypes context) bytes pos
-  in case C.evalP p pstate of
-    Left err ->
-      -- TODO consider prefixing with "error while parsing C" or similar
-      error $ show err
-    Right x ->
-      x
-
--- Note that we split the input this way because we cannot compose Happy
--- parsers easily.
 parseTypedC
-  :: (Data a)
-  => Context
-  -> C.P a
-  -- ^ Parser to parse the body of the typed expression
-  -> Parsec.Parser (C.Type, [(C.Id, C.Type)], a)
-parseTypedC context p = do
-  -- Get stuff up to parens or brace, and parse it
-  typePos <- Parsec.getPosition
-  typeStr <- takeTillChar '{'
-  let cType = parseC context typePos typeStr C.parseType
-  let (cRetType, cParams) = processType cType
-  -- Get the body, and feed it to the given parser
-  bodyPos <- Parsec.getPosition
-  bodyStr <- restOfInputNoBrace
-  let cBody = parseC context bodyPos bodyStr p
-  -- Collect the implicit parameters present in the body
-  let paramsMap = mkParamsMap $ map cleanupParam $ cParams
-  let (cBody', paramsMap') = State.runState (collectImplParams cBody) paramsMap
-  -- Whew
-  return (cRetType, Map.toList paramsMap', cBody')
+  :: Trifecta.Parser (C.Declaration (), [C.Declaration C.Id], String)
+  -- ^ Returns the retun type, the captured variables, and the body.
+parseTypedC = do
+  -- Parse return type
+  cRetType <- C.parseAbstractDeclaration
+  -- Parse the body
+  void $ Trifecta.char '{'
+  (cParams, cBody) <- parseBody
+  -- Massage the params to make sure that we're good
+  cParams' <- processParams cParams
+  return (cRetType, cParams', cBody)
   where
-    lex_ :: Parsec.Parser b -> Parsec.Parser ()
-    lex_ p' = do
-      void p'
-      Parsec.spaces
+    parseBody :: Trifecta.Parser ([Either C.Id (C.Declaration C.Id)], String)
+    parseBody = do
+      -- Note that this code does not work with "lexing" combinators
+      -- (apart when appropriate) because we want to make sure to
+      -- preserve whitespace after the things we substitute.
+      s <- Trifecta.manyTill Trifecta.anyChar $
+           Trifecta.lookAhead (Trifecta.char '}' <|> Trifecta.char '$')
+      let parseEscapedDollar = do
+            void $ Trifecta.char '$'
+            return ([], "$")
+      let parseTypedCapture = do
+            void $ Trifecta.symbolic '('
+            decl@(C.Declaration s' _ _) <- C.parseDeclaration
+            void $ Trifecta.char ')'
+            return ([Right decl], s')
+      let parseCapture = do
+            s' <- C.parseIdentifier
+            return ([Left s'], s')
+      (decls, s') <- msum
+        [ do Trifecta.try $ do -- Try because we might fail to parse the 'eof'
+               void $ Trifecta.symbolic '}'
+               Trifecta.eof
+             return ([], "")
+        , do void $ Trifecta.char '}'
+             (decls, s') <- parseBody
+             return (decls, "}" ++ s')
+        , do void $ Trifecta.char '$'
+             (decls1, s1) <- parseEscapedDollar <|> parseTypedCapture <|> parseCapture
+             (decls2, s2) <- parseBody
+             return (decls1 ++ decls2, s1 ++ s2)
+        ]
+      return (decls, s ++ s')
 
-    takeTillChar :: Char -> Parsec.Parser String
-    takeTillChar ch = do
-      str <- Parsec.many $ Parsec.satisfy (/= ch)
-      lex_ $ Parsec.char ch
-      return str
-
-    restOfInputNoBrace :: Parsec.Parser String
-    restOfInputNoBrace = do
-      inp <- Parsec.many1 $ Parsec.satisfy $ \_ -> True
-      let revInp = dropWhile isSpace $ reverse inp
-      case revInp of
-        '}' : revInp' -> return $ reverse revInp'
-        _ -> fail $ "No closing }!"
-
-    processType :: C.Type -> (C.Type, [C.Param])
-    processType cTy = case cTy of
-      C.Type (C.DeclSpec storage quals cTySpec specSrc) decl0 typeSrc ->
-        go decl0 $ \decl' ->
-          C.Type (C.DeclSpec storage quals cTySpec specSrc) decl' typeSrc
-      _ ->
-        error "inline-c: got antiquotation (processType)"
+    processParams
+      :: [Either C.Id (C.Declaration C.Id)]
+      -> Trifecta.Parser [C.Declaration C.Id]
+    processParams cParams = do
+      let (untyped, typed) = partitionEithers cParams
+      params <- go Map.empty typed
+      checkUntyped params untyped
+      return $ map snd $ Map.toList params
       where
-        -- We stop at the first proto not preceded by a Ptr.  TODO check
-        -- if this is actually a good heuristic.
-        go :: C.Decl -> (C.Decl -> C.Type) -> (C.Type, [C.Param])
-        go decl0 cont = case decl0 of
-          C.DeclRoot rootSrc ->
-            (cont (C.DeclRoot rootSrc), [])
-          C.Proto decl (C.Params params _ _) _ ->
-            (cont decl, params)
-          C.OldProto decl [] _ ->
-            (cont decl, [])
-          C.OldProto _ _ _ ->
-            error "inline-c: Old prototypes not supported (processTye)"
-          -- If we get a function pointers, we consider it part of the
-          -- return type
-          C.Ptr quals (C.Proto decl params protoSrc) ptrSrc ->
-            go decl $ \decl' -> cont $ C.Ptr quals (C.Proto decl' params protoSrc) ptrSrc
-          C.Ptr quals (C.OldProto decl pars protoSrc) ptrSrc ->
-            go decl $ \decl' -> cont $ C.Ptr quals (C.OldProto decl' pars protoSrc) ptrSrc
-          C.Ptr quals decl ptrSrc ->
-            go decl $ \decl' -> cont $ C.Ptr quals decl' ptrSrc
-          C.Array quals size decl arraySrc ->
-            go decl $ \decl' -> cont $ C.Array quals size decl' arraySrc
-          C.BlockPtr quals decl blockPtrSrc ->
-            go decl $ \decl' -> cont $ C.BlockPtr quals decl' blockPtrSrc
-          C.AntiTypeDecl{} ->
-            error "inline-c: got antiquotation (processType)"
+        go :: Map.Map C.Id (C.Declaration C.Id) -> [C.Declaration C.Id]
+           -> Trifecta.Parser (Map.Map C.Id (C.Declaration C.Id))
+        go visitedParams [] = do
+          return visitedParams
+        go visitedParams (decl@(C.Declaration s quals ty) : params) = do
+          case Map.lookup s visitedParams of
+            Nothing -> go (Map.insert s decl visitedParams) params
+            Just (C.Declaration _ quals' ty') | (quals, ty) == (quals', ty') ->
+              go visitedParams params
+            Just decl' ->
+              fail $ pretty80 $
+                "Cannot recapture" <+> PP.pretty decl <> ", since previous" <>
+                "definition conflicts with new type:" <+> PP.pretty decl'
 
-    cleanupParam :: C.Param -> (C.Id, C.Type)
-    cleanupParam param = case param of
-      C.Param Nothing _ _ _        -> error "inline-c: Cannot capture Haskell variable if you don't give a name."
-      C.Param (Just name) ds d loc -> (name, C.Type ds d loc)
-      _                            -> error "inline-c: got antiquotation (parseTypedC)"
-
-    mkParamsMap :: [(C.Id, C.Type)] -> Map.Map C.Id C.Type
-    mkParamsMap cParams =
-      let m = Map.fromList cParams
-      in if Map.size m == length cParams
-           then m
-           else error "inline-c: Duplicated variable in parameter list"
-
-    collectImplParams = everywhereM (typeableAppM collectImplParam)
-
-    collectImplParam :: C.Id -> State.State (Map.Map C.Id C.Type) C.Id
-    collectImplParam name0@(C.Id str loc) = do
-      case ctxGetSuffixType context str of
-        Nothing -> return name0
-        Just (str', type_) -> do
-          let name = C.Id str' loc
-          m <- State.get
-          case Map.lookup name m of
+        checkUntyped
+          :: Map.Map C.Id (C.Declaration C.Id) -> [C.Id] -> Trifecta.Parser ()
+        checkUntyped params = mapM_ $ \s -> do
+          case Map.lookup s params of
+            Just _ -> return ()
             Nothing -> do
-              State.put $ Map.insert name type_ m
-              return name
-            Just type' | type_ == type' -> do
-              return name
-            Just type' -> do
-              let prevName = head $ dropWhile (/= name) $ Map.keys m
-              error $
-                "Cannot recapture variable " ++ pretty80 name ++
-                " to have type " ++ pretty80 type_ ++ ".\n" ++
-                "Previous redefinition of type " ++ pretty80 type' ++
-                " at " ++ show (locOf prevName) ++ "."
-    collectImplParam (C.AntiId _ _) = do
-      error "inline-c: got antiquotation (collectImplParam)"
+              fail $ "Untyped variable `" ++ s ++ "'"
 
 ------------------------------------------------------------------------
 -- Utils
 
-pretty80 :: PrettyPrint.Pretty a => a -> String
-pretty80 = PrettyPrint.pretty 80 . PrettyPrint.ppr
-
--- TODO doesn't something of this kind exist?
-typeableAppM
-  :: forall a b m. (Typeable a, Typeable b, Monad m) => (b -> m b) -> a -> m a
-typeableAppM = help eqT
-  where
-    help :: Maybe (a :~: b) -> (b -> m b) -> a -> m a
-    help (Just Refl) f x = f x
-    help Nothing     _ x = return x
+pretty80 :: PP.Pretty a => a -> String
+pretty80 x = PP.displayS (PP.renderPretty 0.8 80 (PP.pretty x)) ""
