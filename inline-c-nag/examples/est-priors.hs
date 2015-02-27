@@ -15,12 +15,12 @@ import qualified Data.Vector.Storable.Mutable as VM
 
 setContext nagCtx
 
-emitInclude "<nag.h>"
-emitInclude "<math.h>"
-emitInclude "<stdio.h>"
-emitInclude "<nag_stdlib.h>"
-emitInclude "<nage04.h>"
-emitInclude "<nagx02.h>"
+include "<nag.h>"
+include "<math.h>"
+include "<stdio.h>"
+include "<nag_stdlib.h>"
+include "<nage04.h>"
+include "<nagx02.h>"
 
 type CConst a = a
 

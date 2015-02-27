@@ -9,8 +9,8 @@ import           Foreign.C.Types
 import qualified Test.Hspec as Hspec
 import qualified Data.Vector.Storable.Mutable as V
 
-emitInclude "<math.h>"
-emitInclude "<stdio.h>"
+include "<math.h>"
+include "<stdio.h>"
 
 emitCode [C.cunit|
 int francescos_mul(int x, int y) {
@@ -24,52 +24,52 @@ main :: IO ()
 main = Hspec.hspec $ do
   tests
   Hspec.describe "TH" $ do
-    Hspec.it "embedCode" $ do
-      let c_add = $(embedCode $ Code
+    Hspec.it "inlineCode" $ do
+      let c_add = $(inlineCode $ Code
             TH.Unsafe                   -- Call safety
             [t| Int -> Int -> Int |]    -- Call type
             "francescos_add"            -- Call name
             -- C Code
             [C.cunit| int francescos_add(int x, int y) { int z = x + y; return z; } |])
       c_add 3 4 `Hspec.shouldBe` 7
-    Hspec.it "embedItems" $ do
-       let c_cos = $(embedItems
+    Hspec.it "inlineItems" $ do
+       let c_add3 = $(inlineItems
              TH.Unsafe
-             [t| Double -> Double |]
-             [C.cty| double |]
-             [C.cparams| double x |]
-             [C.citems| return cos(x); |])
-       c_cos 1 `Hspec.shouldBe` cos 1
-    Hspec.it "embedExp" $ do
-      let x = $(embedExp
+             [t| CInt -> CInt |]
+             [C.cty| int |]
+             [C.cparams| int x |]
+             [C.citems| return x + 3; |])
+       c_add3 1 `Hspec.shouldBe` 1 + 3
+    Hspec.it "inlineExp" $ do
+      let x = $(inlineExp
             TH.Safe
-            [t| Double |]
-            [C.cty| double |]
+            [t| CInt |]
+            [C.cty| int |]
             []
-            [C.cexp| sin(1) |])
-      x `Hspec.shouldBe` sin 1
-    Hspec.it "embedCode" $ do
+            [C.cexp| 1 + 4 |])
+      x `Hspec.shouldBe` 1 + 4
+    Hspec.it "inlineCode" $ do
       francescos_mul 3 4 `Hspec.shouldBe` 12
     Hspec.it "cexp" $ do
       let x = 3
       let y = 4
-      z <- [cexp| double(double x, double y){ cos(x) + cos(y) } |]
-      z `Hspec.shouldBe` cos x + cos y
+      z <- [cexp| int(int x, int y){ x + y + 5 } |]
+      z `Hspec.shouldBe` x + y + 5
     Hspec.it "cexp_unsafe" $ do
       let x = 2
       let y = 10
-      z <- [cexp_unsafe| double(double x, double y){ cos(x) + cos(y) } |]
-      z `Hspec.shouldBe` cos x + cos y
+      z <- [cexp_unsafe| int(int x, int y){ 7 + x + y } |]
+      z `Hspec.shouldBe` x + y + 7
     Hspec.it "cexp_pure" $ do
       let x = 2
       let y = 10
-      let z = [cexp_pure| double(double x, double y){ cos(x) + cos(y) } |]
-      z `Hspec.shouldBe` cos x + cos y
+      let z = [cexp_pure| int(int x, int y){ x + 10 + y } |]
+      z `Hspec.shouldBe` x + y + 10
     Hspec.it "cexp_pure_unsafe" $ do
       let x = 2
       let y = 10
-      let z = [cexp_pure_unsafe| double(double x, double y){ cos(x) + cos(y) } |]
-      z `Hspec.shouldBe` cos x + cos y
+      let z = [cexp_pure_unsafe| int(int x, int y){ x * 2 + y } |]
+      z `Hspec.shouldBe` x * 2 + y
     Hspec.it "suffix type" $ do
       let x = 3
       let y = 4
@@ -88,9 +88,9 @@ main = Hspec.hspec $ do
       let z = [cexp_pure| int(int (*ackermannPtr)(int, int)) { ackermannPtr(x_int, y_int) } |]
       z `Hspec.shouldBe` ackermann x y
     Hspec.it "function pointer result" $ do
-      c_cos <- [cexp| double (*)(double) { &cos } |]
-      x <- $(peekFunPtr [t| CDouble -> IO CDouble |]) c_cos 1
-      x `Hspec.shouldBe` cos 1
+      c_add <- [cexp| int (*)(int, int) { &francescos_add } |]
+      x <- $(peekFunPtr [t| CInt -> CInt -> IO CInt |]) c_add 1 2
+      x `Hspec.shouldBe` 1 + 2
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3

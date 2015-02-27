@@ -7,10 +7,10 @@ import qualified Language.C.Quote.C as C
 import           Text.RawString.QQ
 import           Foreign.C.Types
 
-emitInclude "<nag.h>"
-emitInclude "<stdio.h>"
-emitInclude "<nag_stdlib.h>"
-emitInclude "<naga02.h>"
+include "<nag.h>"
+include "<stdio.h>"
+include "<nag_stdlib.h>"
+include "<naga02.h>"
 
 emitLiteral [r|
 int nag_test(void)

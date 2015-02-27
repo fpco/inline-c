@@ -28,7 +28,7 @@ mkFunPtr hsTy = do
   TH.addTopDecls [dec]
   TH.varE ffiImportName
 
--- | @$('mkFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |])@ generates a foreign import
+-- | @$('peekFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |])@ generates a foreign import
 -- dynamic of type
 --
 -- @

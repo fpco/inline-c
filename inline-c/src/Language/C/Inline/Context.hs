@@ -16,7 +16,7 @@ module Language.C.Inline.Context
   ) where
 
 import           Control.Applicative (empty, (<|>))
-import           Control.Monad (mzero, msum, guard)
+import           Control.Monad (msum, guard)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
 import           Data.List (isSuffixOf)
@@ -135,24 +135,72 @@ baseCtx = Context
   }
 
 baseConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
-baseConvertCTypeSpec cspec = runMaybeT $ case cspec of
-  C.Tvoid{} -> lift [t| () |]
-  C.Tchar (Just C.Tunsigned{}) _ -> lift [t| CUChar |]
-  C.Tchar _ _ -> lift [t| CChar |]
-  C.Tshort (Just C.Tunsigned{}) _ -> lift [t| CUShort |]
-  C.Tshort _ _ -> lift [t| CShort |]
-  C.Tint (Just C.Tunsigned{}) _ -> lift [t| CUInt |]
-  C.Tint _ _ -> lift [t| CInt |]
-  C.Tlong (Just C.Tunsigned{}) _ -> lift [t| CULong |]
-  C.Tlong _ _ -> lift [t| CLong |]
-  C.Tlong_long (Just C.Tunsigned{}) _ -> lift [t| CULLong |]
-  C.Tlong_long _ _ -> lift [t| CLLong |]
-  C.Tfloat{} -> lift [t| CFloat |]
-  C.Tdouble{} -> lift [t| CDouble |]
-  _ -> mzero
+baseConvertCTypeSpec cspec = case cspec of
+  C.Tvoid{} -> Just <$> [t| () |]
+  C.Tchar (Just C.Tunsigned{}) _ -> Just <$> [t| CUChar |]
+  C.Tchar _ _ -> Just <$> [t| CChar |]
+  C.Tshort (Just C.Tunsigned{}) _ -> Just <$> [t| CUShort |]
+  C.Tshort _ _ -> Just <$> [t| CShort |]
+  C.Tint (Just C.Tunsigned{}) _ -> Just <$> [t| CUInt |]
+  C.Tint _ _ -> Just <$> [t| CInt |]
+  C.Tlong (Just C.Tunsigned{}) _ -> Just <$> [t| CULong |]
+  C.Tlong _ _ -> Just <$> [t| CLong |]
+  C.Tlong_long (Just C.Tunsigned{}) _ -> Just <$> [t| CULLong |]
+  C.Tlong_long _ _ -> Just <$> [t| CLLong |]
+  C.Tfloat{} -> Just <$> [t| CFloat |]
+  C.Tdouble{} -> Just <$> [t| CDouble |]
+  _ -> return Nothing
 
 -- | An alias for 'Ptr'.
 type CArray = Ptr
+
+------------------------------------------------------------------------
+-- Simple C types conversion
+
+-- | Captures a fragment of the full 'C.Type' data type, and precisely
+-- what we can easily convert to an Haskell type.
+data SimpleCType
+  = SCTSpec C.TypeSpec
+  | SCTPtr SimpleCType
+  | SCTArray SimpleCType
+  | SCTFunPtr SimpleCType [SimpleCType]
+  deriving (Show, Eq)
+
+simplifyCType :: C.Type -> SimpleCType
+simplifyCType cTy0 = case cTy0 of
+  C.Type (C.DeclSpec _storage _quals cTySpec _) decl _ ->
+    go cTySpec decl
+  _ ->
+    error "inline-c: got antiquotation (simplifyCType)"
+  where
+    go :: C.TypeSpec -> C.Decl -> SimpleCType
+    go cTySpec decl0 = case decl0 of
+      C.DeclRoot _ ->
+        SCTSpec cTySpec
+      C.Ptr _quals (C.Proto decl (C.Params params _ _) _) _ ->
+        let processParam param = case param of
+              C.Param _ (C.DeclSpec _ _ spec _) decl' _ -> go spec decl'
+              _ -> error "inline-c: got antiquotation (simplifyCType)"
+        in SCTFunPtr (go cTySpec decl) $ map processParam params
+      C.Ptr _quals (C.OldProto decl [] _) _ ->
+        SCTFunPtr (go cTySpec decl) []
+      C.Ptr _quals C.OldProto{} _ ->
+        error "inline-c: Old prototypes not supported (simplifyCType)"
+      C.Ptr _quals decl _ ->
+        SCTPtr $ go cTySpec decl
+      C.Array _quals _size decl _ ->
+        SCTArray $ go cTySpec decl
+      C.Proto{} ->
+        error "inline-c: Non-pointer function prototype (simplifyCType)"
+      C.OldProto{} ->
+        error "inline-c: Non-pointer function prototype (simplifyCType)"
+      C.BlockPtr{} ->
+        error "inline-c: Blocks not supported (simplifyCType)"
+      C.AntiTypeDecl{} ->
+        error "inline-c: got antiquotation (simplifyCType)"
+
+------------------------------------------------------------------------
+-- Actual type conversion
 
 -- | Given a 'Context', it uses its 'ctxConvertCTypeSpec' to convert
 -- arbitrary C types.
@@ -211,50 +259,6 @@ baseGetSuffixType s = msum
       ]
 
 ------------------------------------------------------------------------
--- Simple C types conversion
-
--- | Captures a fragment of the full 'C.Type' data type, and precisely
--- what we can easily convert to an Haskell type.
-data SimpleCType
-  = SCTSpec C.TypeSpec
-  | SCTPtr SimpleCType
-  | SCTArray SimpleCType
-  | SCTFunPtr SimpleCType [SimpleCType]
-  deriving (Show, Eq)
-
-simplifyCType :: C.Type -> SimpleCType
-simplifyCType cTy0 = case cTy0 of
-  C.Type (C.DeclSpec _storage _quals cTySpec _) decl _ ->
-    go cTySpec decl
-  _ ->
-    error "inline-c: got antiquotation (simplifyCType)"
-  where
-    go :: C.TypeSpec -> C.Decl -> SimpleCType
-    go cTySpec decl0 = case decl0 of
-      C.DeclRoot _ ->
-        SCTSpec cTySpec
-      C.Ptr _quals (C.Proto decl (C.Params params _ _) _) _ ->
-        let processParam param = case param of
-              C.Param _ (C.DeclSpec _ _ spec _) decl' _ -> go spec decl'
-              _ -> error "inline-c: got antiquotation (simplifyCType)"
-        in SCTFunPtr (go cTySpec decl) $ map processParam params
-      C.Ptr _quals (C.OldProto decl [] _) _ ->
-        SCTFunPtr (go cTySpec decl) []
-      C.Ptr _quals C.OldProto{} _ ->
-        error "inline-c: Old prototypes not supported (simplifyCType)"
-      C.Ptr _quals decl _ ->
-        SCTPtr $ go cTySpec decl
-      C.Array _quals _size decl _ ->
-        SCTArray $ go cTySpec decl
-      C.Proto{} ->
-        error "inline-c: Non-pointer function prototype (simplifyCType)"
-      C.OldProto{} ->
-        error "inline-c: Non-pointer function prototype (simplifyCType)"
-      C.BlockPtr{} ->
-        error "inline-c: Blocks not supported (simplifyCType)"
-      C.AntiTypeDecl{} ->
-        error "inline-c: got antiquotation (simplifyCType)"
-
 -- Function pointer removal
 
 -- | This 'Context' includes a 'ctxMarshaller' that removes the need for

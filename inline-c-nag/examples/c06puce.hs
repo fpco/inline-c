@@ -19,10 +19,10 @@ import           Text.RawString.QQ (r)
 
 setContext nagCtx
 
-emitInclude "<nag.h>"
-emitInclude "<stdio.h>"
-emitInclude "<nag_stdlib.h>"
-emitInclude "<nagc06.h>"
+include "<nag.h>"
+include "<stdio.h>"
+include "<nag_stdlib.h>"
+include "<nagc06.h>"
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral

@@ -1,6 +1,6 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE GADTs #-}
 module Language.C.Inline.Parse (runParserInQ, parseTypedC) where
 
 import           Control.Applicative ((*>), (<*))

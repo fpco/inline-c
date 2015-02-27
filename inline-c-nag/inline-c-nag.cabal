@@ -1,9 +1,10 @@
 name:                inline-c-nag
 version:             0.1.0.0
 license:             AllRightsReserved
+license-file:        LICENSE
 author:              Francesco Mazzoli
-maintainer:          f@mazzo.li
-copyright:           (c) 2015 FPComplete Corporation
+maintainer:          francesco@fpcomplete.com
+copyright:           (c) 2015 FP Complete Corporation
 category:            Math
 build-type:          Simple
 cabal-version:       >=1.10

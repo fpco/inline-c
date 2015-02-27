@@ -7,10 +7,10 @@ import           Language.C.Inline
 import           Language.C.Inline.Nag
 import qualified Language.C.Quote.Nag as C
 
-emitInclude "<nag.h>"
-emitInclude "<stdio.h>"
-emitInclude "<nag_stdlib.h>"
-emitInclude "<naga02.h>"
+include "<nag.h>"
+include "<stdio.h>"
+include "<nag_stdlib.h>"
+include "<naga02.h>"
 
 -- Code dump test
 
