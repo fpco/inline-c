@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Language.C.Types
   ( -- * Types
@@ -12,10 +14,11 @@ module Language.C.Types
     -- * Parsing
   , parseDeclaration
   , parseAbstractDeclaration
+  , P.parseIdentifier
   ) where
 
 import qualified Language.C.Types.Parse as P
-import           Control.Monad (when, unless)
+import           Control.Monad (when, unless, forM)
 import           Data.Maybe (fromMaybe)
 import           Data.List (partition)
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
@@ -45,7 +48,7 @@ data Type
   = TypeSpec TypeSpec
   | Ptr [P.TypeQual] Type
   | Array (Maybe P.ArraySize) Type
-  | Proto Type [Declaration]
+  | Proto Type [Declaration P.Id]
   deriving (Show, Eq)
 
 data Sign
@@ -54,8 +57,8 @@ data Sign
   deriving (Show, Eq)
 
 -- | If the 'P.Id' is not present, the declaration is abstract.
-data Declaration = Declaration (Maybe P.Id) [P.TypeQual] Type
-  deriving (Show, Eq)
+data Declaration a = Declaration a [P.TypeQual] Type
+  deriving (Show, Eq, Functor)
 
 ------------------------------------------------------------------------
 -- Conversion
@@ -68,7 +71,7 @@ data ConversionErr
 failConversion :: ConversionErr -> Either ConversionErr a
 failConversion = Left
 
-processParsedDecl :: P.Declaration -> Either ConversionErr Declaration
+processParsedDecl :: P.Declaration -> Either ConversionErr (Declaration (Maybe P.Id))
 processParsedDecl (P.Declaration (P.DeclarationSpec quals pTySpecs) declarator) = do
   tySpec <- processParsedTySpecs pTySpecs
   (s, type_) <- processDeclarator (TypeSpec tySpec) declarator
@@ -134,7 +137,7 @@ processParsedTySpecs pTySpecs = do
     P.Float -> do
       checkNoLength
       return Float
-    P.Double | longs == 1 -> do
+    P.Double -> do
       if longs == 1
         then return LDouble
         else do
@@ -150,25 +153,31 @@ processDeclarator ty declarator0 = case declarator0 of
   P.Ptr quals declarator -> processDeclarator (Ptr quals ty) declarator
   P.Array mbSize declarator -> processDeclarator (Array mbSize ty) declarator
   P.Proto declarator declarations -> do
-    args <- mapM processParsedDecl declarations
+    args <- forM declarations $ \pDecl -> do
+      Declaration (Just s) quals ty' <- processParsedDecl pDecl
+      return $ Declaration s quals ty'
     processDeclarator (Proto ty args) declarator
 
 ------------------------------------------------------------------------
 -- Parsing
 
-parseDeclaration :: Parser Declaration
+parseDeclaration :: Parser (Declaration P.Id)
 parseDeclaration = do
   pDecl <- P.parseDeclaration
   case processParsedDecl pDecl of
     Left e -> fail $ PP.displayS (PP.renderPretty 0.8 80 (PP.pretty e)) ""
-    Right decl -> return decl
+    Right decl -> do
+      Declaration (Just s) quals ty <- return decl
+      return $ Declaration s quals ty
 
-parseAbstractDeclaration :: Parser Declaration
+parseAbstractDeclaration :: Parser (Declaration ())
 parseAbstractDeclaration = do
   pDecl <- P.parseAbstractDeclaration
   case processParsedDecl pDecl of
     Left e -> fail $ PP.displayS (PP.renderPretty 0.8 80 (PP.pretty e)) ""
-    Right decl -> return decl
+    Right decl -> do
+      Declaration Nothing quals ty <- return decl
+      return $ Declaration () quals ty
 
 ------------------------------------------------------------------------
 -- Pretty printing
@@ -201,9 +210,8 @@ instance PP.Pretty TypeSpec where
     Struct s -> "struct" <+> PP.text s
     Enum s -> "enum" <+> PP.text s
 
--- instance PP.Pretty Declaration where
---   pretty (Declaration s quals ty0) = PP.hsep quals <+> go ty0
---     where
---       go :: Type -> PP.Doc
---       go ty = case ty of
-        
+instance PP.Pretty (Declaration ()) where
+  pretty _ = "TODO pretty Declaration ()"
+
+instance PP.Pretty (Declaration P.Id) where
+  pretty _ = "TODO pretty Declaration Id"

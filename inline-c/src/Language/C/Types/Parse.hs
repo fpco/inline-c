@@ -10,6 +10,7 @@ module Language.C.Types.Parse
 
   , parseDeclaration
   , parseAbstractDeclaration
+  , parseIdentifier
   ) where
 
 import           Control.Monad (msum, void)
@@ -65,6 +66,12 @@ data Declaration = Declaration DeclarationSpec Declarator
 ------------------------------------------------------------------------
 -- Parse
 
+identLetter :: Parser Char
+identLetter = oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
+
+parseIdentifier :: Parser Id
+parseIdentifier = (:) <$> identLetter <*> many (identLetter <|> digit)
+
 identStyle :: IdentifierStyle Parser
 identStyle = IdentifierStyle
   { _styleName = "C identifier"
@@ -83,8 +90,6 @@ identStyle = IdentifierStyle
   , _styleHighlight = Identifier
   , _styleReservedHighlight = ReservedIdentifier
   }
-  where
-    identLetter = oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
 
 parseTypeSpec :: Parser TypeSpec
 parseTypeSpec = msum
