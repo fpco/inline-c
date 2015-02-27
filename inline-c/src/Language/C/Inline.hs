@@ -34,7 +34,7 @@ module Language.C.Inline
     , mkFunPtr
     , peekFunPtr
 
-      -- * Direct handling
+      -- * Low-level API
       --
       -- | The functions in this section let us access more the C file
       -- associated with the current module.  They can be used to build
@@ -42,15 +42,15 @@ module Language.C.Inline
 
       -- ** Emitting C code
     , emitLiteral
-    , emitInclude
+    , include
     , emitCode
 
-      -- ** Embedding C code
+      -- ** Inlining C code
       -- $embedding
     , Code(..)
-    , embedCode
-    , embedExp
-    , embedItems
+    , inlineCode
+    , inlineExp
+    , inlineItems
     ) where
 
 import           Control.Exception (catch, throwIO)
@@ -220,22 +220,22 @@ emitCode defs = do
 -- appropriate, so that
 --
 -- @
--- emitInclude "foo.h" ==> #include "foo.h"
+-- include "foo.h" ==> #include "foo.h"
 -- @
 --
 -- but
 --
 -- @
--- emitInclude \<foo\> ==> #include \<foo\>
+-- include \<foo\> ==> #include \<foo\>
 -- @
-emitInclude :: String -> TH.DecsQ
-emitInclude s
-  | null s = error "inline-c: empty string (emitInclude)"
+include :: String -> TH.DecsQ
+include s
+  | null s = error "inline-c: empty string (include)"
   | head s == '<' = emitLiteral $ "#include " ++ s
   | otherwise = emitLiteral $ "#include \"" ++ s ++ "\""
 
 ------------------------------------------------------------------------
--- Embedding
+-- Inlining
 
 -- $embedding
 --
@@ -247,12 +247,12 @@ emitInclude s
 -- type.
 --
 -- All the quasi-quoters work by constructing a 'Code' and calling
--- 'embedCode'.
+-- 'inlineCode'.
 
 -- | Data type representing a list of C definitions with a typed and named entry
 -- function.
 --
--- We use it as a basis to embed and call C code.
+-- We use it as a basis to inline and call C code.
 data Code = Code
   { codeCallSafety :: TH.Safety
     -- ^ Safety of the foreign call
@@ -269,7 +269,7 @@ data Code = Code
 --
 -- See <https://gcc.gnu.org/onlinedocs/cpp/Line-Control.html>.
 
--- | Embeds a piece of code inline.  The resulting 'TH.Exp' will have
+-- | Inlines a piece of code inline.  The resulting 'TH.Exp' will have
 -- the type specified in the 'codeType'.
 --
 -- In practice, this function outputs the C code to the module's C file,
@@ -280,15 +280,15 @@ data Code = Code
 --
 -- @
 -- c_add :: Int -> Int -> Int
--- c_add = $(embedCode $ Code
+-- c_add = $(inlineCode $ Code
 --   TH.Unsafe                   -- Call safety
 --   [t| Int -> Int -> Int |]    -- Call type
 --   "francescos_add"            -- Call name
 --   -- C Code
 --   [C.cunit| int francescos_add(int x, int y) { int z = x + y; return z; } |])
 -- @
-embedCode :: Code -> TH.ExpQ
-embedCode Code{..} = do
+inlineCode :: Code -> TH.ExpQ
+inlineCode Code{..} = do
   initialiseModuleState_         -- Make sure that things are up-to-date
   -- Write out definitions
   void $ emitCode codeDefs
@@ -304,17 +304,17 @@ uniqueCName = do
   unique <- filter (/= '-') . UUID.toString <$> UUID.nextRandom
   return $ "inline_c_" ++ unique
 
--- | Same as 'embedItems', but with a single expression.
+-- | Same as 'inlineItems', but with a single expression.
 --
 -- @
 -- c_cos :: Double -> Double
--- c_cos = $(embedExp
+-- c_cos = $(inlineExp
 --   TH.Unsafe
 --   [t| Double -> Double |]
 --   [cty| double |] [cparams| double x |]
 --   [cexp| cos(x) |])
 -- @
-embedExp
+inlineExp
   :: TH.Safety
   -- ^ Safety of the foreign call
   -> TH.TypeQ
@@ -326,26 +326,26 @@ embedExp
   -> C.Exp
   -- ^ The C expression
   -> TH.ExpQ
-embedExp callSafety type_ cRetType cParams cExp =
-  embedItems callSafety type_ cRetType cParams cItems
+inlineExp callSafety type_ cRetType cParams cExp =
+  inlineItems callSafety type_ cRetType cParams cItems
   where
     cItems = if cRetType == [C.cty| void |]
       then [C.citems| $exp:cExp; |]
       else [C.citems| return $exp:cExp; |]
 
--- | Same as 'embedCode', but accepts a list of 'C.BlockItem's instead than a
+-- | Same as 'inlineCode', but accepts a list of 'C.BlockItem's instead than a
 -- full-blown 'Code'.  A function containing the provided statement will be
 -- automatically generated.
 --
 -- @
 -- c_cos :: Double -> Double
--- c_cos = $(embedItems
+-- c_cos = $(inlineItems
 --   TH.Unsafe
 --   [t| Double -> Double |]
 --   [cty| double |] [cparams| double x |]
 --   [citems| return cos(x); |])
 -- @
-embedItems
+inlineItems
   :: TH.Safety
   -- ^ Safety of the foreign call
   -> TH.TypeQ
@@ -356,10 +356,10 @@ embedItems
   -- ^ Parameters of the C expr
   -> [C.BlockItem]
   -> TH.ExpQ
-embedItems callSafety type_ cRetType cParams cItems = do
+inlineItems callSafety type_ cRetType cParams cItems = do
   funName <- TH.runIO uniqueCName
   let defs = [C.cunit| $ty:cRetType $id:funName($params:cParams) { $items:cItems } |]
-  embedCode $ Code
+  inlineCode $ Code
     { codeCallSafety = callSafety
     , codeType = type_
     , codeFunName = funName
@@ -372,7 +372,7 @@ embedItems callSafety type_ cRetType cParams cItems = do
 -- $quoting
 --
 -- The functions below are the main interface to this library, and let
--- you easily embed C code in Haskell.
+-- you easily inline C code in Haskell.
 --
 -- In general, they are used like so:
 --
@@ -446,7 +446,7 @@ embedItems callSafety type_ cRetType cParams cItems = do
 -- import           "Foreign.C.Types"
 -- import           "Language.C.Inline"
 --
--- 'emitInclude' "\<math.h\>"
+-- 'include' "\<math.h\>"
 --
 -- c_cos :: 'CDouble' -> 'CDouble'
 -- c_cos x = ['cexp_pure_unsafe'| double(double x) { cos(x) } |]
@@ -461,7 +461,7 @@ embedItems callSafety type_ cRetType cParams cItems = do
 -- import           "Foreign.C.Types"
 -- import           "Language.C.Inline"
 --
--- 'emitInclude' "\<stdio.h\>"
+-- 'include' "\<stdio.h\>"
 --
 -- parseVector :: 'CInt' -> 'IO' (V.IOVector 'CDouble')
 -- parseVector len = do
@@ -476,28 +476,28 @@ embedItems callSafety type_ cRetType cParams cItems = do
 -- @
 
 cexp :: TH.QuasiQuoter
-cexp = genericQuote False C.parseExp $ embedExp TH.Safe
+cexp = genericQuote False C.parseExp $ inlineExp TH.Safe
 
 cexp_unsafe :: TH.QuasiQuoter
-cexp_unsafe = genericQuote False C.parseExp $ embedExp TH.Unsafe
+cexp_unsafe = genericQuote False C.parseExp $ inlineExp TH.Unsafe
 
 cexp_pure :: TH.QuasiQuoter
-cexp_pure = genericQuote True C.parseExp $ embedExp TH.Safe
+cexp_pure = genericQuote True C.parseExp $ inlineExp TH.Safe
 
 cexp_pure_unsafe :: TH.QuasiQuoter
-cexp_pure_unsafe = genericQuote True C.parseExp $ embedExp TH.Unsafe
+cexp_pure_unsafe = genericQuote True C.parseExp $ inlineExp TH.Unsafe
 
 citems :: TH.QuasiQuoter
-citems = genericQuote False C.parseBlockItems $ embedItems TH.Safe
+citems = genericQuote False C.parseBlockItems $ inlineItems TH.Safe
 
 citems_unsafe :: TH.QuasiQuoter
-citems_unsafe = genericQuote False C.parseBlockItems $ embedItems TH.Unsafe
+citems_unsafe = genericQuote False C.parseBlockItems $ inlineItems TH.Unsafe
 
 citems_pure :: TH.QuasiQuoter
-citems_pure = genericQuote True C.parseBlockItems $ embedItems TH.Safe
+citems_pure = genericQuote True C.parseBlockItems $ inlineItems TH.Safe
 
 citems_pure_unsafe :: TH.QuasiQuoter
-citems_pure_unsafe = genericQuote True C.parseBlockItems $ embedItems TH.Unsafe
+citems_pure_unsafe = genericQuote True C.parseBlockItems $ inlineItems TH.Unsafe
 
 quoteCode
   :: (String -> TH.ExpQ)
@@ -518,7 +518,7 @@ genericQuote
   -- ^ Parser producing something
   -> (TH.TypeQ -> C.Type -> [C.Param] -> a -> TH.ExpQ)
   -- ^ Function taking that something and building an expression, see
-  -- 'embedExp' for other args.
+  -- 'inlineExp' for other args.
   -> TH.QuasiQuoter
 genericQuote pure p build = quoteCode $ \s -> do
   initialiseModuleState_

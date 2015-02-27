@@ -7,29 +7,29 @@ import qualified Language.C.Quote as C
 import qualified Language.C.Quote.C as C
 import           Foreign.C.Types
 
-emitInclude "<math.h>"
-emitInclude "<stdio.h>"
+include "<math.h>"
+include "<stdio.h>"
 
-test_embedCode :: Int
-test_embedCode = c_add 1 2
+test_inlineCode :: Int
+test_inlineCode = c_add 1 2
   where
-    c_add = $(embedCode $ Code
+    c_add = $(inlineCode $ Code
       TH.Unsafe                   -- Call safety
       [t| Int -> Int -> Int |]    -- Call type
       "francescos_add"            -- Call name
       -- C Code
       [C.cunit| int francescos_add(int x, int y) { int z = x + y; return z; } |])
 
-test_embedItems :: Double
-test_embedItems = $(embedItems
+test_inlineItems :: Double
+test_inlineItems = $(inlineItems
   TH.Unsafe
   [t| Double -> Double |]
   [C.cty| double |]
   [C.cparams| double x |]
   [C.citems| return cos(x); |]) 1
 
-test_embedExp :: Double
-test_embedExp = $(embedExp
+test_inlineExp :: Double
+test_inlineExp = $(inlineExp
   TH.Unsafe
   [t| Double |]
   [C.cty| double |]
@@ -77,9 +77,9 @@ test_voidExp = [cexp| void { printf("Hello\n") } |]
 
 main :: IO ()
 main = do
-  print test_embedCode
-  print test_embedItems
-  print test_embedExp
+  print test_inlineCode
+  print test_inlineItems
+  print test_inlineExp
   print $ francescos_mul 3 4
   print =<< test_cexp 3 4
   print =<< test_cexp_unsafe 3 4
