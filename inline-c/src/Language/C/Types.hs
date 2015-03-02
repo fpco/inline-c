@@ -15,6 +15,9 @@ module Language.C.Types
   , parseDeclaration
   , parseAbstractDeclaration
   , P.parseIdentifier
+
+    -- * Prettying
+  , prettyParams
   ) where
 
 import qualified Language.C.Types.Parse as P
@@ -211,7 +214,48 @@ instance PP.Pretty TypeSpec where
     Enum s -> "enum" <+> PP.text s
 
 instance PP.Pretty (Declaration ()) where
-  pretty _ = "TODO pretty Declaration ()"
+  pretty (Declaration () quals cTy) =
+    PP.hsep (map PP.pretty quals) <+> PP.pretty cTy
 
 instance PP.Pretty (Declaration P.Id) where
-  pretty _ = "TODO pretty Declaration Id"
+  pretty (Declaration s quals cTy) =
+    PP.hsep (map PP.pretty quals) <+> prettyType (Just s) cTy
+
+instance PP.Pretty Type where
+  pretty = prettyType Nothing
+
+data PrettyDirection
+  = PrettyingRight
+  | PrettyingLeft
+  deriving (Eq, Show)
+
+prettyParams :: [Declaration P.Id] -> PP.Doc
+prettyParams = go . map PP.pretty
+  where
+    go [] = ""
+    go (x : xs) = case xs of
+      []  -> x
+      _:_ -> x <> "," <+> go xs
+
+prettyType :: Maybe P.Id -> Type -> PP.Doc
+prettyType mbId ty00 =
+  let base = case mbId of
+        Nothing -> ""
+        Just s -> PP.text s
+  in go base PrettyingRight ty00
+  where
+    go :: PP.Doc -> PrettyDirection -> Type -> PP.Doc
+    go base dir ty0 = case ty0 of
+      TypeSpec spec -> PP.pretty spec <+> base
+      Ptr quals ty ->
+        let spacing = if null quals then "" else " "
+        in go (PP.hsep (map PP.pretty quals) <> spacing <> "*" <> base) PrettyingLeft ty
+      Array mbSize ty ->
+        let parens' = if dir == PrettyingLeft then PP.parens else id
+            sizeDoc = case mbSize of
+              Nothing -> ""
+              Just i -> PP.text $ show i
+        in go (parens' base <> "[" <> sizeDoc <> "]") PrettyingRight ty
+      Proto retType pars ->
+        let parens' = if dir == PrettyingLeft then PP.parens else id
+        in go (parens' base <> PP.parens (prettyParams pars)) PrettyingRight retType
