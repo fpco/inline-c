@@ -15,10 +15,12 @@ module Language.C.Types.Parse
 
 import           Control.Monad (msum, void)
 import           Data.Functor ((<$>), (<$))
-import           Control.Applicative ((<*>), (<|>))
-import           Text.Trifecta
-import qualified Data.HashSet as HashSet
+import           Control.Applicative ((<*>))
+import           Text.Parser.Token
 import           Text.Parser.Token.Highlight
+import           Text.Parsec.String
+import           Text.Parsec
+import qualified Data.HashSet as HashSet
 import           Data.Either (partitionEithers)
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
@@ -119,7 +121,6 @@ parseTypeQual = msum
 parseDeclarationSpec
   :: Parser (DeclarationSpec, Maybe (DeclarationSpec, Id))
 parseDeclarationSpec = do
-  let many1 p = (:) <$> p <*> many p
   qualOrSpecs <- many1 $ (Left <$> parseTypeQual) <|> (Right <$> parseTypeSpec)
   let mbLastId = case qualOrSpecs of
         [] ->

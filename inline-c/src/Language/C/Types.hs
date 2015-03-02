@@ -10,6 +10,7 @@ module Language.C.Types
   , P.ArraySize
   , Sign(..)
   , Declaration(..)
+  , Param
 
     -- * Parsing
   , parseDeclaration
@@ -27,7 +28,7 @@ import           Data.List (partition)
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Data.Monoid ((<>))
-import           Text.Trifecta
+import           Text.Parsec.String
 
 ------------------------------------------------------------------------
 -- Proper types
@@ -51,7 +52,7 @@ data Type
   = TypeSpec TypeSpec
   | Ptr [P.TypeQual] Type
   | Array (Maybe P.ArraySize) Type
-  | Proto Type [Declaration P.Id]
+  | Proto Type [Param]
   deriving (Show, Eq)
 
 data Sign
@@ -60,8 +61,13 @@ data Sign
   deriving (Show, Eq)
 
 -- | If the 'P.Id' is not present, the declaration is abstract.
-data Declaration a = Declaration a [P.TypeQual] Type
-  deriving (Show, Eq, Functor)
+data Declaration a = Declaration
+  { declId :: a
+  , declQuals :: [P.TypeQual]
+  , declType :: Type
+  } deriving (Show, Eq, Functor)
+
+type Param = Declaration P.Id
 
 ------------------------------------------------------------------------
 -- Conversion
@@ -229,7 +235,7 @@ data PrettyDirection
   | PrettyingLeft
   deriving (Eq, Show)
 
-prettyParams :: [Declaration P.Id] -> PP.Doc
+prettyParams :: [Param] -> PP.Doc
 prettyParams = go . map PP.pretty
   where
     go [] = ""

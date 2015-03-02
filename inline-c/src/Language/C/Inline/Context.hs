@@ -16,41 +16,26 @@ module Language.C.Inline.Context
   ) where
 
 import           Control.Applicative (empty, (<|>))
-import           Control.Monad (msum, guard)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
-import           Data.List (isSuffixOf)
 import           Data.Monoid (Monoid(..))
 import           Foreign.C.Types
 import           Foreign.Ptr (Ptr, FunPtr)
-import qualified Language.C as C
-import qualified Language.C.Quote.C as C
 import qualified Language.Haskell.TH as TH
 import           Data.Functor ((<$>))
 import           System.IO.Unsafe (unsafePerformIO)
 
 import           Language.C.Inline.FunPtr
+import qualified Language.C.Types as C
 
--- | A 'Context' stores information needed to:
---
--- * Parse inline C code;
--- * Convert C types to Haskell types;
--- * Interpret suffix types.
+-- | A 'Context' stores information needed to convert C types to Haskell
+-- types, and to convert Haskell values to C values.
 --
 -- 'Context's can be composed with their 'Monoid' instance, where
 -- 'mappend' is right-biased -- in @'mappend' x y@ @y@ will take
 -- precedence over @x@.
 data Context = Context
-  { ctxCTypes :: [String]
-    -- ^ Additional named types for the C parser.  Currently, every type
-    -- beyond standard C needs to be declared explicitely for the parser
-    -- to work, see <http://en.wikipedia.org/wiki/The_lexer_hack>.
-    --
-    -- For example, if some library defines the type @Complex@, the
-    -- string @"Complex"@ will have to be included.
-    --
-    -- TODO consider modifying @language-c-quote@ to lift this restriction.
-  , ctxConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
+  { ctxConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
     -- ^ Tries to convert a C type spec to an Haskell type. For example,
     -- for some context @ctx@, we might have that
     --
@@ -62,13 +47,6 @@ data Context = Context
     -- parlance the 'C.TypeSpec') need to be converted.  Conversion from
     -- derived types, such as pointers or arrays, is performed
     -- automatically by 'convertCType'.
-  , ctxGetSuffixType :: String -> Maybe (String, C.Type)
-    -- ^ Given an identifier, checks if it is suffix typed.  For
-    -- example, for some context @ctx@, we might have that
-    --
-    -- @
-    -- 'ctxGetSuffixType' ctx "n_int" ==> 'Just' ("n", [cty| int |])
-    -- @
   , ctxMarshaller :: TH.Type -> TH.Exp -> TH.Q (Maybe TH.Exp)
     -- ^ The marshaller takes the expected type of a captured variable
     -- and the 'TH.Exp' representing the captured variable itself and
@@ -82,125 +60,53 @@ data Context = Context
 
 instance Monoid Context where
   mempty = Context
-    { ctxCTypes = mempty
-    , ctxConvertCTypeSpec = \_ -> runMaybeT empty
-    , ctxGetSuffixType = \_ -> empty
+    { ctxConvertCTypeSpec = \_ -> runMaybeT empty
     , ctxMarshaller = \_ _ -> runMaybeT empty
     }
 
   mappend ctx2 ctx1 = Context
-    { ctxCTypes = ctxCTypes ctx1 ++ ctxCTypes ctx2
-    , ctxConvertCTypeSpec = \cty -> runMaybeT $
+    { ctxConvertCTypeSpec = \cty -> runMaybeT $
         MaybeT (ctxConvertCTypeSpec ctx1 cty) <|> MaybeT (ctxConvertCTypeSpec ctx2 cty)
-    , ctxGetSuffixType = \suff ->
-        ctxGetSuffixType ctx1 suff <|> ctxGetSuffixType ctx2 suff
     , ctxMarshaller = \hsTy hsArg -> runMaybeT $
         MaybeT (ctxMarshaller ctx1 hsTy hsArg) <|> MaybeT (ctxMarshaller ctx2 hsTy hsArg)
     }
 
 -- | Context useful to work with vanilla C.  Used by default.
 --
--- 'ctxCTypes': None.
---
 -- 'ctxConvertCTypeSpec': converts C basic types to their counterparts
 -- in "Foreign.C.Types" (TODO currently slightly incomplete).
 --
--- 'ctxGetSuffixType':
---
--- @
--- "int"        ==> int
--- "uint"       ==> unsigned int
--- "long"       ==> long
--- "ulong"      ==> unsigned long
--- "char"       ==> char
--- "uchar"      ==> unsigned char
--- "float"      ==> float
--- "double"     ==> double
---
--- "int_ptr"    ==> int*
--- "uint_ptr"   ==> unsigned int*
--- "long_ptr"   ==> long*
--- "ulong_ptr"  ==> unsigned long*
--- "char_ptr"   ==> char*
--- "uchar_ptr"  ==> unsigned char*
--- "float_ptr"  ==> float*
--- "double_ptr" ==> double*
+-- 'ctxMarshaller': Just returns the expression.
 -- @
 baseCtx :: Context
 baseCtx = Context
-  { ctxCTypes = []
-  , ctxConvertCTypeSpec = baseConvertCTypeSpec
-  , ctxGetSuffixType = baseGetSuffixType
+  { ctxConvertCTypeSpec = baseConvertCTypeSpec
   , ctxMarshaller = \_ hsExp -> return $ Just hsExp
   }
 
 baseConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
 baseConvertCTypeSpec cspec = case cspec of
-  C.Tvoid{} -> Just <$> [t| () |]
-  C.Tchar (Just C.Tunsigned{}) _ -> Just <$> [t| CUChar |]
-  C.Tchar _ _ -> Just <$> [t| CChar |]
-  C.Tshort (Just C.Tunsigned{}) _ -> Just <$> [t| CUShort |]
-  C.Tshort _ _ -> Just <$> [t| CShort |]
-  C.Tint (Just C.Tunsigned{}) _ -> Just <$> [t| CUInt |]
-  C.Tint _ _ -> Just <$> [t| CInt |]
-  C.Tlong (Just C.Tunsigned{}) _ -> Just <$> [t| CULong |]
-  C.Tlong _ _ -> Just <$> [t| CLong |]
-  C.Tlong_long (Just C.Tunsigned{}) _ -> Just <$> [t| CULLong |]
-  C.Tlong_long _ _ -> Just <$> [t| CLLong |]
-  C.Tfloat{} -> Just <$> [t| CFloat |]
-  C.Tdouble{} -> Just <$> [t| CDouble |]
+  C.Void -> Just <$> [t| () |]
+  C.Char Nothing -> Just <$> [t| CChar |]
+  C.Char (Just C.Signed) -> Just <$> [t| CChar |]
+  C.Char (Just C.Unsigned) -> Just <$> [t| CUChar |]
+  C.Short C.Signed -> Just <$> [t| CShort |]
+  C.Short C.Unsigned -> Just <$> [t| CUShort |]
+  C.Int C.Signed -> Just <$> [t| CInt |]
+  C.Int C.Unsigned -> Just <$> [t| CUInt |]
+  C.Long C.Signed -> Just <$> [t| CLong |]
+  C.Long C.Unsigned -> Just <$> [t| CULong |]
+  C.LLong C.Signed -> Just <$> [t| CLLong |]
+  C.LLong C.Unsigned -> Just <$> [t| CULLong |]
+  C.Float -> Just <$> [t| CFloat |]
+  C.Double -> Just <$> [t| CDouble |]
   _ -> return Nothing
 
 -- | An alias for 'Ptr'.
 type CArray = Ptr
 
 ------------------------------------------------------------------------
--- Simple C types conversion
-
--- | Captures a fragment of the full 'C.Type' data type, and precisely
--- what we can easily convert to an Haskell type.
-data SimpleCType
-  = SCTSpec C.TypeSpec
-  | SCTPtr SimpleCType
-  | SCTArray SimpleCType
-  | SCTFunPtr SimpleCType [SimpleCType]
-  deriving (Show, Eq)
-
-simplifyCType :: C.Type -> SimpleCType
-simplifyCType cTy0 = case cTy0 of
-  C.Type (C.DeclSpec _storage _quals cTySpec _) decl _ ->
-    go cTySpec decl
-  _ ->
-    error "inline-c: got antiquotation (simplifyCType)"
-  where
-    go :: C.TypeSpec -> C.Decl -> SimpleCType
-    go cTySpec decl0 = case decl0 of
-      C.DeclRoot _ ->
-        SCTSpec cTySpec
-      C.Ptr _quals (C.Proto decl (C.Params params _ _) _) _ ->
-        let processParam param = case param of
-              C.Param _ (C.DeclSpec _ _ spec _) decl' _ -> go spec decl'
-              _ -> error "inline-c: got antiquotation (simplifyCType)"
-        in SCTFunPtr (go cTySpec decl) $ map processParam params
-      C.Ptr _quals (C.OldProto decl [] _) _ ->
-        SCTFunPtr (go cTySpec decl) []
-      C.Ptr _quals C.OldProto{} _ ->
-        error "inline-c: Old prototypes not supported (simplifyCType)"
-      C.Ptr _quals decl _ ->
-        SCTPtr $ go cTySpec decl
-      C.Array _quals _size decl _ ->
-        SCTArray $ go cTySpec decl
-      C.Proto{} ->
-        error "inline-c: Non-pointer function prototype (simplifyCType)"
-      C.OldProto{} ->
-        error "inline-c: Non-pointer function prototype (simplifyCType)"
-      C.BlockPtr{} ->
-        error "inline-c: Blocks not supported (simplifyCType)"
-      C.AntiTypeDecl{} ->
-        error "inline-c: got antiquotation (simplifyCType)"
-
-------------------------------------------------------------------------
--- Actual type conversion
+-- Type conversion
 
 -- | Given a 'Context', it uses its 'ctxConvertCTypeSpec' to convert
 -- arbitrary C types.
@@ -210,53 +116,28 @@ convertCType
   -- ^ Whether function pointers should be pure or not.
   -> C.Type
   -> TH.Q (Maybe TH.Type)
-convertCType ctx pure cTy = runMaybeT $ go $ simplifyCType cTy
+convertCType ctx pure = runMaybeT . go
   where
-    go :: SimpleCType -> MaybeT TH.Q TH.Type
-    go sTy = case sTy of
-      SCTSpec cSpec -> MaybeT $ ctxConvertCTypeSpec ctx cSpec
-      SCTPtr sTy' -> do
-        hsTy <- go sTy'
+    goDecl (C.Declaration _ _quals cTy) = go cTy
+
+    go :: C.Type -> MaybeT TH.Q TH.Type
+    go cTy = case cTy of
+      C.TypeSpec cSpec -> MaybeT $ ctxConvertCTypeSpec ctx cSpec
+      C.Ptr _quals cTy' -> do
+        hsTy <- go cTy'
         lift [t| Ptr $(return hsTy) |]
-      SCTArray sTy' -> do
-        hsTy <- go sTy'
+      C.Array _mbSize cTy' -> do
+        hsTy <- go cTy'
         lift [t| CArray $(return hsTy) |]
-      SCTFunPtr retType pars -> do
+      C.Proto retType pars -> do
         hsRetType <- go retType
-        hsPars <- mapM go pars
+        hsPars <- mapM goDecl pars
         lift [t| FunPtr $(buildArr hsPars hsRetType) |]
 
     buildArr [] hsRetType =
       if pure then [t| $(return hsRetType) |] else [t| IO $(return hsRetType) |]
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
-
-baseGetSuffixType :: String -> Maybe (String, C.Type)
-baseGetSuffixType s = msum
-  [ do guard (('_' : suff) `isSuffixOf` s)
-       return (take (length s - length suff - 1) s, ctype)
-  | (suff, ctype) <- table
-  ]
-  where
-    table =
-      [ ("int", [C.cty| int |])
-      , ("uint", [C.cty| unsigned int |])
-      , ("long", [C.cty| long |])
-      , ("ulong", [C.cty| unsigned long |])
-      , ("char", [C.cty| char |])
-      , ("uchar", [C.cty| unsigned char |])
-      , ("float", [C.cty| float |])
-      , ("double", [C.cty| double |])
-
-      , ("int_ptr", [C.cty| int* |])
-      , ("uint_ptr", [C.cty| unsigned int* |])
-      , ("long_ptr", [C.cty| long* |])
-      , ("ulong_ptr", [C.cty| unsigned long* |])
-      , ("char_ptr", [C.cty| char* |])
-      , ("uchar_ptr", [C.cty| unsigned char* |])
-      , ("float_ptr", [C.cty| float* |])
-      , ("double_ptr", [C.cty| double* |])
-      ]
 
 ------------------------------------------------------------------------
 -- Function pointer removal
@@ -275,9 +156,9 @@ funPtrCtx = mempty{ctxMarshaller = convertFunPtrs}
   where
     convertFunPtrs :: TH.Type -> TH.Exp -> TH.Q (Maybe TH.Exp)
     convertFunPtrs hsTy hsExp = case hsTy of
-      -- TODO I think this is safe, given that the arguments to the FFI
-      -- call are passed immediately and do not leak anywhere else.  But
-      -- check.
+      -- TODO I think this 'unsafePerformIO' is safe, given that the
+      -- arguments to the FFI call are passed immediately and do not
+      -- leak anywhere else.  But check.
       TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr ->
         Just <$> [| unsafePerformIO ($(mkFunPtr (return hsTy')) $(return hsExp)) |]
       _ -> return Nothing

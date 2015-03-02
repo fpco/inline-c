@@ -43,7 +43,6 @@ module Language.C.Inline
       -- ** Emitting C code
     , emitLiteral
     , include
-    , emitCode
 
       -- ** Inlining C code
       -- $embedding
@@ -55,15 +54,12 @@ module Language.C.Inline
 
 import           Control.Exception (catch, throwIO)
 import           Control.Monad (void, unless, forM)
-import           Data.Data (Data)
 import           Data.Foldable (forM_)
 import           Data.Functor ((<$>))
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import           Data.Maybe (fromMaybe)
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-import qualified Language.C as C
-import qualified Language.C.Quote.C as C
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -71,8 +67,9 @@ import           System.Directory (removeFile)
 import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Error (isDoesNotExistError)
 import           System.IO.Unsafe (unsafePerformIO)
-import qualified Text.PrettyPrint.Mainland as PrettyPrint
+import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
+import qualified Language.C.Types as C
 import           Language.C.Inline.Context
 import           Language.C.Inline.Parse
 import           Language.C.Inline.FunPtr
@@ -209,12 +206,6 @@ emitLiteral s = do
   TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
   return []
 
--- | Emits some definitions to the module C file.
-emitCode :: [C.Definition] -> TH.DecsQ
-emitCode defs = do
-  forM_ defs $ \def -> void $ emitLiteral $ pretty80 def
-  return []
-
 -- | Emits an include CPP statement for the given file.
 -- To avoid having to escape quotes, the function itself adds them when
 -- appropriate, so that
@@ -260,7 +251,7 @@ data Code = Code
     -- ^ Type of the foreign call
   , codeFunName :: String
     -- ^ Name of the function to call in the code below.
-  , codeDefs :: [C.Definition]
+  , codeDefs :: String
     -- ^ The C code.
   }
 
@@ -291,7 +282,7 @@ inlineCode :: Code -> TH.ExpQ
 inlineCode Code{..} = do
   initialiseModuleState_         -- Make sure that things are up-to-date
   -- Write out definitions
-  void $ emitCode codeDefs
+  void $ emitLiteral codeDefs
   -- Create and add the FFI declaration.
   ffiImportName <- uniqueFfiImportName
   dec <- TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType
@@ -319,19 +310,19 @@ inlineExp
   -- ^ Safety of the foreign call
   -> TH.TypeQ
   -- ^ Type of the foreign call
-  -> C.Type
+  -> C.Declaration ()
   -- ^ Return type of the C expr
   -> [C.Param]
   -- ^ Parameters of the C expr
-  -> C.Exp
+  -> String
   -- ^ The C expression
   -> TH.ExpQ
 inlineExp callSafety type_ cRetType cParams cExp =
   inlineItems callSafety type_ cRetType cParams cItems
   where
-    cItems = if cRetType == [C.cty| void |]
-      then [C.citems| $exp:cExp; |]
-      else [C.citems| return $exp:cExp; |]
+    cItems = if C.declType cRetType == C.TypeSpec C.Void
+      then cExp ++ ";"
+      else "return (" ++ cExp ++ ");"
 
 -- | Same as 'inlineCode', but accepts a list of 'C.BlockItem's instead than a
 -- full-blown 'Code'.  A function containing the provided statement will be
@@ -350,15 +341,20 @@ inlineItems
   -- ^ Safety of the foreign call
   -> TH.TypeQ
   -- ^ Type of the foreign call
-  -> C.Type
+  -> C.Declaration ()
   -- ^ Return type of the C expr
   -> [C.Param]
   -- ^ Parameters of the C expr
-  -> [C.BlockItem]
+  -> String
+  -- ^ The C items
   -> TH.ExpQ
 inlineItems callSafety type_ cRetType cParams cItems = do
   funName <- TH.runIO uniqueCName
-  let defs = [C.cunit| $ty:cRetType $id:funName($params:cParams) { $items:cItems } |]
+  let decl = C.Declaration funName (C.declQuals cRetType) $
+             C.Proto (C.declType cRetType) cParams
+  let defs =
+        prettyOneLine decl ++ " {\n" ++
+        cItems ++ "\n}\n"
   inlineCode $ Code
     { codeCallSafety = callSafety
     , codeType = type_
@@ -476,28 +472,28 @@ inlineItems callSafety type_ cRetType cParams cItems = do
 -- @
 
 cexp :: TH.QuasiQuoter
-cexp = genericQuote False C.parseExp $ inlineExp TH.Safe
+cexp = genericQuote False $ inlineExp TH.Safe
 
 cexp_unsafe :: TH.QuasiQuoter
-cexp_unsafe = genericQuote False C.parseExp $ inlineExp TH.Unsafe
+cexp_unsafe = genericQuote False $ inlineExp TH.Unsafe
 
 cexp_pure :: TH.QuasiQuoter
-cexp_pure = genericQuote True C.parseExp $ inlineExp TH.Safe
+cexp_pure = genericQuote True $ inlineExp TH.Safe
 
 cexp_pure_unsafe :: TH.QuasiQuoter
-cexp_pure_unsafe = genericQuote True C.parseExp $ inlineExp TH.Unsafe
+cexp_pure_unsafe = genericQuote True $ inlineExp TH.Unsafe
 
 citems :: TH.QuasiQuoter
-citems = genericQuote False C.parseBlockItems $ inlineItems TH.Safe
+citems = genericQuote False $ inlineItems TH.Safe
 
 citems_unsafe :: TH.QuasiQuoter
-citems_unsafe = genericQuote False C.parseBlockItems $ inlineItems TH.Unsafe
+citems_unsafe = genericQuote False $ inlineItems TH.Unsafe
 
 citems_pure :: TH.QuasiQuoter
-citems_pure = genericQuote True C.parseBlockItems $ inlineItems TH.Safe
+citems_pure = genericQuote True $ inlineItems TH.Safe
 
 citems_pure_unsafe :: TH.QuasiQuoter
-citems_pure_unsafe = genericQuote True C.parseBlockItems $ inlineItems TH.Unsafe
+citems_pure_unsafe = genericQuote True $ inlineItems TH.Unsafe
 
 quoteCode
   :: (String -> TH.ExpQ)
@@ -511,23 +507,21 @@ quoteCode p = TH.QuasiQuoter
   }
 
 genericQuote
-  :: (Data a)
-  => Bool
+  :: Bool
   -- ^ Whether the call and the function pointers should be pure or not.
-  -> C.P a
-  -- ^ Parser producing something
-  -> (TH.TypeQ -> C.Type -> [C.Param] -> a -> TH.ExpQ)
+  -> (TH.TypeQ -> C.Declaration () -> [C.Param] -> String -> TH.ExpQ)
   -- ^ Function taking that something and building an expression, see
   -- 'inlineExp' for other args.
   -> TH.QuasiQuoter
-genericQuote pure p build = quoteCode $ \s -> do
+genericQuote pure build = quoteCode $ \s -> do
   initialiseModuleState_
   ctx <- getContext
-  (cType, cParams, cExp) <- runParserInQ s $ parseTypedC ctx p
-  hsType <- cToHs ctx cType
-  hsParams <- forM cParams $ \(cId, cTy) -> (,) cId <$> cToHs ctx cTy
+  (cType, cParams, cExp) <- runParserInQ s parseTypedC
+  hsType <- cToHs ctx $ C.declType cType
+  hsParams <- forM cParams $ \(C.Declaration cId _cQuals cTy) ->
+    (,) cId <$> cToHs ctx cTy
   let hsFunType = convertCFunSig hsType $ map snd hsParams
-  buildFunCall ctx (build hsFunType cType (map rebuildParam cParams) cExp) hsParams
+  buildFunCall ctx (build hsFunType cType cParams cExp) hsParams
   where
     cToHs :: Context -> C.Type -> TH.TypeQ
     cToHs ctx cTy = do
@@ -540,9 +534,7 @@ genericQuote pure p build = quoteCode $ \s -> do
     buildFunCall _ctx f [] =
       f
     buildFunCall ctx f ((name, hsTy) : params) = do
-      mbHsName <- TH.lookupValueName $ case name of
-        C.Id s _ -> s
-        C.AntiId _ _ -> error "inline-c: got antiquotation (buildFunCall)"
+      mbHsName <- TH.lookupValueName name
       case mbHsName of
         Nothing -> do
           error $ "Cannot capture Haskell variable " ++ show name ++
@@ -552,10 +544,6 @@ genericQuote pure p build = quoteCode $ \s -> do
           case mbExp of
             Nothing -> error  $ "Could not marshal variable " ++ show name
             Just exp' -> buildFunCall ctx [| $f $(return exp') |] params
-
-    rebuildParam :: (C.Id, C.Type) -> C.Param
-    rebuildParam (name, C.Type ds d loc) = C.Param (Just name) ds d loc
-    rebuildParam (_, _) = error "inline-c: got antiquotation (rebuildParam)"
 
     convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
     convertCFunSig retType params0 = do
@@ -569,5 +557,8 @@ genericQuote pure p build = quoteCode $ \s -> do
 ------------------------------------------------------------------------
 -- Utils
 
-pretty80 :: PrettyPrint.Pretty a => a -> String
-pretty80 = PrettyPrint.pretty 80 . PrettyPrint.ppr
+pretty80 :: PP.Pretty a => a -> String
+pretty80 x = PP.displayS (PP.renderPretty 0.8 80 (PP.pretty x)) ""
+
+prettyOneLine :: PP.Pretty a => a -> String
+prettyOneLine x = PP.displayS (PP.renderCompact (PP.pretty x)) ""
