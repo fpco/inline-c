@@ -1,39 +1,54 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Language.C.Types
   ( -- * Types
-    P.Id
-  , P.TypeQual(..)
-  , TypeSpec(..)
+    P.Id(..)
+  , P.StorageClassSpecifier(..)
+  , P.TypeQualifier(..)
+  , P.FunctionSpecifier(..)
+  , P.ArrayType(..)
+  , Specifiers(..)
   , Type(..)
-  , P.ArraySize
   , Sign(..)
-  , Declaration(..)
-  , Param
+  , ParameterDeclaration(..)
 
     -- * Parsing
-  , parseDeclaration
-  , parseAbstractDeclaration
+  , P.CParser
+  , parseParameterDeclaration
+  , parseParameterList
   , P.parseIdentifier
 
-    -- * Prettying
-  , prettyParams
+    -- * To english
+  , readParameterDeclaration
+  , readType
+
+    -- * Manual conversion
+  , convertParsedParameterDeclaration
+  -- , distillParameterDeclaration
   ) where
 
-import qualified Language.C.Types.Parse as P
-import           Control.Monad (when, unless, forM)
-import           Data.Maybe (fromMaybe)
+import           Control.Lens (_1, _2, _3, _4, (%=))
+import           Control.Monad (when, unless, forM_)
+import           Data.Functor ((<$>))
 import           Data.List (partition)
-import           Text.PrettyPrint.ANSI.Leijen ((<+>))
+import           Data.Maybe (fromMaybe)
+import           Control.Monad.State (execState)
+import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Data.Monoid ((<>))
-import           Text.Parsec.String
+
+import qualified Language.C.Types.Parse as P
 
 ------------------------------------------------------------------------
 -- Proper types
 
-data TypeSpec
+data TypeSpecifier
   = Void
   | Char (Maybe Sign)
   | Short Sign
@@ -48,11 +63,17 @@ data TypeSpec
   | Enum P.Id
   deriving (Show, Eq)
 
+data Specifiers = Specifiers
+  { storageClassSpecifiers :: [P.StorageClassSpecifier]
+  , typeQualifiers :: [P.TypeQualifier]
+  , functionSpecifiers :: [P.FunctionSpecifier]
+  } deriving (Show, Eq)
+
 data Type
-  = TypeSpec TypeSpec
-  | Ptr [P.TypeQual] Type
-  | Array (Maybe P.ArraySize) Type
-  | Proto Type [Param]
+  = TypeSpecifier Specifiers TypeSpecifier
+  | Ptr [P.TypeQualifier] Type
+  | Array P.ArrayType Type
+  | Proto Type [ParameterDeclaration]
   deriving (Show, Eq)
 
 data Sign
@@ -60,64 +81,73 @@ data Sign
   | Unsigned
   deriving (Show, Eq)
 
--- | If the 'P.Id' is not present, the declaration is abstract.
-data Declaration a = Declaration
-  { declId :: a
-  , declQuals :: [P.TypeQual]
-  , declType :: Type
-  } deriving (Show, Eq, Functor)
-
-type Param = Declaration P.Id
+data ParameterDeclaration = ParameterDeclaration
+  { parameterDeclarationId :: Maybe P.Id
+  , parameterDeclarationType :: Type
+  } deriving (Show, Eq)
 
 ------------------------------------------------------------------------
 -- Conversion
 
 data ConversionErr
-  = MultipleDataTypes [P.TypeSpec]
-  | IllegalSpecifiers String [P.TypeSpec]
+  = MultipleDataTypes [P.TypeSpecifier]
+  | IllegalSpecifiers String [P.TypeSpecifier]
   deriving (Show, Eq)
 
 failConversion :: ConversionErr -> Either ConversionErr a
 failConversion = Left
 
-processParsedDecl :: P.Declaration -> Either ConversionErr (Declaration (Maybe P.Id))
-processParsedDecl (P.Declaration (P.DeclarationSpec quals pTySpecs) declarator) = do
-  tySpec <- processParsedTySpecs pTySpecs
-  (s, type_) <- processDeclarator (TypeSpec tySpec) declarator
-  return $ Declaration s quals type_
+convertParsedParameterDeclaration
+  :: P.ParameterDeclaration -> Either ConversionErr ParameterDeclaration
+convertParsedParameterDeclaration P.ParameterDeclaration{..} = do
+  (specs, tySpec) <- convertParsedDeclarationSpecifiers parameterDeclarationSpecifiers
+  let baseTy = TypeSpecifier specs tySpec
+  (mbS, ty) <- case parameterDeclarationDeclarator of
+    Left decltor -> do
+      (s, ty) <- convertParsedDeclarator baseTy decltor
+      return (Just s, ty)
+    Right decltor -> (Nothing, ) <$> convertParsedAbstractDeclarator baseTy decltor
+  return $ ParameterDeclaration mbS ty
 
-processParsedTySpecs :: [P.TypeSpec] -> Either ConversionErr TypeSpec
-processParsedTySpecs pTySpecs = do
+convertParsedDeclarationSpecifiers
+  :: [P.DeclarationSpecifier] -> Either ConversionErr (Specifiers, TypeSpecifier)
+convertParsedDeclarationSpecifiers declSpecs = do
+  let (pStorage, pTySpecs, pTyQuals, pFunSpecs) = flip execState ([], [], [], []) $ do
+        forM_ (reverse declSpecs) $ \declSpec -> case declSpec of
+          P.StorageClassSpecifier x -> _1 %= (x :)
+          P.TypeSpecifier x -> _2 %= (x :)
+          P.TypeQualifier x -> _3 %= (x :)
+          P.FunctionSpecifier x -> _4 %= (x :)
   -- Split data type and specifiers
   let (dataTypes, specs) =
-        partition (\x -> not (x `elem` [P.Signed, P.Unsigned, P.Long, P.Short])) pTySpecs
+        partition (\x -> not (x `elem` [P.SIGNED, P.UNSIGNED, P.LONG, P.SHORT])) pTySpecs
   let illegalSpecifiers s = failConversion $ IllegalSpecifiers s specs
   -- Find out sign, if present
-  mbSign0 <- case filter (== P.Signed) specs of
+  mbSign0 <- case filter (== P.SIGNED) specs of
     []  -> return Nothing
     [_] -> return $ Just Signed
     _:_ -> illegalSpecifiers "conflicting/duplicate sign information"
-  mbSign <- case (mbSign0, filter (== P.Unsigned) specs) of
+  mbSign <- case (mbSign0, filter (== P.UNSIGNED) specs) of
     (Nothing, []) -> return Nothing
     (Nothing, [_]) -> return $ Just Unsigned
     (Just b, []) -> return $ Just b
     _ -> illegalSpecifiers "conflicting/duplicate sign information"
   let sign = fromMaybe Signed mbSign
   -- Find out length
-  let longs = length $ filter (== P.Long) specs
-  let shorts = length $ filter (== P.Short) specs
+  let longs = length $ filter (== P.LONG) specs
+  let shorts = length $ filter (== P.SHORT) specs
   when (longs > 0 && shorts > 0) $ illegalSpecifiers "both long and short"
   -- Find out data type
   dataType <- case dataTypes of
     [x] -> return x
-    [] | longs > 0 || shorts > 0 -> return P.Int
+    [] | longs > 0 || shorts > 0 -> return P.INT
     _ -> failConversion $ MultipleDataTypes dataTypes
   -- Check if things are compatible with one another
   let checkNoSpecs =
         unless (null specs) $ illegalSpecifiers "expecting no specifiers"
   let checkNoLength =
         when (longs > 0 || shorts > 0) $ illegalSpecifiers "unexpected long/short"
-  case dataType of
+  tySpec <- case dataType of
     P.TypeName s -> do
       checkNoSpecs
       return $ TypeName s
@@ -127,78 +157,157 @@ processParsedTySpecs pTySpecs = do
     P.Enum s -> do
       checkNoSpecs
       return $ Enum s
-    P.Void -> do
+    P.VOID -> do
       checkNoSpecs
       return Void
-    P.Char -> do
+    P.CHAR -> do
       checkNoLength
       return $ Char mbSign
-    P.Int | longs == 0 && shorts == 0 -> do
+    P.INT | longs == 0 && shorts == 0 -> do
       return $ Int sign
-    P.Int | longs == 1 -> do
+    P.INT | longs == 1 -> do
       return $ Long sign
-    P.Int | longs == 2 -> do
+    P.INT | longs == 2 -> do
       return $ LLong sign
-    P.Int | shorts == 1 -> do
+    P.INT | shorts == 1 -> do
       return $ Short sign
-    P.Int -> do
+    P.INT -> do
       illegalSpecifiers "too many long/short"
-    P.Float -> do
+    P.FLOAT -> do
       checkNoLength
       return Float
-    P.Double -> do
+    P.DOUBLE -> do
       if longs == 1
         then return LDouble
         else do
-          checkNoLength         -- TODO `long double` is acceptable
+          checkNoLength
           return Double
     _ -> do
-      error $ "processParsedDecl: impossible: " ++ show dataType
+      error $ "convertParsedDeclarationSpecifiers impossible: " ++ show dataType
+  return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
 
-processDeclarator
-  :: Type -> P.Declarator -> Either ConversionErr (Maybe P.Id, Type)
-processDeclarator ty declarator0 = case declarator0 of
-  P.DeclaratorRoot mbS -> return (mbS, ty)
-  P.Ptr quals declarator -> processDeclarator (Ptr quals ty) declarator
-  P.Array mbSize declarator -> processDeclarator (Array mbSize ty) declarator
-  P.Proto declarator declarations -> do
-    args <- forM declarations $ \pDecl -> do
-      Declaration (Just s) quals ty' <- processParsedDecl pDecl
-      return $ Declaration s quals ty'
-    processDeclarator (Proto ty args) declarator
+convertParsedDeclarator
+  :: Type -> P.Declarator -> Either ConversionErr (P.Id, Type)
+convertParsedDeclarator ty0 (P.Declarator ptrs0 directDecltor) = go ty0 ptrs0
+  where
+    go :: Type -> [P.Pointer] -> Either ConversionErr (P.Id, Type)
+    go ty [] = goDirect ty directDecltor
+    go ty (P.Pointer quals : ptrs) = go (Ptr quals ty) ptrs
+
+    goDirect :: Type -> P.DirectDeclarator -> Either ConversionErr (P.Id, Type)
+    goDirect ty direct0 = case direct0 of
+      P.DeclaratorRoot s -> return (s, ty)
+      P.ArrayOrProto direct (P.Array arrayType) ->
+        goDirect (Array arrayType ty) direct
+      P.ArrayOrProto direct (P.Proto params) -> do
+        params' <- mapM convertParsedParameterDeclaration params
+        goDirect (Proto ty params') direct
+      P.DeclaratorParens decltor ->
+        convertParsedDeclarator ty decltor
+
+convertParsedAbstractDeclarator
+  :: Type -> P.AbstractDeclarator -> Either ConversionErr Type
+convertParsedAbstractDeclarator ty0 (P.AbstractDeclarator ptrs0 mbDirectDecltor) =
+  go ty0 ptrs0
+  where
+    go :: Type -> [P.Pointer] -> Either ConversionErr Type
+    go ty [] = case mbDirectDecltor of
+      Nothing -> return ty
+      Just directDecltor -> goDirect ty directDecltor
+    go ty (P.Pointer quals : ptrs) = go (Ptr quals ty) ptrs
+
+    goDirect :: Type -> P.DirectAbstractDeclarator -> Either ConversionErr Type
+    goDirect ty direct0 = case direct0 of
+      P.ArrayOrProtoThere direct (P.Array arrayType) ->
+        goDirect (Array arrayType ty) direct
+      P.ArrayOrProtoThere direct (P.Proto params) -> do
+        params' <- mapM convertParsedParameterDeclaration params
+        goDirect (Proto ty params') direct
+      P.ArrayOrProtoHere (P.Array arrayType) ->
+        return $ Array arrayType ty
+      P.ArrayOrProtoHere (P.Proto params) -> do
+        params' <- mapM convertParsedParameterDeclaration params
+        return $ Proto ty params'
+      P.ParensAbstractDeclarator decltor ->
+        convertParsedAbstractDeclarator ty decltor
 
 ------------------------------------------------------------------------
--- Parsing
+-- Distilling
 
-parseDeclaration :: Parser (Declaration P.Id)
-parseDeclaration = do
-  pDecl <- P.parseDeclaration
-  case processParsedDecl pDecl of
-    Left e -> fail $ PP.displayS (PP.renderPretty 0.8 80 (PP.pretty e)) ""
-    Right decl -> do
-      Declaration (Just s) quals ty <- return decl
-      return $ Declaration s quals ty
-
-parseAbstractDeclaration :: Parser (Declaration ())
-parseAbstractDeclaration = do
-  pDecl <- P.parseAbstractDeclaration
-  case processParsedDecl pDecl of
-    Left e -> fail $ PP.displayS (PP.renderPretty 0.8 80 (PP.pretty e)) ""
-    Right decl -> do
-      Declaration Nothing quals ty <- return decl
-      return $ Declaration () quals ty
+-- distillParameterDeclaration :: ParameterDeclaration -> ParameterDeclaration
+-- distillParameterDeclaration (ParameterDeclaration mbId ty00) =
+--     uncurry ParameterDeclaration $ case mbId of
+--       Nothing -> over _2 Right $ goAbstract ty00
+--       Just id' -> over _2 Left $ goConcrete id' ty00
+--   where
+--     goAbstract
+--        :: Type -> ([P.DeclarationSpecifier], P.AbstractDeclarator)
+--     goAbstract ty0 = case ty0 of
+      
 
 ------------------------------------------------------------------------
--- Pretty printing
+-- To english
 
-instance PP.Pretty ConversionErr where
-  pretty e = case e of
-    MultipleDataTypes types ->
-      "Multiple data types in declaration:" <+> PP.prettyList types
-    IllegalSpecifiers msg specs ->
-      "Illegal specifiers," <+> PP.text msg <> ":" <> PP.prettyList specs
+readParameterDeclaration :: ParameterDeclaration -> PP.Doc
+readParameterDeclaration (ParameterDeclaration mbId ty) =
+  let idDoc = case mbId of
+        Nothing -> ""
+        Just id' -> PP.pretty id' <+> "is a "
+  in idDoc <> readType ty
 
-instance PP.Pretty TypeSpec where
+readType :: Type -> PP.Doc
+readType ty0 = case ty0 of
+  TypeSpecifier specs tySpec -> engSpecs specs <> PP.pretty tySpec
+  Ptr quals ty -> engQuals quals <> "ptr to" <+> readType ty
+  Array arrTy ty -> engArrTy arrTy <> "of" <+> readType ty
+  Proto retTy params ->
+     "function from" <+> engParams params <> "returning" <+> readType retTy
+  where
+    engSpecs (Specifiers [] [] []) = ""
+    engSpecs (Specifiers x y z) =
+      let xs = map P.StorageClassSpecifier x ++ map P.TypeQualifier y ++
+               map P.FunctionSpecifier z
+      in PP.hsep (map PP.pretty xs) <> " "
+
+    engQuals = PP.hsep . map PP.pretty
+
+    engArrTy arrTy = case arrTy of
+      P.VariablySized -> "variably sized array "
+      P.SizedByInteger n -> "array of size" <+> PP.text (show n) <> " "
+      P.SizedByIdentifier s -> "array of size" <+> PP.pretty s <> " "
+      P.Unsized -> "array "
+
+    engParams [] = ""
+    engParams params0 = "(" <> go params0 <> ") "
+      where
+        go xs = case xs of
+          [] -> ""
+          [x] -> readParameterDeclaration x
+          (x:xs') -> readParameterDeclaration x <> "," <+> go xs'
+
+------------------------------------------------------------------------
+-- Convenient parsing
+
+convertParsedParameterDeclaration'
+  :: P.CParser m => P.ParameterDeclaration -> m ParameterDeclaration
+convertParsedParameterDeclaration' pDecl =
+  case convertParsedParameterDeclaration pDecl of
+    Left err -> fail $ pretty80 $
+      "Error while parsing declaration:" </> PP.pretty err </> PP.pretty pDecl
+    Right x -> return x
+
+parseParameterDeclaration :: P.CParser m => m ParameterDeclaration
+parseParameterDeclaration =
+  convertParsedParameterDeclaration' =<< P.parseParameterDeclaration
+
+parseParameterList :: P.CParser m => m [ParameterDeclaration]
+parseParameterList =
+  mapM convertParsedParameterDeclaration' =<< P.parseParameterList
+
+------------------------------------------------------------------------
+-- Pretty
+
+instance PP.Pretty TypeSpecifier where
   pretty tySpec = case tySpec of
     Void -> "void"
     Char Nothing -> "char"
@@ -215,53 +324,19 @@ instance PP.Pretty TypeSpec where
     Float -> "float"
     Double -> "double"
     LDouble -> "long double"
-    TypeName s -> PP.text s
-    Struct s -> "struct" <+> PP.text s
-    Enum s -> "enum" <+> PP.text s
+    TypeName s -> PP.pretty s
+    Struct s -> "struct" <+> PP.pretty s
+    Enum s -> "enum" <+> PP.pretty s
 
-instance PP.Pretty (Declaration ()) where
-  pretty (Declaration () quals cTy) =
-    PP.hsep (map PP.pretty quals) <+> PP.pretty cTy
+instance PP.Pretty ConversionErr where
+  pretty err = case err of
+    MultipleDataTypes specs ->
+      "Multiple data types in" </> PP.prettyList specs
+    IllegalSpecifiers s specs ->
+      "Illegal specifiers, " <+> PP.text s <+> ", in" </> PP.prettyList specs
 
-instance PP.Pretty (Declaration P.Id) where
-  pretty (Declaration s quals cTy) =
-    PP.hsep (map PP.pretty quals) <+> prettyType (Just s) cTy
+------------------------------------------------------------------------
+-- Utils
 
-instance PP.Pretty Type where
-  pretty = prettyType Nothing
-
-data PrettyDirection
-  = PrettyingRight
-  | PrettyingLeft
-  deriving (Eq, Show)
-
-prettyParams :: [Param] -> PP.Doc
-prettyParams = go . map PP.pretty
-  where
-    go [] = ""
-    go (x : xs) = case xs of
-      []  -> x
-      _:_ -> x <> "," <+> go xs
-
-prettyType :: Maybe P.Id -> Type -> PP.Doc
-prettyType mbId ty00 =
-  let base = case mbId of
-        Nothing -> ""
-        Just s -> PP.text s
-  in go base PrettyingRight ty00
-  where
-    go :: PP.Doc -> PrettyDirection -> Type -> PP.Doc
-    go base dir ty0 = case ty0 of
-      TypeSpec spec -> PP.pretty spec <+> base
-      Ptr quals ty ->
-        let spacing = if null quals then "" else " "
-        in go (PP.hsep (map PP.pretty quals) <> spacing <> "*" <> base) PrettyingLeft ty
-      Array mbSize ty ->
-        let parens' = if dir == PrettyingLeft then PP.parens else id
-            sizeDoc = case mbSize of
-              Nothing -> ""
-              Just i -> PP.text $ show i
-        in go (parens' base <> "[" <> sizeDoc <> "]") PrettyingRight ty
-      Proto retType pars ->
-        let parens' = if dir == PrettyingLeft then PP.parens else id
-        in go (parens' base <> PP.parens (prettyParams pars)) PrettyingRight retType
+pretty80 :: PP.Doc -> String
+pretty80 x = PP.displayS (PP.renderPretty 0.8 80 x) ""
