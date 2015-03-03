@@ -28,12 +28,13 @@ module Language.C.Types
   , readParameterDeclaration
   , readType
 
-    -- * Manual conversion
-  , convertParsedParameterDeclaration
-  -- , distillParameterDeclaration
+    -- * Back and forth
+  , UntangleErr(..)
+  , untangleParameterDeclaration
+  , tangleParameterDeclaration
   ) where
 
-import           Control.Lens (_1, _2, _3, _4, (%=))
+import           Control.Lens (_1, _2, _3, _4, (%=), over)
 import           Control.Monad (when, unless, forM_)
 import           Data.Functor ((<$>))
 import           Data.List (partition)
@@ -89,29 +90,29 @@ data ParameterDeclaration = ParameterDeclaration
 ------------------------------------------------------------------------
 -- Conversion
 
-data ConversionErr
+data UntangleErr
   = MultipleDataTypes [P.TypeSpecifier]
   | IllegalSpecifiers String [P.TypeSpecifier]
   deriving (Show, Eq)
 
-failConversion :: ConversionErr -> Either ConversionErr a
+failConversion :: UntangleErr -> Either UntangleErr a
 failConversion = Left
 
-convertParsedParameterDeclaration
-  :: P.ParameterDeclaration -> Either ConversionErr ParameterDeclaration
-convertParsedParameterDeclaration P.ParameterDeclaration{..} = do
-  (specs, tySpec) <- convertParsedDeclarationSpecifiers parameterDeclarationSpecifiers
+untangleParameterDeclaration
+  :: P.ParameterDeclaration -> Either UntangleErr ParameterDeclaration
+untangleParameterDeclaration P.ParameterDeclaration{..} = do
+  (specs, tySpec) <- untangleDeclarationSpecifiers parameterDeclarationSpecifiers
   let baseTy = TypeSpecifier specs tySpec
   (mbS, ty) <- case parameterDeclarationDeclarator of
     Left decltor -> do
-      (s, ty) <- convertParsedDeclarator baseTy decltor
+      (s, ty) <- untangleDeclarator baseTy decltor
       return (Just s, ty)
-    Right decltor -> (Nothing, ) <$> convertParsedAbstractDeclarator baseTy decltor
+    Right decltor -> (Nothing, ) <$> untangleAbstractDeclarator baseTy decltor
   return $ ParameterDeclaration mbS ty
 
-convertParsedDeclarationSpecifiers
-  :: [P.DeclarationSpecifier] -> Either ConversionErr (Specifiers, TypeSpecifier)
-convertParsedDeclarationSpecifiers declSpecs = do
+untangleDeclarationSpecifiers
+  :: [P.DeclarationSpecifier] -> Either UntangleErr (Specifiers, TypeSpecifier)
+untangleDeclarationSpecifiers declSpecs = do
   let (pStorage, pTySpecs, pTyQuals, pFunSpecs) = flip execState ([], [], [], []) $ do
         forM_ (reverse declSpecs) $ \declSpec -> case declSpec of
           P.StorageClassSpecifier x -> _1 %= (x :)
@@ -183,67 +184,157 @@ convertParsedDeclarationSpecifiers declSpecs = do
           checkNoLength
           return Double
     _ -> do
-      error $ "convertParsedDeclarationSpecifiers impossible: " ++ show dataType
+      error $ "untangleDeclarationSpecifiers impossible: " ++ show dataType
   return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
 
-convertParsedDeclarator
-  :: Type -> P.Declarator -> Either ConversionErr (P.Id, Type)
-convertParsedDeclarator ty0 (P.Declarator ptrs0 directDecltor) = go ty0 ptrs0
+untangleDeclarator
+  :: Type -> P.Declarator -> Either UntangleErr (P.Id, Type)
+untangleDeclarator ty0 (P.Declarator ptrs0 directDecltor) = go ty0 ptrs0
   where
-    go :: Type -> [P.Pointer] -> Either ConversionErr (P.Id, Type)
+    go :: Type -> [P.Pointer] -> Either UntangleErr (P.Id, Type)
     go ty [] = goDirect ty directDecltor
     go ty (P.Pointer quals : ptrs) = go (Ptr quals ty) ptrs
 
-    goDirect :: Type -> P.DirectDeclarator -> Either ConversionErr (P.Id, Type)
+    goDirect :: Type -> P.DirectDeclarator -> Either UntangleErr (P.Id, Type)
     goDirect ty direct0 = case direct0 of
       P.DeclaratorRoot s -> return (s, ty)
       P.ArrayOrProto direct (P.Array arrayType) ->
         goDirect (Array arrayType ty) direct
       P.ArrayOrProto direct (P.Proto params) -> do
-        params' <- mapM convertParsedParameterDeclaration params
+        params' <- mapM untangleParameterDeclaration params
         goDirect (Proto ty params') direct
       P.DeclaratorParens decltor ->
-        convertParsedDeclarator ty decltor
+        untangleDeclarator ty decltor
 
-convertParsedAbstractDeclarator
-  :: Type -> P.AbstractDeclarator -> Either ConversionErr Type
-convertParsedAbstractDeclarator ty0 (P.AbstractDeclarator ptrs0 mbDirectDecltor) =
+untangleAbstractDeclarator
+  :: Type -> P.AbstractDeclarator -> Either UntangleErr Type
+untangleAbstractDeclarator ty0 (P.AbstractDeclarator ptrs0 mbDirectDecltor) =
   go ty0 ptrs0
   where
-    go :: Type -> [P.Pointer] -> Either ConversionErr Type
+    go :: Type -> [P.Pointer] -> Either UntangleErr Type
     go ty [] = case mbDirectDecltor of
       Nothing -> return ty
       Just directDecltor -> goDirect ty directDecltor
     go ty (P.Pointer quals : ptrs) = go (Ptr quals ty) ptrs
 
-    goDirect :: Type -> P.DirectAbstractDeclarator -> Either ConversionErr Type
+    goDirect :: Type -> P.DirectAbstractDeclarator -> Either UntangleErr Type
     goDirect ty direct0 = case direct0 of
       P.ArrayOrProtoThere direct (P.Array arrayType) ->
         goDirect (Array arrayType ty) direct
       P.ArrayOrProtoThere direct (P.Proto params) -> do
-        params' <- mapM convertParsedParameterDeclaration params
+        params' <- mapM untangleParameterDeclaration params
         goDirect (Proto ty params') direct
       P.ArrayOrProtoHere (P.Array arrayType) ->
         return $ Array arrayType ty
       P.ArrayOrProtoHere (P.Proto params) -> do
-        params' <- mapM convertParsedParameterDeclaration params
+        params' <- mapM untangleParameterDeclaration params
         return $ Proto ty params'
       P.ParensAbstractDeclarator decltor ->
-        convertParsedAbstractDeclarator ty decltor
+        untangleAbstractDeclarator ty decltor
 
 ------------------------------------------------------------------------
--- Distilling
+-- Tangleing
 
--- distillParameterDeclaration :: ParameterDeclaration -> ParameterDeclaration
--- distillParameterDeclaration (ParameterDeclaration mbId ty00) =
---     uncurry ParameterDeclaration $ case mbId of
---       Nothing -> over _2 Right $ goAbstract ty00
---       Just id' -> over _2 Left $ goConcrete id' ty00
---   where
---     goAbstract
---        :: Type -> ([P.DeclarationSpecifier], P.AbstractDeclarator)
---     goAbstract ty0 = case ty0 of
-      
+tangleParameterDeclaration :: ParameterDeclaration -> P.ParameterDeclaration
+tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
+    uncurry P.ParameterDeclaration $ case mbId of
+      Nothing -> over _2 Right $ goAbstractDirect ty00 Nothing
+      Just id' -> over _2 Left $ goConcreteDirect ty00 $ P.DeclaratorRoot id'
+  where
+    goAbstractDirect
+      :: Type -> Maybe P.DirectAbstractDeclarator
+      -> ([P.DeclarationSpecifier], P.AbstractDeclarator)
+    goAbstractDirect ty0 mbDirect = case ty0 of
+      TypeSpecifier specifiers tySpec ->
+        let declSpecs = tangleTypeSpecifier specifiers tySpec
+        in (declSpecs, P.AbstractDeclarator [] mbDirect)
+      Ptr tyQuals ty ->
+        goAbstract ty [P.Pointer tyQuals] mbDirect
+      Array arrType ty ->
+        let arr = P.Array arrType
+        in case mbDirect of
+          Nothing ->
+            goAbstractDirect ty $ Just $ P.ArrayOrProtoHere arr
+          Just decltor ->
+            goAbstractDirect ty $ Just $ P.ArrayOrProtoThere decltor arr
+      Proto ty params ->
+        let proto = P.Proto $ map tangleParameterDeclaration params
+        in case mbDirect of
+          Nothing ->
+            goAbstractDirect ty $ Just $ P.ArrayOrProtoHere proto
+          Just decltor ->
+            goAbstractDirect ty $ Just $ P.ArrayOrProtoThere decltor proto
+
+    goAbstract
+      :: Type -> [P.Pointer] -> Maybe P.DirectAbstractDeclarator
+      -> ([P.DeclarationSpecifier], P.AbstractDeclarator)
+    goAbstract ty0 ptrs mbDirect = case ty0 of
+      TypeSpecifier specifiers tySpec ->
+        let declSpecs = tangleTypeSpecifier specifiers tySpec
+        in (declSpecs, P.AbstractDeclarator ptrs mbDirect)
+      Ptr tyQuals ty ->
+        goAbstract ty (P.Pointer tyQuals : ptrs) mbDirect
+      Array{} ->
+        goAbstractDirect ty0 $ Just $ P.ParensAbstractDeclarator $
+          P.AbstractDeclarator ptrs mbDirect
+      Proto{} ->
+        goAbstractDirect ty0 $ Just $ P.ParensAbstractDeclarator $
+          P.AbstractDeclarator ptrs mbDirect
+
+    goConcreteDirect
+      :: Type -> P.DirectDeclarator
+      -> ([P.DeclarationSpecifier], P.Declarator)
+    goConcreteDirect ty0 direct = case ty0 of
+      TypeSpecifier specifiers tySpec ->
+        let declSpecs = tangleTypeSpecifier specifiers tySpec
+        in (declSpecs, P.Declarator [] direct)
+      Ptr tyQuals ty ->
+        goConcrete ty [P.Pointer tyQuals] direct
+      Array arrType ty ->
+        goConcreteDirect ty $ P.ArrayOrProto direct $ P.Array arrType
+      Proto ty params ->
+        goConcreteDirect ty $ P.ArrayOrProto direct $
+          P.Proto $ map tangleParameterDeclaration params
+
+    goConcrete
+      :: Type -> [P.Pointer] -> P.DirectDeclarator
+      -> ([P.DeclarationSpecifier], P.Declarator)
+    goConcrete ty0 ptrs direct = case ty0 of
+      TypeSpecifier specifiers tySpec ->
+        let declSpecs = tangleTypeSpecifier specifiers tySpec
+        in (declSpecs, P.Declarator ptrs direct)
+      Ptr tyQuals ty ->
+        goConcrete ty (P.Pointer tyQuals : ptrs) direct
+      Array{} ->
+        goConcreteDirect ty0 $ P.DeclaratorParens $ P.Declarator ptrs direct
+      Proto{} ->
+        goConcreteDirect ty0 $ P.DeclaratorParens $ P.Declarator ptrs direct
+
+tangleTypeSpecifier :: Specifiers -> TypeSpecifier -> [P.DeclarationSpecifier]
+tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
+  let pTySpecs = case tySpec of
+        Void -> [P.VOID]
+        Char Nothing -> [P.CHAR]
+        Char (Just Signed) -> [P.SIGNED, P.CHAR]
+        Char (Just Unsigned) -> [P.UNSIGNED, P.CHAR]
+        Short Signed -> [P.SHORT]
+        Short Unsigned -> [P.UNSIGNED, P.SHORT]
+        Int Signed -> [P.INT]
+        Int Unsigned -> [P.UNSIGNED]
+        Long Signed -> [P.LONG]
+        Long Unsigned -> [P.UNSIGNED, P.LONG]
+        LLong Signed -> [P.LONG, P.LONG]
+        LLong Unsigned -> [P.UNSIGNED, P.LONG, P.LONG]
+        Float -> [P.FLOAT]
+        Double -> [P.DOUBLE]
+        LDouble -> [P.LONG, P.DOUBLE]
+        TypeName s -> [P.TypeName s]
+        Struct s -> [P.Struct s]
+        Enum s -> [P.Enum s]
+  in map P.StorageClassSpecifier storages ++
+     map P.TypeQualifier tyQuals ++
+     map P.FunctionSpecifier funSpecs ++
+     map P.TypeSpecifier pTySpecs
 
 ------------------------------------------------------------------------
 -- To english
@@ -288,21 +379,21 @@ readType ty0 = case ty0 of
 ------------------------------------------------------------------------
 -- Convenient parsing
 
-convertParsedParameterDeclaration'
+untangleParameterDeclaration'
   :: P.CParser m => P.ParameterDeclaration -> m ParameterDeclaration
-convertParsedParameterDeclaration' pDecl =
-  case convertParsedParameterDeclaration pDecl of
+untangleParameterDeclaration' pDecl =
+  case untangleParameterDeclaration pDecl of
     Left err -> fail $ pretty80 $
       "Error while parsing declaration:" </> PP.pretty err </> PP.pretty pDecl
     Right x -> return x
 
 parseParameterDeclaration :: P.CParser m => m ParameterDeclaration
 parseParameterDeclaration =
-  convertParsedParameterDeclaration' =<< P.parseParameterDeclaration
+  untangleParameterDeclaration' =<< P.parseParameterDeclaration
 
 parseParameterList :: P.CParser m => m [ParameterDeclaration]
 parseParameterList =
-  mapM convertParsedParameterDeclaration' =<< P.parseParameterList
+  mapM untangleParameterDeclaration' =<< P.parseParameterList
 
 ------------------------------------------------------------------------
 -- Pretty
@@ -328,7 +419,7 @@ instance PP.Pretty TypeSpecifier where
     Struct s -> "struct" <+> PP.pretty s
     Enum s -> "enum" <+> PP.pretty s
 
-instance PP.Pretty ConversionErr where
+instance PP.Pretty UntangleErr where
   pretty err = case err of
     MultipleDataTypes specs ->
       "Multiple data types in" </> PP.prettyList specs
@@ -340,3 +431,6 @@ instance PP.Pretty ConversionErr where
 
 pretty80 :: PP.Doc -> String
 pretty80 x = PP.displayS (PP.renderPretty 0.8 80 x) ""
+
+------------------------------------------------------------------------
+-- Tests

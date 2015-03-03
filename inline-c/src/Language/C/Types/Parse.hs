@@ -280,9 +280,7 @@ abstract_declarator = do
   -- If there are no pointers, there must be an abstract declarator.
   let p = if null ptrs
         then Just <$> direct_abstract_declarator
-        else Just <$> try direct_abstract_declarator <|>
-             return Nothing <?>
-             "direct abstract declarator"
+        else (Just <$> try direct_abstract_declarator) <|> return Nothing
   AbstractDeclarator ptrs <$> p
 
 data DirectAbstractDeclarator
@@ -508,12 +506,7 @@ instance QC.Arbitrary ParameterDeclaration where
   arbitrary = ParameterDeclaration <$> QC.listOf1 QC.arbitrary <*> QC.arbitrary
 
 instance QC.Arbitrary AbstractDeclarator where
-  arbitrary = do
-    ptrs <- QC.arbitrary
-    let g = if null ptrs
-          then Just <$> QC.arbitrary
-          else QC.arbitrary
-    AbstractDeclarator ptrs <$> g
+  arbitrary = AbstractDeclarator <$> QC.arbitrary <*> QC.arbitrary
 
 instance QC.Arbitrary DirectAbstractDeclarator where
   arbitrary = QC.oneof
@@ -610,12 +603,7 @@ instance Monad m => SC.Serial m ParameterDeclaration where
       ParameterDeclaration specs <$> SC.series
 
 instance Monad m => SC.Serial m AbstractDeclarator where
-  series = SC.decDepth $ do
-    SC.series >>- \ptrs -> do
-      let g = if null ptrs
-            then Just <$> SC.series
-            else SC.series
-      AbstractDeclarator ptrs <$> g
+  series = SC.cons2 AbstractDeclarator
 
 instance Monad m => SC.Serial m DirectAbstractDeclarator where
   series =
