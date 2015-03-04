@@ -26,7 +26,7 @@ foreign import ccall "francescos_mul" francescos_mul :: Int -> Int -> Int
 main :: IO ()
 main = Hspec.hspec $ do
   -- tests
-  Hspec.describe "TH" $ do
+  Hspec.describe "TH integration" $ do
     Hspec.it "inlineCode" $ do
       let c_add = $(inlineCode $ Code
             TH.Unsafe                   -- Call safety
