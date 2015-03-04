@@ -5,29 +5,61 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+-- | A parser for C99 declarations, with some caveats:
+--
+-- * Array sizes can only be @*@, @n@ (where n is a positive integer),
+--   @x@ (where @x@ is a C identifier), while in C99 they can be
+--   arbitrary expressions.  See the @'ArrayType'@ data type.
+--
+-- * @_Bool@, @_Complex@, and @_Imaginary@ are not present.
+--
+-- * Untyped parameter lists (pre-K&R C) are not allowed.
+--
+-- The parser is incremental and generic (see 'CParser').  'PP.Pretty',
+-- 'QC.Arbitrary', and 'SC.Serial' instances are provided for all the
+-- data types.
+--
+-- The entry point if you want to parse C declarations is
+-- @'parameter_declaration'@.
 module Language.C.Types.Parse
-  ( CParser
+  ( -- * Parser type
+    CParser
+  , runCParser
 
-    -- * Types
+    -- * Types and parsing
   , Id(..)
+  , identifier
+  , identifier_no_lex
   , DeclarationSpecifier(..)
+  , declaration_specifiers
   , StorageClassSpecifier(..)
+  , storage_class_specifier
   , TypeSpecifier(..)
+  , type_specifier
   , TypeQualifier(..)
+  , type_qualifier
   , FunctionSpecifier(..)
+  , function_specifier
   , Declarator(..)
+  , declarator
   , DirectDeclarator(..)
+  , direct_declarator
   , ArrayOrProto(..)
+  , array_or_proto
   , ArrayType(..)
+  , array_type
   , Pointer(..)
+  , pointer
   , ParameterDeclaration(..)
+  , parameter_declaration
+  , parameter_list
   , AbstractDeclarator(..)
+  , abstract_declarator
   , DirectAbstractDeclarator(..)
+  , direct_abstract_declarator
 
-    -- * Parsing
-  , parseIdentifier
-  , parseParameterDeclaration
-  , parseParameterList
+    -- * YACC grammar
+    -- $yacc
   ) where
 
 import           Control.Applicative (Applicative, (<*>), (<|>))
@@ -53,14 +85,36 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 ------------------------------------------------------------------------
 -- Parser
 
+-- | All the parsing is done using the type-classes provided by the
+-- @parsers@ package.  You can use the parsing routines with any of the
+-- parsers that implement the classes, such as @parsec@ or @trifecta@.
+--
+-- The function in the @'MonadReader' ('Id' -> 'Bool')@ constraint is
+-- used to determine what is a type name and what not (if the function
+-- returns @'True'@ the given @'Id'@ will be assumed to be a type name).
+--
+-- This knowledge is required for parsing C, see
+-- <http://en.wikipedia.org/wiki/The_lexer_hack>.
 type CParser m = (Monad m, Functor m, Applicative m, MonadPlus m, Parsing m, CharParsing m, TokenParsing m, LookAheadParsing m, MonadReader (Id -> Bool) m)
+
+-- | Runs a @'CParser'@ using @parsec@.
+runCParser
+  :: (Id -> Bool)
+  -- ^ Function determining if an identifier is a type name.
+  -> String
+  -- ^ Source name.
+  -> String
+  -- ^ String to parse
+  -> (forall m. CParser m => m a)
+  -> Either Parsec.ParseError a
+runCParser isTypeName fn s p = Parsec.parse (runReaderT p isTypeName) fn s
 
 newtype Id = Id {unId :: String}
   deriving (Eq, Ord, Show)
 
 instance IsString Id where
   fromString s =
-    let res = Parsec.parse (runReaderT parseIdentifier (const False)) "fromString" s
+    let res = Parsec.parse (runReaderT identifier_no_lex (const False)) "fromString" s
     in case res of
       Left _err -> error $ "Id fromString: invalid string " ++ show s
       Right x -> x
@@ -209,6 +263,12 @@ data ArrayOrProto
   | Proto [ParameterDeclaration] -- We don't include old prototypes.
   deriving (Eq, Show)
 
+array_or_proto :: CParser m => m ArrayOrProto
+array_or_proto = msum
+  [ Array <$> brackets array_type
+  , Proto <$> parens parameter_list
+  ]
+
 -- TODO handle more stuff in array brackets
 data ArrayType
   = VariablySized
@@ -216,6 +276,14 @@ data ArrayType
   | SizedByInteger Integer
   | SizedByIdentifier Id
   deriving (Eq, Show)
+
+array_type :: CParser m => m ArrayType
+array_type = msum
+  [ VariablySized <$ symbolic '*'
+  , SizedByInteger <$> natural
+  , SizedByIdentifier <$> identifier
+  , return Unsized
+  ]
 
 direct_declarator :: CParser m => m DirectDeclarator
 direct_declarator =
@@ -225,20 +293,6 @@ direct_declarator =
         ]
       aops <- many array_or_proto
       return $ foldl ArrayOrProto ddecltor aops)
-
-array_or_proto :: CParser m => m ArrayOrProto
-array_or_proto = msum
-  [ Array <$> brackets array_type
-  , Proto <$> parens parameter_list
-  ]
-
-array_type :: CParser m => m ArrayType
-array_type = msum
-  [ VariablySized <$ symbolic '*'
-  , SizedByInteger <$> natural
-  , SizedByIdentifier <$> identifier
-  , return Unsized
-  ]
 
 data Pointer
   = Pointer [TypeQualifier]
@@ -286,37 +340,28 @@ abstract_declarator = do
 data DirectAbstractDeclarator
   = ArrayOrProtoHere ArrayOrProto
   | ArrayOrProtoThere DirectAbstractDeclarator ArrayOrProto
-  | ParensAbstractDeclarator AbstractDeclarator
+  | AbstractDeclaratorParens AbstractDeclarator
   deriving (Eq, Show)
 
 direct_abstract_declarator :: CParser m => m DirectAbstractDeclarator
 direct_abstract_declarator =
   (do ddecltor <- msum
         [ try (ArrayOrProtoHere <$> array_or_proto)
-        , ParensAbstractDeclarator <$> parens abstract_declarator
+        , AbstractDeclaratorParens <$> parens abstract_declarator
         ] <?> "array, prototype, or parenthesised abstract declarator"
       aops <- many array_or_proto
       return $ foldl ArrayOrProtoThere ddecltor aops)
 
-------------------------------------------------------------------------
--- Parse exports
-
 -- | This parser parses an 'Id' and nothing else -- it does not consume
 -- trailing spaces and the like.
-parseIdentifier :: CParser m => m Id
-parseIdentifier =
+identifier_no_lex :: CParser m => m Id
+identifier_no_lex =
   try (do s <- Id <$> ((:) <$> identLetter <*> many (identLetter <|> digit))
           isTypeName <- ask
           when (isTypeName s) $
             fail "expecting identifier, got type name"
           return s)
   <?> "identifier"
-
-parseParameterDeclaration :: CParser m => m ParameterDeclaration
-parseParameterDeclaration = parameter_declaration
-
-parseParameterList :: CParser m => m [ParameterDeclaration]
-parseParameterList = parameter_list
 
 ------------------------------------------------------------------------
 -- Pretty printing
@@ -417,7 +462,7 @@ instance Pretty AbstractDeclarator where
 
 instance Pretty DirectAbstractDeclarator where
   pretty ddecltor = case ddecltor of
-    ParensAbstractDeclarator x -> "(" <> pretty x <> ")"
+    AbstractDeclaratorParens x -> "(" <> pretty x <> ")"
     ArrayOrProtoHere aop -> pretty aop
     ArrayOrProtoThere ddecltor' aop -> pretty ddecltor' <> pretty aop
 
@@ -510,7 +555,7 @@ instance QC.Arbitrary AbstractDeclarator where
 
 instance QC.Arbitrary DirectAbstractDeclarator where
   arbitrary = QC.oneof
-    [ ParensAbstractDeclarator <$> QC.arbitrary
+    [ AbstractDeclaratorParens <$> QC.arbitrary
     , ArrayOrProtoHere <$> QC.arbitrary
     , ArrayOrProtoThere <$> QC.arbitrary <*> QC.arbitrary
     ]
@@ -607,7 +652,7 @@ instance Monad m => SC.Serial m AbstractDeclarator where
 
 instance Monad m => SC.Serial m DirectAbstractDeclarator where
   series =
-    SC.cons1 ParensAbstractDeclarator \/
+    SC.cons1 AbstractDeclaratorParens \/
     SC.cons1 ArrayOrProtoHere \/
     SC.cons2 ArrayOrProtoThere
 
@@ -644,3 +689,148 @@ assertParse isTypeName p s =
 
 many1 :: CParser m => m a -> m [a]
 many1 p = (:) <$> p <*> many p
+
+------------------------------------------------------------------------
+-- YACC grammar
+
+-- $yacc
+--
+-- The parser above is derived from a modification of the YACC grammar
+-- for C99 found at <http://www.quut.com/c/ANSI-C-grammar-y-1999.html>,
+-- which you can find below.
+--
+-- @
+-- %token IDENTIFIER TYPE_NAME INTEGER
+--
+-- %token TYPEDEF EXTERN STATIC AUTO REGISTER INLINE RESTRICT
+-- %token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOLATILE VOID
+-- %token BOOL COMPLEX IMAGINARY
+-- %token STRUCT UNION ENUM
+--
+-- %start parameter_list
+-- %%
+--
+-- declaration_specifiers
+-- 	: storage_class_specifier
+-- 	| storage_class_specifier declaration_specifiers
+-- 	| type_specifier
+-- 	| type_specifier declaration_specifiers
+-- 	| type_qualifier
+-- 	| type_qualifier declaration_specifiers
+-- 	| function_specifier
+-- 	| function_specifier declaration_specifiers
+-- 	;
+--
+-- storage_class_specifier
+-- 	: TYPEDEF
+-- 	| EXTERN
+-- 	| STATIC
+-- 	| AUTO
+-- 	| REGISTER
+-- 	;
+--
+-- type_specifier
+-- 	: VOID
+-- 	| CHAR
+-- 	| SHORT
+-- 	| INT
+-- 	| LONG
+-- 	| FLOAT
+-- 	| DOUBLE
+-- 	| SIGNED
+-- 	| UNSIGNED
+-- 	| BOOL
+-- 	| COMPLEX
+-- 	| IMAGINARY
+--  	| STRUCT IDENTIFIER
+-- 	| UNION IDENTIFIER
+-- 	| ENUM IDENTIFIER
+-- 	| TYPE_NAME
+-- 	;
+--
+-- type_qualifier
+-- 	: CONST
+-- 	| RESTRICT
+-- 	| VOLATILE
+-- 	;
+--
+-- function_specifier
+-- 	: INLINE
+-- 	;
+--
+-- declarator
+-- 	: pointer direct_declarator
+-- 	| direct_declarator
+-- 	;
+--
+-- direct_declarator
+-- 	: IDENTIFIER
+-- 	| '(' declarator ')'
+-- 	| direct_declarator '[' type_qualifier_list ']'
+-- 	| direct_declarator '[' type_qualifier_list '*' ']'
+-- 	| direct_declarator '[' '*' ']'
+--  	| direct_declarator '[' IDENTIFIER ']'
+-- 	| direct_declarator '[' INTEGER ']'
+-- 	| direct_declarator '[' ']'
+-- 	| direct_declarator '(' parameter_list ')'
+-- 	| direct_declarator '(' ')'
+-- 	;
+--
+-- pointer
+-- 	: '*'
+-- 	| '*' type_qualifier_list
+-- 	| '*' pointer
+-- 	| '*' type_qualifier_list pointer
+-- 	;
+--
+-- type_qualifier_list
+-- 	: type_qualifier
+-- 	| type_qualifier_list type_qualifier
+-- 	;
+--
+-- parameter_list
+-- 	: parameter_declaration
+-- 	| parameter_list ',' parameter_declaration
+-- 	;
+--
+-- parameter_declaration
+-- 	: declaration_specifiers declarator
+-- 	| declaration_specifiers abstract_declarator
+-- 	| declaration_specifiers
+-- 	;
+--
+-- abstract_declarator
+-- 	: pointer
+-- 	| direct_abstract_declarator
+-- 	| pointer direct_abstract_declarator
+-- 	;
+--
+-- direct_abstract_declarator
+-- 	: '(' abstract_declarator ')'
+-- 	| '[' ']'
+-- 	| direct_abstract_declarator '[' ']'
+-- 	| '[' '*' ']'
+-- 	| direct_abstract_declarator '[' '*' ']'
+-- 	| '[' IDENTIFIER ']'
+-- 	| direct_abstract_declarator '[' IDENTIFIER ']'
+-- 	| '[' INTEGER ']'
+-- 	| direct_abstract_declarator '[' INTEGER ']'
+-- 	| '(' ')'
+-- 	| '(' parameter_list ')'
+-- 	| direct_abstract_declarator '(' ')'
+-- 	| direct_abstract_declarator '(' parameter_list ')'
+-- 	;
+--
+-- %%
+-- #include <stdio.h>
+--
+-- extern char yytext[];
+-- extern int column;
+--
+-- void yyerror(char const *s)
+-- {
+-- 	fflush(stdout);
+-- 	printf("\n%*s\n%*s\n", column, "^", column, s);
+-- }
+-- @
+
