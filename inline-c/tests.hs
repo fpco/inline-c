@@ -1,18 +1,21 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-import qualified Language.C.Quote.C as C
-import           Language.C.Inline
-import           Language.C.Inline.Tests
-import qualified Language.Haskell.TH as TH
-import           Foreign.C.Types
-import qualified Test.Hspec as Hspec
+{-# LANGUAGE OverloadedStrings #-}
+import           Data.Monoid (mempty)
 import qualified Data.Vector.Storable.Mutable as V
+import           Foreign.C.Types
+import qualified Language.Haskell.TH as TH
+import qualified Test.Hspec as Hspec
+import           Text.RawString.QQ (r)
+
+import           Language.C.Inline
+import qualified Language.C.Types as C
 
 include "<math.h>"
 include "<stdio.h>"
 
-emitCode [C.cunit|
+emitLiteral [r|
 int francescos_mul(int x, int y) {
   return x * y;
 }
@@ -22,7 +25,7 @@ foreign import ccall "francescos_mul" francescos_mul :: Int -> Int -> Int
 
 main :: IO ()
 main = Hspec.hspec $ do
-  tests
+  -- tests
   Hspec.describe "TH" $ do
     Hspec.it "inlineCode" $ do
       let c_add = $(inlineCode $ Code
@@ -30,23 +33,23 @@ main = Hspec.hspec $ do
             [t| Int -> Int -> Int |]    -- Call type
             "francescos_add"            -- Call name
             -- C Code
-            [C.cunit| int francescos_add(int x, int y) { int z = x + y; return z; } |])
+            [r| int francescos_add(int x, int y) { int z = x + y; return z; } |])
       c_add 3 4 `Hspec.shouldBe` 7
     Hspec.it "inlineItems" $ do
-       let c_add3 = $(inlineItems
-             TH.Unsafe
-             [t| CInt -> CInt |]
-             [C.cty| int |]
-             [C.cparams| int x |]
-             [C.citems| return x + 3; |])
-       c_add3 1 `Hspec.shouldBe` 1 + 3
+      let c_add3 = $(inlineItems
+            TH.Unsafe
+            [t| CInt -> CInt |]
+            (C.TypeSpecifier mempty (C.Int C.Signed))
+            [("x", C.TypeSpecifier mempty (C.Int C.Signed))]
+            [r| return x + 3; |])
+      c_add3 1 `Hspec.shouldBe` 1 + 3
     Hspec.it "inlineExp" $ do
       let x = $(inlineExp
             TH.Safe
             [t| CInt |]
-            [C.cty| int |]
+            (C.TypeSpecifier mempty (C.Int C.Signed))
             []
-            [C.cexp| 1 + 4 |])
+            [r| 1 + 4 |])
       x `Hspec.shouldBe` 1 + 4
     Hspec.it "inlineCode" $ do
       francescos_mul 3 4 `Hspec.shouldBe` 12
@@ -73,7 +76,7 @@ main = Hspec.hspec $ do
     Hspec.it "suffix type" $ do
       let x = 3
       let y = 4
-      [cexp_pure| int { x_int + y_int } |] `Hspec.shouldBe` 7
+      [cexp_pure| int { $(int x) + $(int y) } |] `Hspec.shouldBe` 7
     Hspec.it "void exp" $ do
       [cexp| void { printf("Hello\n") } |]
     Hspec.it "function pointer argument" $ do
@@ -85,7 +88,7 @@ main = Hspec.hspec $ do
       ackermannPtr <- $(mkFunPtr [t| CInt -> CInt -> CInt |]) ackermann
       let x = 3
       let y = 4
-      let z = [cexp_pure| int(int (*ackermannPtr)(int, int)) { ackermannPtr(x_int, y_int) } |]
+      let z = [cexp_pure| int { $(int (*ackermannPtr)(int, int))($(int x), $(int y)) } |]
       z `Hspec.shouldBe` ackermann x y
     Hspec.it "function pointer result" $ do
       c_add <- [cexp| int (*)(int, int) { &francescos_add } |]
@@ -94,11 +97,11 @@ main = Hspec.hspec $ do
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3
-      sum <- V.unsafeWith vec $ \ptr -> [citems| int(int *ptr) {
+      sum <- V.unsafeWith vec $ \ptr -> [citems| int {
         int i;
         int x = 0;
-        for (i = 0; i < n_int; i++) {
-          x += ptr[i];
+        for (i = 0; i < $(int n); i++) {
+          x += $(int *ptr)[i];
         }
         return x;
       } |]

@@ -125,16 +125,19 @@ convertCType ctx pure = runMaybeT . go
         case Map.lookup cSpec (ctxConvertCTypeSpec ctx) of
           Nothing -> mzero
           Just ty -> lift ty
+      C.Ptr _quals (C.Proto retType pars) -> do
+        hsRetType <- go retType
+        hsPars <- mapM goDecl pars
+        lift [t| FunPtr $(buildArr hsPars hsRetType) |]
       C.Ptr _quals cTy' -> do
         hsTy <- go cTy'
         lift [t| Ptr $(return hsTy) |]
       C.Array _mbSize cTy' -> do
         hsTy <- go cTy'
         lift [t| CArray $(return hsTy) |]
-      C.Proto retType pars -> do
-        hsRetType <- go retType
-        hsPars <- mapM goDecl pars
-        lift [t| FunPtr $(buildArr hsPars hsRetType) |]
+      C.Proto _retType _pars -> do
+        -- We cannot convert standalone prototypes
+        mzero
 
     buildArr [] hsRetType =
       if pure then [t| $(return hsRetType) |] else [t| IO $(return hsRetType) |]
