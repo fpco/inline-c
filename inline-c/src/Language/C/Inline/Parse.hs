@@ -12,7 +12,7 @@ module Language.C.Inline.Parse
 
 import           Control.Applicative ((<*), (*>), (<|>))
 import           Control.Monad (void, msum, when, forM_, forM)
-import           Control.Monad.Reader (runReaderT, lift)
+import           Control.Monad.Trans.Class (lift)
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
 import qualified Data.Set as Set
@@ -37,8 +37,7 @@ runParserInQ s isTypeName p = do
   let (line, col) = TH.loc_start loc
   let parsecLoc = Parsec.newPos (TH.loc_filename loc) line col
   let p' = lift (Parsec.setPosition parsecLoc) *> p <* lift Parser.eof
-  let errOrRes = Parsec.parse  (runReaderT p' isTypeName) (TH.loc_filename loc) s
-  case errOrRes of
+  case C.runCParser isTypeName (TH.loc_filename loc) s p' of
     Left err -> do
       -- TODO consider prefixing with "error while parsing C" or similar
       error $ show err
