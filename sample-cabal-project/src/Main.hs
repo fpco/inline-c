@@ -1,11 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-import           Language.C.Inline
-import qualified Language.Haskell.TH as TH
-import qualified Language.C.Quote as C
-import qualified Language.C.Quote.C as C
+{-# LANGUAGE OverloadedStrings #-}
 import           Foreign.C.Types
+import           Language.C.Inline
+import qualified Language.C.Types as C
+import qualified Language.Haskell.TH as TH
+import           Text.RawString.QQ (r)
+import           Data.Monoid (mempty)
 
 include "<math.h>"
 include "<stdio.h>"
@@ -18,25 +20,25 @@ test_inlineCode = c_add 1 2
       [t| Int -> Int -> Int |]    -- Call type
       "francescos_add"            -- Call name
       -- C Code
-      [C.cunit| int francescos_add(int x, int y) { int z = x + y; return z; } |])
+      [r| int francescos_add(int x, int y) { int z = x + y; return z; } |])
 
 test_inlineItems :: Double
 test_inlineItems = $(inlineItems
   TH.Unsafe
   [t| Double -> Double |]
-  [C.cty| double |]
-  [C.cparams| double x |]
-  [C.citems| return cos(x); |]) 1
+  (C.TypeSpecifier mempty C.Double)
+  [("x", C.TypeSpecifier mempty C.Double)]
+  [r| return cos(x); |]) 1
 
 test_inlineExp :: Double
 test_inlineExp = $(inlineExp
   TH.Unsafe
   [t| Double |]
-  [C.cty| double |]
+  (C.TypeSpecifier mempty C.Double)
   []
-  [C.cexp| sin(1) |])
+  [r| sin(1) |])
 
-emitCode [C.cunit|
+emitLiteral [r|
 int francescos_mul(int x, int y) {
   return x * y;
 }
@@ -61,16 +63,16 @@ test_cexp_pure_unsafe x =
   [cexp_pure_unsafe| double(double x){ cos(x) + sin(x) } |]
 
 test_suffixType1 :: CInt -> CInt -> CInt
-test_suffixType1 x y = [cexp_pure| int{ x_int + y_int } |]
+test_suffixType1 x y = [cexp_pure| int{ $(int x) + $(int x) } |]
 
 test_suffixType2 :: CInt -> CInt -> CInt
-test_suffixType2 x y = [cexp_pure| int(){ x_int + y_int } |]
+test_suffixType2 x y = [cexp_pure| int(){ $(int x) + $(int y) } |]
 
 test_suffixType3 :: CInt -> CInt -> CInt
-test_suffixType3 x y = [cexp_pure| int(int x){ x + y_int } |]
+test_suffixType3 x y = [cexp_pure| int(int x){ x + $(int y) } |]
 
 test_suffixType4 :: CInt -> CInt -> CInt
-test_suffixType4 x y = [cexp_pure| int(int x){ x_int + y_int } |]
+test_suffixType4 x y = [cexp_pure| int(int x){ $(int x) + $(int y) } |]
 
 test_voidExp :: IO ()
 test_voidExp = [cexp| void { printf("Hello\n") } |]
