@@ -1,5 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 module Language.C.Inline.Nag
   ( module Language.C.Inline
@@ -14,20 +15,19 @@ module Language.C.Inline.Nag
   ) where
 
 import qualified Language.Haskell.TH as TH
-import qualified Language.C as C
 import           Foreign.C.Types
 import           Foreign.Ptr (Ptr)
 import           Data.Monoid ((<>))
 import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad (mzero, guard, msum)
-import           Data.Loc (noLoc)
 import           Foreign.Storable (Storable(..))
 import           Data.List (isSuffixOf)
 import           Data.Monoid (mempty)
+import qualified Data.Map as Map
 
 import           Language.C.Inline
-import           Language.C.Quote.Nag
+import qualified Language.C.Types as C
 
 #include <nag.h>
 
@@ -82,38 +82,16 @@ nagCtx :: Context
 nagCtx = baseCtx <> funPtrCtx <> ctx
   where
     ctx = mempty
-      { ctxCTypes = nagTypes
-      , ctxConvertCTypeSpec = nagConvertCTypeSpec
-      , ctxGetSuffixType = nagGetSuffixType
+      { ctxConvertCTypeSpec = nagConvertCTypeSpec
       }
 
-nagConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
-nagConvertCTypeSpec cspec = runMaybeT $
-  case C.Type (C.DeclSpec [] [] cspec noLoc) (C.DeclRoot noLoc) noLoc of
-    -- TODO this might not be a long, see nag_types.h
-    [cty| Integer |] -> lift [t| CLong |]
-    [cty| Complex |] -> lift [t| Complex |]
-    [cty| NagError |] -> lift [t| NagError |]
-    [cty| Nag_Boolean |] -> lift [t| Nag_Boolean |]
-    [cty| Nag_Comm |] -> lift [t| Nag_Comm |]
-    [cty| Nag_E05State |] -> lift [t| Nag_E05State |]
-    _ -> mzero
-
-nagGetSuffixType :: String -> Maybe (String, C.Type)
-nagGetSuffixType s = msum
-  [ do guard (('_' : suff) `isSuffixOf` s)
-       return (take (length s - length suff - 1) s, ctype)
-  | (suff, ctype) <- table
+nagConvertCTypeSpec :: Map.Map C.TypeSpecifier TH.TypeQ
+nagConvertCTypeSpec = Map.fromList
+  [ -- TODO this might not be a long, see nag_types.h
+    (C.TypeName "Integer", [t| CLong |])
+  , (C.TypeName "Complex", [t| Complex |])
+  , (C.TypeName "NagError", [t| NagError |])
+  , (C.TypeName "Nag_Boolean", [t| Nag_Boolean |])
+  , (C.TypeName "Nag_Comm", [t| Nag_Comm |])
+  , (C.TypeName "Nag_E05State", [t| Nag_E05State |])
   ]
-  where
-  table =
-    [ ("nint", [cty| Integer |])
-    , ("ncompl", [cty| Complex |])
-    , ("nbool", [cty| Nag_Boolean |])
-    , ("nfail", [cty| NagError |])
-
-    , ("nint_ptr", [cty| Integer* |])
-    , ("ncompl_ptr", [cty| Complex* |])
-    , ("nbool_ptr", [cty| Nag_Boolean* |])
-    , ("nfail_ptr", [cty| NagError* |])
-    ]

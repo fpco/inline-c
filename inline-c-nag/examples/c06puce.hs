@@ -11,10 +11,7 @@ import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
 import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek)
-import qualified Language.C as C
-import           Language.C.Inline
 import           Language.C.Inline.Nag
-import qualified Language.C.Quote.Nag as C
 import           Text.RawString.QQ (r)
 
 setContext nagCtx
@@ -30,7 +27,7 @@ fi = fromIntegral
 parseBounds :: IO (Int64, Int64)
 parseBounds =
   alloca $ \m -> alloca $ \n -> do
-    [cexp| void{ scanf("%*[^\n] %ld%ld%*[^\n]", m_long_ptr, n_long_ptr) } |]
+    [cexp| void{ scanf("%*[^\n] %ld%ld%*[^\n]", $(long *m), $(long *n)) } |]
     (,) <$> (fi <$> peek m) <*> (fi <$> peek n)
 
 parseData :: (Int64, Int64) -> IO (A.StorableArray (Int64, Int64) Complex)
@@ -39,8 +36,8 @@ parseData (m0, n0) = do
   let (m, n) = (fi m0, fi n0)
   A.withStorableArray x $ \x -> [citems| void {
       int i;
-      for (i = 0; i < m_nint*n_nint; i++)
-        scanf(" ( %lf , %lf ) ", &x_ncompl_ptr[i].re, &x[i].im);
+      for (i = 0; i < $(Integer m) * $(Integer n); i++)
+        scanf(" ( %lf , %lf ) ", &$(Complex *x)[i].re, &$x[i].im);
     } |]
   return x
 
@@ -53,8 +50,8 @@ printGenComplxMat str x = do
     [citems| int {
       NagError fail; INIT_FAIL(fail);
       nag_gen_complx_mat_print_comp(
-        Nag_RowMajor, Nag_GeneralMatrix, Nag_NonUnitDiag, n_nint, m_nint,
-        x_ncompl_ptr, m_nint, Nag_BracketForm, "%6.3f", str_char_ptr,
+        Nag_RowMajor, Nag_GeneralMatrix, Nag_NonUnitDiag, $(Integer n), $(Integer m),
+        $(Complex *x), $m, Nag_BracketForm, "%6.3f", $(char *str),
         Nag_NoLabels, 0, Nag_NoLabels, 0, 80, 0, NULL, &fail);
       return fail.code != NE_NOERROR;
     } |]
@@ -66,7 +63,7 @@ sumFftComplex2d flag x = do
   let (m, n) = (fi m0, fi n0)
   A.withStorableArray x $ \x -> [citems| int {
     NagError fail; INIT_FAIL(fail);
-    nag_sum_fft_complex_2d(flag_int, m_nint, n_nint, x_ncompl_ptr, &fail);
+    nag_sum_fft_complex_2d($(int flag), $(Integer m), $(Integer n), $(Complex *x), &fail);
     return fail.code != NE_NOERROR;
   } |]
 

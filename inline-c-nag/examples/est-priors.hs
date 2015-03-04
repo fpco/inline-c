@@ -55,15 +55,16 @@ nelderMead x pureFunct maxcal = do
             poke ncallsPtr ncall
       -- Call the C code
       res <- [citems|
-        int(void (*funct)(Integer n, const double *xc, double *fc, Nag_Comm *comm),
-            void (*monit)(double fmin, double fmax, const double sim[], Integer n, Integer ncall, double serror, double vratio, Nag_Comm *comm)) {
+        int {
             NagError fail; INIT_FAIL(fail);
             Nag_Comm comm;
             double tolf = sqrt(nag_machine_precision);
             double tolx = sqrt(tolf);
             nag_opt_simplex_easy(
-              n_nint, xMutPtr_double_ptr, fPtr_double_ptr, tolf, tolx,
-              funct, monit, maxcal_nint, &comm, &fail);
+              $(Integer n), $(double *xMutPtr), $(double *fPtr), tolf, tolx,
+              $(void (*funct)(Integer n, const double *xc, double *fc, Nag_Comm *comm)),
+              $(void (*monit)(double fmin, double fmax, const double sim[], Integer n, Integer ncall, double serror, double vratio, Nag_Comm *comm)),
+              $(Integer maxcal), &comm, &fail);
             if (fail.code != NE_NOERROR) {
               printf("Error from nag_opt_simplex_easy (e04cbc).\n%s\n", fail.message);
             }

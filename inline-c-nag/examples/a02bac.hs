@@ -2,10 +2,8 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 import           Foreign.C.Types
-import qualified Language.C as C
-import           Language.C.Inline
 import           Language.C.Inline.Nag
-import qualified Language.C.Quote.Nag as C
+import           Text.RawString.QQ (r)
 
 include "<nag.h>"
 include "<stdio.h>"
@@ -14,7 +12,7 @@ include "<naga02.h>"
 
 -- Code dump test
 
-emitCode [C.cunit|
+emitLiteral [r|
 int test_emitCode(void)
 {
   Integer     exit_status = 0;
