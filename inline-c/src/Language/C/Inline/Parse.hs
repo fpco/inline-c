@@ -2,35 +2,41 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
-module Language.C.Inline.Parse (runParserInQ, parseTypedC) where
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+module Language.C.Inline.Parse
+  ( runParserInQ
+  , parseTypedC
+  ) where
 
 import           Control.Applicative ((<*), (*>), (<|>))
-import           Control.Monad (void, msum)
+import           Control.Monad (void, msum, when, forM_)
+import           Control.Monad.Reader (runReaderT, lift)
+import           Data.Either (partitionEithers)
 import qualified Data.Map as Map
+import           Data.Monoid ((<>))
+import qualified Data.Set as Set
 import qualified Language.Haskell.TH as TH
-import qualified Text.Parser.Char as Parser
-import qualified Text.Parser.LookAhead as Parser
-import qualified Text.Parser.Combinators as Parser
-import qualified Text.Parser.Token as Parser
-import           Text.Parsec.String (Parser)
 import qualified Text.Parsec as Parsec
 import qualified Text.Parsec.Pos as Parsec
-import           Data.Monoid ((<>))
+import qualified Text.Parser.Char as Parser
+import qualified Text.Parser.Combinators as Parser
+import qualified Text.Parser.LookAhead as Parser
+import qualified Text.Parser.Token as Parser
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
-import           Data.Either (partitionEithers)
 
 import qualified Language.C.Types as C
 
--- Parsing
-
-runParserInQ :: String -> Parser a -> TH.Q a
-runParserInQ s p = do
+runParserInQ
+  :: String -> (C.Id -> Bool) -> (forall m. C.CParser m => m a) -> TH.Q a
+runParserInQ s isTypeName p = do
   loc <- TH.location
   let (line, col) = TH.loc_start loc
   let parsecLoc = Parsec.newPos (TH.loc_filename loc) line col
-  let p' = Parsec.setPosition parsecLoc *> p <* Parsec.eof
-  let errOrRes = Parsec.runParser  p' () (TH.loc_filename loc) s
+  let p' = lift (Parsec.setPosition parsecLoc) *> p <* lift Parser.eof
+  let errOrRes = Parsec.parse  (runReaderT p' isTypeName) (TH.loc_filename loc) s
   case errOrRes of
     Left err -> do
       -- TODO consider prefixing with "error while parsing C" or similar
@@ -39,24 +45,26 @@ runParserInQ s p = do
       return res
 
 parseTypedC
-  :: Parser (C.Declaration (), [C.Declaration C.Id], String)
-  -- ^ Returns the retun type, the captured variables, and the body.
+  :: forall m. C.CParser m
+  => m (C.ParameterDeclaration, [C.ParameterDeclaration], String)
+  -- ^ Returns the return type, the captured variables, and the body.
 parseTypedC = do
   -- Parse return type (consume spaces first)
   Parser.spaces
-  cRetType <- C.parseAbstractDeclaration
+  cType <- C.parseParameterDeclaration
+  (cRetType, cParams1) <- processReturnType cType
   -- Parse the body
   void $ Parser.char '{'
-  (cParams, cBody) <- parseBody
+  (cParams2, cBody) <- parseBody
   -- Massage the params to make sure that we're good
-  cParams' <- processParams cParams
-  return (cRetType, cParams', cBody)
+  cParams <- processParams $ map Right cParams1 ++ cParams2
+  return (cRetType, cParams, cBody)
   where
-    parseBody :: Parser ([Either C.Id (C.Declaration C.Id)], String)
+    parseBody :: m ([Either C.Id C.ParameterDeclaration], String)
     parseBody = do
-      -- Note that this code does not work with "lexing" combinators
-      -- (apart when appropriate) because we want to make sure to
-      -- preserve whitespace after the things we substitute.
+      -- Note that this code does not use "lexing" combinators (apart
+      -- when appropriate) because we want to make sure to preserve
+      -- whitespace after we substitute things.
       s <- Parser.manyTill Parser.anyChar $
            Parser.lookAhead (Parser.char '}' <|> Parser.char '$')
       let parseEscapedDollar = do
@@ -64,14 +72,19 @@ parseTypedC = do
             return ([], "$")
       let parseTypedCapture = do
             void $ Parser.symbolic '('
-            decl@(C.Declaration s' _ _) <- C.parseDeclaration
+            decl <- C.parseParameterDeclaration
+            s' <- case C.parameterDeclarationId decl of
+              Nothing -> fail $ pretty80 $
+                "Un-named captured variable in decl" <+> PP.pretty decl
+              Just s' -> return s'
             void $ Parser.char ')'
-            return ([Right decl], s')
+            return ([Right decl], C.unId s')
       let parseCapture = do
             s' <- C.parseIdentifier
-            return ([Left s'], s')
+            return ([Left s'], C.unId s')
       (decls, s') <- msum
         [ do Parser.try $ do -- Try because we might fail to parse the 'eof'
+               -- 'symbolic' because we want to consume whitespace
                void $ Parser.symbolic '}'
                Parser.eof
              return ([], "")
@@ -85,23 +98,39 @@ parseTypedC = do
         ]
       return (decls, s ++ s')
 
+    processReturnType
+      :: C.ParameterDeclaration -> m (C.ParameterDeclaration, [C.ParameterDeclaration])
+    processReturnType decl@(C.ParameterDeclaration _ cTy) = case cTy of
+      C.Proto cRetType cParams -> do
+        let ids = map C.parameterDeclarationId cParams
+        forM_ ids $ \mbId ->
+          case mbId of
+            Nothing -> fail $ "Unnamed parameter"
+            Just _ -> return ()
+        let dups = Set.size (Set.fromList ids) /= length ids
+        when dups $
+          fail "Duplicates in parameter list"
+        return (C.ParameterDeclaration (C.parameterDeclarationId decl) cRetType, cParams)
+      _ -> do
+        return (decl, [])
+
     processParams
-      :: [Either C.Id (C.Declaration C.Id)]
-      -> Parser [C.Declaration C.Id]
+      :: [Either C.Id C.ParameterDeclaration] -> m [C.ParameterDeclaration]
     processParams cParams = do
       let (untyped, typed) = partitionEithers cParams
       params <- go Map.empty typed
       checkUntyped params untyped
       return $ map snd $ Map.toList params
       where
-        go :: Map.Map C.Id (C.Declaration C.Id) -> [C.Declaration C.Id]
-           -> Parser (Map.Map C.Id (C.Declaration C.Id))
+        go :: Map.Map C.Id C.ParameterDeclaration -> [C.ParameterDeclaration]
+           -> m (Map.Map C.Id C.ParameterDeclaration)
         go visitedParams [] = do
           return visitedParams
-        go visitedParams (decl@(C.Declaration s quals ty) : params) = do
-          case Map.lookup s visitedParams of
-            Nothing -> go (Map.insert s decl visitedParams) params
-            Just (C.Declaration _ quals' ty') | (quals, ty) == (quals', ty') ->
+        go visitedParams (decl : params) = do
+          let id' = declId decl
+          case Map.lookup id' visitedParams of
+            Nothing -> go (Map.insert id' decl visitedParams) params
+            Just decl' | C.parameterDeclarationType decl == C.parameterDeclarationType decl' ->
               go visitedParams params
             Just decl' ->
               fail $ pretty80 $
@@ -109,12 +138,16 @@ parseTypedC = do
                 "definition conflicts with new type:" <+> PP.pretty decl'
 
         checkUntyped
-          :: Map.Map C.Id (C.Declaration C.Id) -> [C.Id] -> Parser ()
+          :: Map.Map C.Id C.ParameterDeclaration -> [C.Id] -> m ()
         checkUntyped params = mapM_ $ \s -> do
           case Map.lookup s params of
             Just _ -> return ()
             Nothing -> do
-              fail $ "Untyped variable `" ++ s ++ "'"
+              fail $ "Untyped variable `" ++ pretty80 s ++ "'"
+
+        declId decl = case C.parameterDeclarationId decl of
+          Nothing -> error "processParams: no declaration id"
+          Just id' -> id'
 
 ------------------------------------------------------------------------
 -- Utils
