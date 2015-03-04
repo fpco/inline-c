@@ -62,11 +62,12 @@ module Language.C.Types.Parse
     -- $yacc
   ) where
 
-import           Control.Applicative (Applicative, (<*>), (<|>))
+import           Control.Applicative (Applicative, (<*>), (<*), (<|>))
 import           Control.Monad (msum, void, MonadPlus, unless, when)
 import           Control.Monad.Logic.Class ((>>-))
-import           Control.Monad.Reader (MonadReader, ask, runReaderT)
+import           Control.Monad.Reader (MonadReader, ask, runReaderT, ReaderT)
 import           Data.Functor ((<$>), (<$))
+import           Data.Functor.Identity (Identity)
 import qualified Data.HashSet as HashSet
 import           Data.Monoid ((<>))
 import           Data.String (IsString(..))
@@ -76,9 +77,9 @@ import qualified Test.SmallCheck.Series as SC
 import qualified Text.Parsec as Parsec
 import           Text.Parser.Char
 import           Text.Parser.Combinators
+import           Text.Parser.LookAhead
 import           Text.Parser.Token
 import           Text.Parser.Token.Highlight
-import           Text.Parser.LookAhead
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
@@ -99,13 +100,16 @@ type CParser m = (Monad m, Functor m, Applicative m, MonadPlus m, Parsing m, Cha
 
 -- | Runs a @'CParser'@ using @parsec@.
 runCParser
-  :: (Id -> Bool)
+  :: Parsec.Stream s Identity Char
+  => (Id -> Bool)
   -- ^ Function determining if an identifier is a type name.
   -> String
   -- ^ Source name.
-  -> String
-  -- ^ String to parse
-  -> (forall m. CParser m => m a)
+  -> s
+  -- ^ String to parse.
+  -> (ReaderT (Id -> Bool) (Parsec.Parsec s ()) a)
+  -- ^ Parser.  Anything with type @forall m. CParser m => m a@ is a
+  -- valid argument.
   -> Either Parsec.ParseError a
 runCParser isTypeName fn s p = Parsec.parse (runReaderT p isTypeName) fn s
 
@@ -114,8 +118,7 @@ newtype Id = Id {unId :: String}
 
 instance IsString Id where
   fromString s =
-    let res = Parsec.parse (runReaderT identifier_no_lex (const False)) "fromString" s
-    in case res of
+    case runCParser (const False) "fromString" s (identifier_no_lex <* eof) of
       Left _err -> error $ "Id fromString: invalid string " ++ show s
       Right x -> x
 
@@ -822,7 +825,7 @@ many1 p = (:) <$> p <*> many p
 -- 	;
 --
 -- %%
--- #include <stdio.h>
+-- #include \<stdio.h\>
 --
 -- extern char yytext[];
 -- extern int column;
