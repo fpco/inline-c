@@ -6,6 +6,22 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+-- | While "Language.C.Types.Parse" provides access to routines that
+-- parse C declarations and present them as they are, this module gives
+-- a much friendlier view to C types, by turning them in a data type
+-- matching more closely to how we read and think about types, both in
+-- Haskell and in C.  To appreciate the difference, look at the
+-- difference between 'P.ParameterDeclaration' and
+-- 'ParameterDeclaration'.
+--
+-- Routines are provided to convert back and forth between the parsed
+-- output and the friendly output -- see 'untangleParameterDeclaration'
+-- and 'tangleParameterDeclaration'.  We also provide convenient parsers
+-- returning directly friendly output -- see 'parseParameterDeclaration'
+-- and 'parseParameterList'.
+--
+-- As a bonus, routines are provided "reading" the types in english --
+-- see 'readParameterDeclaration' and 'readType'.
 module Language.C.Types
   ( -- * Types
     P.Id(..)
@@ -21,18 +37,19 @@ module Language.C.Types
 
     -- * Parsing
   , P.CParser
+  , P.runCParser
   , parseParameterDeclaration
   , parseParameterList
-  , P.parseIdentifier
-
-    -- * To english
-  , readParameterDeclaration
-  , readType
+  , parseIdentifier
 
     -- * Back and forth
   , UntangleErr(..)
   , untangleParameterDeclaration
   , tangleParameterDeclaration
+
+    -- * To english
+  , readParameterDeclaration
+  , readType
   ) where
 
 import           Control.Lens (_1, _2, _3, _4, (%=), over)
@@ -236,7 +253,7 @@ untangleAbstractDeclarator ty0 (P.AbstractDeclarator ptrs0 mbDirectDecltor) =
       P.ArrayOrProtoHere (P.Proto params) -> do
         params' <- mapM untangleParameterDeclaration params
         return $ Proto ty params'
-      P.ParensAbstractDeclarator decltor ->
+      P.AbstractDeclaratorParens decltor ->
         untangleAbstractDeclarator ty decltor
 
 ------------------------------------------------------------------------
@@ -282,10 +299,10 @@ tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
       Ptr tyQuals ty ->
         goAbstract ty (P.Pointer tyQuals : ptrs) mbDirect
       Array{} ->
-        goAbstractDirect ty0 $ Just $ P.ParensAbstractDeclarator $
+        goAbstractDirect ty0 $ Just $ P.AbstractDeclaratorParens $
           P.AbstractDeclarator ptrs mbDirect
       Proto{} ->
-        goAbstractDirect ty0 $ Just $ P.ParensAbstractDeclarator $
+        goAbstractDirect ty0 $ Just $ P.AbstractDeclaratorParens $
           P.AbstractDeclarator ptrs mbDirect
 
     goConcreteDirect
@@ -396,11 +413,14 @@ untangleParameterDeclaration' pDecl =
 
 parseParameterDeclaration :: P.CParser m => m ParameterDeclaration
 parseParameterDeclaration =
-  untangleParameterDeclaration' =<< P.parseParameterDeclaration
+  untangleParameterDeclaration' =<< P.parameter_declaration
 
 parseParameterList :: P.CParser m => m [ParameterDeclaration]
 parseParameterList =
-  mapM untangleParameterDeclaration' =<< P.parseParameterList
+  mapM untangleParameterDeclaration' =<< P.parameter_list
+
+parseIdentifier :: P.CParser m => m P.Id
+parseIdentifier = P.identifier_no_lex
 
 ------------------------------------------------------------------------
 -- Pretty
