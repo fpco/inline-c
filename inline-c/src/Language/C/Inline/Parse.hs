@@ -11,9 +11,8 @@ module Language.C.Inline.Parse
   ) where
 
 import           Control.Applicative ((<*), (*>), (<|>))
-import           Control.Monad (void, msum, when, forM_)
+import           Control.Monad (void, msum, when, forM_, forM)
 import           Control.Monad.Reader (runReaderT, lift)
-import           Data.Either (partitionEithers)
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
 import qualified Data.Set as Set
@@ -26,6 +25,8 @@ import qualified Text.Parser.LookAhead as Parser
 import qualified Text.Parser.Token as Parser
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           Control.Lens (_1, _2, (%=), over)
+import           Control.Monad.State (execState)
 
 import qualified Language.C.Types as C
 
@@ -46,7 +47,7 @@ runParserInQ s isTypeName p = do
 
 parseTypedC
   :: forall m. C.CParser m
-  => m (C.ParameterDeclaration, [C.ParameterDeclaration], String)
+  => m (C.Type, [(C.Id, C.Type)], String)
   -- ^ Returns the return type, the captured variables, and the body.
 parseTypedC = do
   -- Parse return type (consume spaces first)
@@ -57,10 +58,10 @@ parseTypedC = do
   void $ Parser.char '{'
   (cParams2, cBody) <- parseBody
   -- Massage the params to make sure that we're good
-  cParams <- processParams $ map Right cParams1 ++ cParams2
+  cParams <- processParams $ map (over _2 Just) cParams1 ++ cParams2
   return (cRetType, cParams, cBody)
   where
-    parseBody :: m ([Either C.Id C.ParameterDeclaration], String)
+    parseBody :: m ([(C.Id, Maybe C.Type)], String)
     parseBody = do
       -- Note that this code does not use "lexing" combinators (apart
       -- when appropriate) because we want to make sure to preserve
@@ -78,10 +79,10 @@ parseTypedC = do
                 "Un-named captured variable in decl" <+> PP.pretty decl
               Just s' -> return s'
             void $ Parser.char ')'
-            return ([Right decl], C.unId s')
+            return ([(s', Just (C.parameterDeclarationType decl))], C.unId s')
       let parseCapture = do
             s' <- C.parseIdentifier
-            return ([Left s'], C.unId s')
+            return ([(s', Nothing)], C.unId s')
       (decls, s') <- msum
         [ do Parser.try $ do -- Try because we might fail to parse the 'eof'
                -- 'symbolic' because we want to consume whitespace
@@ -99,55 +100,54 @@ parseTypedC = do
       return (decls, s ++ s')
 
     processReturnType
-      :: C.ParameterDeclaration -> m (C.ParameterDeclaration, [C.ParameterDeclaration])
-    processReturnType decl@(C.ParameterDeclaration _ cTy) = case cTy of
+      :: C.ParameterDeclaration -> m (C.Type, [(C.Id, C.Type)])
+    processReturnType (C.ParameterDeclaration _ cTy) = case cTy of
       C.Proto cRetType cParams -> do
-        let ids = map C.parameterDeclarationId cParams
-        forM_ ids $ \mbId ->
-          case mbId of
-            Nothing -> fail $ "Unnamed parameter"
-            Just _ -> return ()
-        let dups = Set.size (Set.fromList ids) /= length ids
+        cParams' <- forM cParams $ \param -> do
+          id' <- case C.parameterDeclarationId param of
+            Nothing -> fail $ pretty80 $
+              "Unnamed parameter" <+> PP.pretty param
+            Just id' -> return id'
+          return (id', C.parameterDeclarationType param)
+        let dups = Set.size (Set.fromList (map fst cParams')) /= length cParams'
         when dups $
           fail "Duplicates in parameter list"
-        return (C.ParameterDeclaration (C.parameterDeclarationId decl) cRetType, cParams)
+        return (cRetType, cParams')
       _ -> do
-        return (decl, [])
+        return (cTy, [])
 
-    processParams
-      :: [Either C.Id C.ParameterDeclaration] -> m [C.ParameterDeclaration]
+    processParams :: [(C.Id, Maybe C.Type)] -> m [(C.Id, C.Type)]
     processParams cParams = do
-      let (untyped, typed) = partitionEithers cParams
+      let (untyped, typed) = flip execState ([], []) $ do
+            forM_ (reverse cParams) $ \(id', mbTy) -> do
+              case mbTy of
+                Nothing -> _1 %= (id' :)
+                Just ty -> _2 %= ((id', ty) :)
       params <- go Map.empty typed
       checkUntyped params untyped
-      return $ map snd $ Map.toList params
+      return $ Map.toList params
       where
-        go :: Map.Map C.Id C.ParameterDeclaration -> [C.ParameterDeclaration]
-           -> m (Map.Map C.Id C.ParameterDeclaration)
+        go :: Map.Map C.Id C.Type -> [(C.Id, C.Type)] -> m (Map.Map C.Id C.Type)
         go visitedParams [] = do
           return visitedParams
-        go visitedParams (decl : params) = do
-          let id' = declId decl
+        go visitedParams ((id', ty) : params) = do
           case Map.lookup id' visitedParams of
-            Nothing -> go (Map.insert id' decl visitedParams) params
-            Just decl' | C.parameterDeclarationType decl == C.parameterDeclarationType decl' ->
+            Nothing -> go (Map.insert id' ty visitedParams) params
+            Just ty' | ty == ty' ->
               go visitedParams params
-            Just decl' ->
+            Just ty' ->
               fail $ pretty80 $
-                "Cannot recapture" <+> PP.pretty decl <> ", since previous" <>
-                "definition conflicts with new type:" <+> PP.pretty decl'
+                "Cannot recapture variable" <+> PP.pretty id' <+>
+                "to have type" <+> PP.pretty ty' <> ", since previous" <>
+                "type" <+> PP.pretty ty <+> "is different."
 
         checkUntyped
-          :: Map.Map C.Id C.ParameterDeclaration -> [C.Id] -> m ()
-        checkUntyped params = mapM_ $ \s -> do
-          case Map.lookup s params of
+          :: Map.Map C.Id C.Type -> [C.Id] -> m ()
+        checkUntyped params = mapM_ $ \id' -> do
+          case Map.lookup id' params of
             Just _ -> return ()
             Nothing -> do
-              fail $ "Untyped variable `" ++ pretty80 s ++ "'"
-
-        declId decl = case C.parameterDeclarationId decl of
-          Nothing -> error "processParams: no declaration id"
-          Just id' -> id'
+              fail $ "Untyped variable `" ++ pretty80 id' ++ "'"
 
 ------------------------------------------------------------------------
 -- Utils

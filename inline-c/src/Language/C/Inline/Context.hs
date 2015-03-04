@@ -11,11 +11,13 @@ module Language.C.Inline.Context
   ( Context(..)
   , CArray
   , convertCType
+  , isTypeName
   , baseCtx
   , funPtrCtx
   ) where
 
 import           Control.Applicative (empty, (<|>))
+import           Control.Monad (mzero)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
 import           Data.Monoid (Monoid(..))
@@ -24,6 +26,8 @@ import           Foreign.Ptr (Ptr, FunPtr)
 import qualified Language.Haskell.TH as TH
 import           Data.Functor ((<$>))
 import           System.IO.Unsafe (unsafePerformIO)
+import qualified Data.Map as Map
+import           Data.Monoid ((<>))
 
 import           Language.C.Inline.FunPtr
 import qualified Language.C.Types as C
@@ -35,18 +39,13 @@ import qualified Language.C.Types as C
 -- 'mappend' is right-biased -- in @'mappend' x y@ @y@ will take
 -- precedence over @x@.
 data Context = Context
-  { ctxConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
-    -- ^ Tries to convert a C type spec to an Haskell type. For example,
-    -- for some context @ctx@, we might have that
+  { ctxConvertCTypeSpec :: Map.Map C.TypeSpecifier TH.TypeQ
+    -- ^ Maps 'TypeSpecifier's to Haskell types.  This is needed to
+    -- convert C types to Haskell types, and to parse C types
+    -- correctly.
     --
-    -- @
-    -- 'ctxConvertCTypeSpec' ctx [cty| int |] ==> 'Just' 'CInt'
-    -- @
-    --
-    -- Note that here only the C basic types (in @language-c-quote@
-    -- parlance the 'C.TypeSpec') need to be converted.  Conversion from
-    -- derived types, such as pointers or arrays, is performed
-    -- automatically by 'convertCType'.
+    -- Note that 'C.TypeSpecifier's that are not in the 'Context' map
+    -- might not be parsed correctly.
   , ctxMarshaller :: TH.Type -> TH.Exp -> TH.Q (Maybe TH.Exp)
     -- ^ The marshaller takes the expected type of a captured variable
     -- and the 'TH.Exp' representing the captured variable itself and
@@ -60,13 +59,13 @@ data Context = Context
 
 instance Monoid Context where
   mempty = Context
-    { ctxConvertCTypeSpec = \_ -> runMaybeT empty
+    { ctxConvertCTypeSpec = Map.empty
     , ctxMarshaller = \_ _ -> runMaybeT empty
     }
 
   mappend ctx2 ctx1 = Context
-    { ctxConvertCTypeSpec = \cty -> runMaybeT $
-        MaybeT (ctxConvertCTypeSpec ctx1 cty) <|> MaybeT (ctxConvertCTypeSpec ctx2 cty)
+    { ctxConvertCTypeSpec =
+        ctxConvertCTypeSpec ctx1 <> ctxConvertCTypeSpec ctx2
     , ctxMarshaller = \hsTy hsArg -> runMaybeT $
         MaybeT (ctxMarshaller ctx1 hsTy hsArg) <|> MaybeT (ctxMarshaller ctx2 hsTy hsArg)
     }
@@ -84,23 +83,23 @@ baseCtx = Context
   , ctxMarshaller = \_ hsExp -> return $ Just hsExp
   }
 
-baseConvertCTypeSpec :: C.TypeSpec -> TH.Q (Maybe TH.Type)
-baseConvertCTypeSpec cspec = case cspec of
-  C.Void -> Just <$> [t| () |]
-  C.Char Nothing -> Just <$> [t| CChar |]
-  C.Char (Just C.Signed) -> Just <$> [t| CChar |]
-  C.Char (Just C.Unsigned) -> Just <$> [t| CUChar |]
-  C.Short C.Signed -> Just <$> [t| CShort |]
-  C.Short C.Unsigned -> Just <$> [t| CUShort |]
-  C.Int C.Signed -> Just <$> [t| CInt |]
-  C.Int C.Unsigned -> Just <$> [t| CUInt |]
-  C.Long C.Signed -> Just <$> [t| CLong |]
-  C.Long C.Unsigned -> Just <$> [t| CULong |]
-  C.LLong C.Signed -> Just <$> [t| CLLong |]
-  C.LLong C.Unsigned -> Just <$> [t| CULLong |]
-  C.Float -> Just <$> [t| CFloat |]
-  C.Double -> Just <$> [t| CDouble |]
-  _ -> return Nothing
+baseConvertCTypeSpec :: Map.Map C.TypeSpecifier TH.TypeQ
+baseConvertCTypeSpec = Map.fromList
+  [ (C.Void, [t| () |])
+  , (C.Char Nothing, [t| CChar |])
+  , (C.Char (Just C.Signed), [t| CChar |])
+  , (C.Char (Just C.Unsigned), [t| CUChar |])
+  , (C.Short C.Signed, [t| CShort |])
+  , (C.Short C.Unsigned, [t| CUShort |])
+  , (C.Int C.Signed, [t| CInt |])
+  , (C.Int C.Unsigned, [t| CUInt |])
+  , (C.Long C.Signed, [t| CLong |])
+  , (C.Long C.Unsigned, [t| CULong |])
+  , (C.LLong C.Signed, [t| CLLong |])
+  , (C.LLong C.Unsigned, [t| CULLong |])
+  , (C.Float, [t| CFloat |])
+  , (C.Double, [t| CDouble |])
+  ]
 
 -- | An alias for 'Ptr'.
 type CArray = Ptr
@@ -118,11 +117,14 @@ convertCType
   -> TH.Q (Maybe TH.Type)
 convertCType ctx pure = runMaybeT . go
   where
-    goDecl (C.Declaration _ _quals cTy) = go cTy
+    goDecl = go . C.parameterDeclarationType
 
     go :: C.Type -> MaybeT TH.Q TH.Type
     go cTy = case cTy of
-      C.TypeSpec cSpec -> MaybeT $ ctxConvertCTypeSpec ctx cSpec
+      C.TypeSpecifier _specs cSpec ->
+        case Map.lookup cSpec (ctxConvertCTypeSpec ctx) of
+          Nothing -> mzero
+          Just ty -> lift ty
       C.Ptr _quals cTy' -> do
         hsTy <- go cTy'
         lift [t| Ptr $(return hsTy) |]
@@ -138,6 +140,9 @@ convertCType ctx pure = runMaybeT . go
       if pure then [t| $(return hsRetType) |] else [t| IO $(return hsRetType) |]
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
+
+isTypeName :: Context -> C.Id -> Bool
+isTypeName ctx id' = Map.member (C.TypeName id') $ ctxConvertCTypeSpec ctx
 
 ------------------------------------------------------------------------
 -- Function pointer removal

@@ -310,9 +310,9 @@ inlineExp
   -- ^ Safety of the foreign call
   -> TH.TypeQ
   -- ^ Type of the foreign call
-  -> C.Declaration ()
+  -> C.Type
   -- ^ Return type of the C expr
-  -> [C.Param]
+  -> [(C.Id, C.Type)]
   -- ^ Parameters of the C expr
   -> String
   -- ^ The C expression
@@ -320,9 +320,9 @@ inlineExp
 inlineExp callSafety type_ cRetType cParams cExp =
   inlineItems callSafety type_ cRetType cParams cItems
   where
-    cItems = if C.declType cRetType == C.TypeSpec C.Void
-      then cExp ++ ";"
-      else "return (" ++ cExp ++ ");"
+    cItems = case cRetType of
+      C.TypeSpecifier _quals C.Void -> cExp ++ ";"
+      _ -> "return (" ++ cExp ++ ");"
 
 -- | Same as 'inlineCode', but accepts a list of 'C.BlockItem's instead than a
 -- full-blown 'Code'.  A function containing the provided statement will be
@@ -341,17 +341,18 @@ inlineItems
   -- ^ Safety of the foreign call
   -> TH.TypeQ
   -- ^ Type of the foreign call
-  -> C.Declaration ()
+  -> C.Type
   -- ^ Return type of the C expr
-  -> [C.Param]
+  -> [(C.Id, C.Type)]
   -- ^ Parameters of the C expr
   -> String
   -- ^ The C items
   -> TH.ExpQ
 inlineItems callSafety type_ cRetType cParams cItems = do
   funName <- TH.runIO uniqueCName
-  let decl = C.Declaration funName (C.declQuals cRetType) $
-             C.Proto (C.declType cRetType) cParams
+  let mkParam (id', paramTy) = C.ParameterDeclaration (Just id') paramTy
+      decl = C.ParameterDeclaration (Just (C.Id funName)) $
+             C.Proto cRetType (map mkParam cParams)
   let defs =
         prettyOneLine decl ++ " {\n" ++
         cItems ++ "\n}\n"
@@ -509,17 +510,16 @@ quoteCode p = TH.QuasiQuoter
 genericQuote
   :: Bool
   -- ^ Whether the call and the function pointers should be pure or not.
-  -> (TH.TypeQ -> C.Declaration () -> [C.Param] -> String -> TH.ExpQ)
+  -> (TH.TypeQ -> C.Type -> [(C.Id, C.Type)] -> String -> TH.ExpQ)
   -- ^ Function taking that something and building an expression, see
   -- 'inlineExp' for other args.
   -> TH.QuasiQuoter
 genericQuote pure build = quoteCode $ \s -> do
   initialiseModuleState_
   ctx <- getContext
-  (cType, cParams, cExp) <- runParserInQ s parseTypedC
-  hsType <- cToHs ctx $ C.declType cType
-  hsParams <- forM cParams $ \(C.Declaration cId _cQuals cTy) ->
-    (,) cId <$> cToHs ctx cTy
+  (cType, cParams, cExp) <- runParserInQ s (isTypeName ctx) parseTypedC
+  hsType <- cToHs ctx cType
+  hsParams <- forM cParams $ \(cId, cTy) -> (,) cId <$> cToHs ctx cTy
   let hsFunType = convertCFunSig hsType $ map snd hsParams
   buildFunCall ctx (build hsFunType cType cParams cExp) hsParams
   where
@@ -534,7 +534,7 @@ genericQuote pure build = quoteCode $ \s -> do
     buildFunCall _ctx f [] =
       f
     buildFunCall ctx f ((name, hsTy) : params) = do
-      mbHsName <- TH.lookupValueName name
+      mbHsName <- TH.lookupValueName $ C.unId name
       case mbHsName of
         Nothing -> do
           error $ "Cannot capture Haskell variable " ++ show name ++
