@@ -15,6 +15,7 @@ module Language.C.Types
   , P.ArrayType(..)
   , Specifiers(..)
   , Type(..)
+  , TypeSpecifier(..)
   , Sign(..)
   , ParameterDeclaration(..)
 
@@ -42,7 +43,7 @@ import           Data.Maybe (fromMaybe)
 import           Control.Monad.State (execState)
 import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
-import           Data.Monoid ((<>))
+import           Data.Monoid ((<>), Monoid(..))
 
 import qualified Language.C.Types.Parse as P
 
@@ -62,13 +63,19 @@ data TypeSpecifier
   | TypeName P.Id
   | Struct P.Id
   | Enum P.Id
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 data Specifiers = Specifiers
   { storageClassSpecifiers :: [P.StorageClassSpecifier]
   , typeQualifiers :: [P.TypeQualifier]
   , functionSpecifiers :: [P.FunctionSpecifier]
   } deriving (Show, Eq)
+
+instance Monoid Specifiers where
+  mempty = Specifiers [] [] []
+
+  mappend (Specifiers x1 y1 z1) (Specifiers x2 y2 z2) =
+    Specifiers (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
 
 data Type
   = TypeSpecifier Specifiers TypeSpecifier
@@ -80,7 +87,7 @@ data Type
 data Sign
   = Signed
   | Unsigned
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 data ParameterDeclaration = ParameterDeclaration
   { parameterDeclarationId :: Maybe P.Id
@@ -425,6 +432,13 @@ instance PP.Pretty UntangleErr where
       "Multiple data types in" </> PP.prettyList specs
     IllegalSpecifiers s specs ->
       "Illegal specifiers, " <+> PP.text s <+> ", in" </> PP.prettyList specs
+
+instance PP.Pretty ParameterDeclaration where
+  pretty = PP.pretty . tangleParameterDeclaration
+
+instance PP.Pretty Type where
+  pretty ty =
+    PP.pretty $ tangleParameterDeclaration $ ParameterDeclaration Nothing ty
 
 ------------------------------------------------------------------------
 -- Utils
