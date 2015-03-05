@@ -7,11 +7,13 @@ module Language.C.Types.Parse.Spec (spec) where
 
 import           Control.Applicative ((<*), (*>))
 import           Control.Monad.Trans.Class (lift)
+import qualified Data.Set as Set
 import qualified Test.Hspec as Hspec
 import qualified Test.Hspec.SmallCheck as SC
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import qualified Test.QuickCheck as QC
 import           Text.Parser.Char
 import           Text.Parser.Combinators
+import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import           Language.C.Types.Parse
 import qualified Language.C.Types as Types
@@ -22,14 +24,10 @@ spec = do
     SC.property $ \ty ->
       let ty' = assertParse (const False) parameter_declaration (prettyOneLine ty)
       in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
-
-  -- TODO these are disabled because QuickCheck starts spitting out huge
-  -- cases almost immediately.  find out why.
-
-  -- Hspec.it "parses everything which is pretty-printable (QuickCheck)" $ do
-  --   QC.property $ \(ParameterDeclarationWithTypeNames typeNames ty) ->
-  --     let ty' = assertParse (`Set.member` typeNames) parameter_declaration (prettyOneLine ty)
-  --     in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
+  Hspec.it "parses everything which is pretty-printable (QuickCheck)" $ do
+    QC.property $ \(ParameterDeclarationWithTypeNames typeNames ty) ->
+      let ty' = assertParse (`Set.member` typeNames) parameter_declaration (prettyOneLine ty)
+      in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
 
 ------------------------------------------------------------------------
 -- Utils
