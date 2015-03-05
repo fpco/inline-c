@@ -12,11 +12,12 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Language.C.Inline
-                     -- , Language.C.Inline.Tests
+                     , Language.C.Inline.Spec
                      , Language.C.Inline.Context
+                     , Language.C.Inline.Context.Spec
                      , Language.C.Types
                      , Language.C.Types.Parse
-                     -- , Language.C.Types.Tests
+                     , Language.C.Types.Parse.Spec
   other-modules:       Language.C.Inline.Parse
                      , Language.C.Inline.FunPtr
   ghc-options:         -Wall -O
@@ -28,6 +29,7 @@ library
                      , directory
                      , filepath
                      , hspec >= 2
+                     , hspec-smallcheck
                      , lens
                      , logict
                      , mtl

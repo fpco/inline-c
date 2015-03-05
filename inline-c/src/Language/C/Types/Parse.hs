@@ -60,6 +60,9 @@ module Language.C.Types.Parse
 
     -- * YACC grammar
     -- $yacc
+
+    -- * Testing utilities
+  , ParameterDeclarationWithTypeNames(..)
   ) where
 
 import           Control.Applicative (Applicative, (<*>), (<*), (<|>))
@@ -82,6 +85,7 @@ import           Text.Parser.Token
 import           Text.Parser.Token.Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import qualified Data.Set as Set
 
 ------------------------------------------------------------------------
 -- Parser
@@ -479,13 +483,24 @@ instance QC.Arbitrary Id where
       letters = map return $ ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
       digits = map return ['0'..'9']
 
-instance QC.Arbitrary DeclarationSpecifier where
-  arbitrary = QC.oneof
-    [ StorageClassSpecifier <$> QC.arbitrary
-    , TypeSpecifier <$> QC.arbitrary
-    , TypeQualifier <$> QC.arbitrary
-    , FunctionSpecifier <$> QC.arbitrary
-    ]
+data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
+  { pdwtnTypeNames :: Set.Set Id
+  , pdwtnParameterDeclaration :: ParameterDeclaration
+  } deriving (Eq, Show)
+
+instance QC.Arbitrary ParameterDeclarationWithTypeNames where
+  arbitrary = do
+    names <- Set.fromList <$> QC.arbitrary
+    ParameterDeclarationWithTypeNames names
+      <$> arbitraryParameterDeclaration names
+
+arbitraryDeclarationSpecifier :: Set.Set Id -> QC.Gen DeclarationSpecifier
+arbitraryDeclarationSpecifier typeNames = QC.oneof
+  [ StorageClassSpecifier <$> QC.arbitrary
+  , TypeSpecifier <$> arbitraryTypeSpecifier typeNames
+  , TypeQualifier <$> QC.arbitrary
+  , FunctionSpecifier <$> QC.arbitrary
+  ]
 
 instance QC.Arbitrary StorageClassSpecifier where
   arbitrary = QC.oneof
@@ -496,20 +511,21 @@ instance QC.Arbitrary StorageClassSpecifier where
     , return REGISTER
     ]
 
-instance QC.Arbitrary TypeSpecifier where
-  arbitrary = QC.oneof
-    [ return VOID
-    , return CHAR
-    , return SHORT
-    , return INT
-    , return LONG
-    , return FLOAT
-    , return DOUBLE
-    , return SIGNED
-    , return UNSIGNED
-    , Struct <$> QC.arbitrary
-    , Enum <$> QC.arbitrary
-    ]
+arbitraryTypeSpecifier :: Set.Set Id -> QC.Gen TypeSpecifier
+arbitraryTypeSpecifier typeNames = QC.oneof
+  [ return VOID
+  , return CHAR
+  , return SHORT
+  , return INT
+  , return LONG
+  , return FLOAT
+  , return DOUBLE
+  , return SIGNED
+  , return UNSIGNED
+  , Struct <$> QC.arbitrary
+  , Enum <$> QC.arbitrary
+  , TypeName <$> QC.oneof (map return $ Set.toList typeNames)
+  ]
 
 instance QC.Arbitrary TypeQualifier where
   arbitrary = QC.oneof
@@ -523,21 +539,29 @@ instance QC.Arbitrary FunctionSpecifier where
     [ return INLINE
     ]
 
-instance QC.Arbitrary Declarator where
-  arbitrary = Declarator <$> QC.arbitrary <*> QC.arbitrary
+arbitraryDeclarator :: Set.Set Id -> QC.Gen Declarator
+arbitraryDeclarator typeNames =
+  Declarator <$> QC.arbitrary <*> arbitraryDirectDeclarator typeNames
 
-instance QC.Arbitrary DirectDeclarator where
-  arbitrary = QC.oneof
-    [ DeclaratorRoot <$> QC.arbitrary
-    , DeclaratorParens <$> QC.arbitrary
-    , ArrayOrProto <$> QC.arbitrary <*> QC.arbitrary
-    ]
+arbitraryIdentifier :: Set.Set Id -> QC.Gen Id
+arbitraryIdentifier typeNames = do
+  id' <- QC.arbitrary
+  if Set.member id' typeNames
+    then arbitraryIdentifier typeNames
+    else return id'
 
-instance QC.Arbitrary ArrayOrProto where
-  arbitrary = QC.oneof
-    [ Array <$> QC.arbitrary
-    , Proto <$> QC.arbitrary
-    ]
+arbitraryDirectDeclarator :: Set.Set Id -> QC.Gen DirectDeclarator
+arbitraryDirectDeclarator typeNames = QC.oneof
+  [ DeclaratorRoot <$> arbitraryIdentifier typeNames
+  , DeclaratorParens <$> arbitraryDeclarator typeNames
+  , ArrayOrProto <$> arbitraryDirectDeclarator typeNames <*> arbitraryArrayOrProto typeNames
+  ]
+
+arbitraryArrayOrProto :: Set.Set Id -> QC.Gen ArrayOrProto
+arbitraryArrayOrProto typeNames = QC.oneof
+  [ Array <$> QC.arbitrary
+  , Proto <$> QC.listOf (arbitraryParameterDeclaration typeNames)
+  ]
 
 instance QC.Arbitrary ArrayType where
   arbitrary = QC.oneof
@@ -550,17 +574,31 @@ instance QC.Arbitrary ArrayType where
 instance QC.Arbitrary Pointer where
   arbitrary = Pointer <$> QC.arbitrary
 
-instance QC.Arbitrary ParameterDeclaration where
-  arbitrary = ParameterDeclaration <$> QC.listOf1 QC.arbitrary <*> QC.arbitrary
+arbitraryParameterDeclaration :: Set.Set Id -> QC.Gen ParameterDeclaration
+arbitraryParameterDeclaration typeNames =
+  ParameterDeclaration
+    <$> QC.listOf1 (arbitraryDeclarationSpecifier typeNames)
+    <*> QC.oneof
+          [ Left <$> arbitraryDeclarator typeNames
+          , Right <$> arbitraryAbstractDeclarator typeNames
+          ]
 
-instance QC.Arbitrary AbstractDeclarator where
-  arbitrary = AbstractDeclarator <$> QC.arbitrary <*> QC.arbitrary
+arbitraryAbstractDeclarator :: Set.Set Id -> QC.Gen AbstractDeclarator
+arbitraryAbstractDeclarator typeNames =
+  AbstractDeclarator
+    <$> QC.arbitrary
+    <*> QC.oneof
+          [ return Nothing
+          , Just <$> arbitraryDirectAbstractDeclarator typeNames
+          ]
 
-instance QC.Arbitrary DirectAbstractDeclarator where
-  arbitrary = QC.oneof
-    [ AbstractDeclaratorParens <$> QC.arbitrary
-    , ArrayOrProtoHere <$> QC.arbitrary
-    , ArrayOrProtoThere <$> QC.arbitrary <*> QC.arbitrary
+arbitraryDirectAbstractDeclarator :: Set.Set Id -> QC.Gen DirectAbstractDeclarator
+arbitraryDirectAbstractDeclarator typeNames = QC.oneof
+    [ AbstractDeclaratorParens <$> arbitraryAbstractDeclarator typeNames
+    , ArrayOrProtoHere <$> arbitraryArrayOrProto typeNames
+    , ArrayOrProtoThere
+        <$> arbitraryDirectAbstractDeclarator typeNames
+        <*> arbitraryArrayOrProto typeNames
     ]
 
 ------------------------------------------------------------------------
@@ -658,34 +696,6 @@ instance Monad m => SC.Serial m DirectAbstractDeclarator where
     SC.cons1 AbstractDeclaratorParens \/
     SC.cons1 ArrayOrProtoHere \/
     SC.cons2 ArrayOrProtoThere
-
-{-
-------------------------------------------------------------------------
--- Tests
-
-tests :: Hspec.SpecWith ()
-tests = do
-  Hspec.describe "parsing" $ do
-    Hspec.it "parses everything which is pretty-printable" $ do
-      SC.property $ \ty ->
-        ty == assertParse (const False) parameter_declaration (prettyOneLine ty)
-
-------------------------------------------------------------------------
--- Utils
-
-many1 :: CParser m => m a -> m [a]
-many1 p = (:) <$> p <*> many p
-
-prettyOneLine :: PP.Pretty a => a -> String
-prettyOneLine x = PP.displayS (PP.renderCompact (PP.pretty x)) ""
-
-assertParse :: (Id -> Bool) -> (forall m. CParser m => m a) -> String -> a
-assertParse isTypeName p s =
-  let run x = Parsec.parse (runReaderT x isTypeName) "test" s
-  in case run (lift spaces *> p <* lift eof) of
-    Left err -> error $ "Parse error (assertParse): " ++ show err
-    Right x -> x
--}
 
 ------------------------------------------------------------------------
 -- Utils
