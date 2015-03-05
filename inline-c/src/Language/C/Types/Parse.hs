@@ -478,10 +478,10 @@ instance Pretty DirectAbstractDeclarator where
 
 instance QC.Arbitrary Id where
   arbitrary =
-      Id <$> ((:) <$> QC.oneof letters <*> QC.listOf (QC.oneof (letters ++ digits)))
+      Id <$> ((:) <$> QC.elements letters <*> QC.listOf (QC.elements (letters ++ digits)))
     where
-      letters = map return $ ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
-      digits = map return ['0'..'9']
+      letters = ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
+      digits = ['0'..'9']
 
 data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
   { pdwtnTypeNames :: Set.Set Id
@@ -512,7 +512,7 @@ instance QC.Arbitrary StorageClassSpecifier where
     ]
 
 arbitraryTypeSpecifier :: Set.Set Id -> QC.Gen TypeSpecifier
-arbitraryTypeSpecifier typeNames = QC.oneof
+arbitraryTypeSpecifier typeNames = QC.oneof $
   [ return VOID
   , return CHAR
   , return SHORT
@@ -524,8 +524,8 @@ arbitraryTypeSpecifier typeNames = QC.oneof
   , return UNSIGNED
   , Struct <$> QC.arbitrary
   , Enum <$> QC.arbitrary
-  , TypeName <$> QC.oneof (map return $ Set.toList typeNames)
-  ]
+  ] ++ if Set.null typeNames then []
+       else [TypeName <$> QC.elements (Set.toList typeNames)]
 
 instance QC.Arbitrary TypeQualifier where
   arbitrary = QC.oneof
