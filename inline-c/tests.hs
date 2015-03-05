@@ -10,7 +10,10 @@ import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
 
 import           Language.C.Inline
+import qualified Language.C.Inline.Context.Spec
+import qualified Language.C.Inline.Spec
 import qualified Language.C.Types as C
+import qualified Language.C.Types.Parse.Spec
 
 include "<math.h>"
 include "<stdio.h>"
@@ -25,7 +28,9 @@ foreign import ccall "francescos_mul" francescos_mul :: Int -> Int -> Int
 
 main :: IO ()
 main = Hspec.hspec $ do
-  -- tests
+  Hspec.describe "Language.C.Types.Parse" Language.C.Types.Parse.Spec.spec
+  Hspec.describe "Language.C.Inline.Context" Language.C.Inline.Context.Spec.spec
+  Hspec.describe "Language.C.Inline" Language.C.Inline.Spec.spec
   Hspec.describe "TH integration" $ do
     Hspec.it "inlineCode" $ do
       let c_add = $(inlineCode $ Code
