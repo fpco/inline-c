@@ -476,6 +476,10 @@ instance Pretty DirectAbstractDeclarator where
 ------------------------------------------------------------------------
 -- Arbitrary
 
+ifPositiveSize :: Int -> [a] -> [a]
+ifPositiveSize n xs | n > 0 = xs
+ifPositiveSize _ _ = []
+
 instance QC.Arbitrary Id where
   arbitrary =
       Id <$> ((:) <$> QC.elements letters <*> QC.listOf (QC.elements (letters ++ digits)))
@@ -491,15 +495,15 @@ data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
 instance QC.Arbitrary ParameterDeclarationWithTypeNames where
   arbitrary = do
     names <- Set.fromList <$> QC.arbitrary
-    ParameterDeclarationWithTypeNames names
-      <$> arbitraryParameterDeclaration names
+    decl <- QC.sized $ arbitraryParameterDeclaration names
+    return $ ParameterDeclarationWithTypeNames names decl
 
 arbitraryDeclarationSpecifier :: Set.Set Id -> QC.Gen DeclarationSpecifier
-arbitraryDeclarationSpecifier typeNames = QC.oneof
+arbitraryDeclarationSpecifier typeNames = QC.oneof $
   [ StorageClassSpecifier <$> QC.arbitrary
-  , TypeSpecifier <$> arbitraryTypeSpecifier typeNames
   , TypeQualifier <$> QC.arbitrary
   , FunctionSpecifier <$> QC.arbitrary
+  , TypeSpecifier <$> arbitraryTypeSpecifier typeNames
   ]
 
 instance QC.Arbitrary StorageClassSpecifier where
@@ -539,9 +543,11 @@ instance QC.Arbitrary FunctionSpecifier where
     [ return INLINE
     ]
 
-arbitraryDeclarator :: Set.Set Id -> QC.Gen Declarator
-arbitraryDeclarator typeNames =
-  Declarator <$> QC.arbitrary <*> arbitraryDirectDeclarator typeNames
+arbitraryDeclarator :: Set.Set Id -> Int -> QC.Gen Declarator
+arbitraryDeclarator typeNames n =
+  Declarator <$> QC.arbitrary <*> arbitraryDirectDeclarator typeNames n'
+  where
+    n' = n `div` 2
 
 arbitraryIdentifier :: Set.Set Id -> QC.Gen Id
 arbitraryIdentifier typeNames = do
@@ -550,18 +556,26 @@ arbitraryIdentifier typeNames = do
     then arbitraryIdentifier typeNames
     else return id'
 
-arbitraryDirectDeclarator :: Set.Set Id -> QC.Gen DirectDeclarator
-arbitraryDirectDeclarator typeNames = QC.oneof
+arbitraryDirectDeclarator :: Set.Set Id -> Int -> QC.Gen DirectDeclarator
+arbitraryDirectDeclarator typeNames n = QC.oneof $
   [ DeclaratorRoot <$> arbitraryIdentifier typeNames
-  , DeclaratorParens <$> arbitraryDeclarator typeNames
-  , ArrayOrProto <$> arbitraryDirectDeclarator typeNames <*> arbitraryArrayOrProto typeNames
-  ]
+  ] ++ ifPositiveSize n'
+    [ DeclaratorParens <$> arbitraryDeclarator typeNames n'
+    , ArrayOrProto
+        <$> arbitraryDirectDeclarator typeNames n'
+        <*> arbitraryArrayOrProto typeNames n'
+    ]
+  where
+    n' = n `div` 2
 
-arbitraryArrayOrProto :: Set.Set Id -> QC.Gen ArrayOrProto
-arbitraryArrayOrProto typeNames = QC.oneof
+arbitraryArrayOrProto :: Set.Set Id -> Int -> QC.Gen ArrayOrProto
+arbitraryArrayOrProto typeNames n = QC.oneof $
   [ Array <$> QC.arbitrary
-  , Proto <$> QC.listOf (arbitraryParameterDeclaration typeNames)
-  ]
+  ] ++ ifPositiveSize n'
+      [Proto <$> QC.listOf (arbitraryParameterDeclaration typeNames n')]
+  where
+    n' = n `div` 2
+
 
 instance QC.Arbitrary ArrayType where
   arbitrary = QC.oneof
@@ -574,32 +588,38 @@ instance QC.Arbitrary ArrayType where
 instance QC.Arbitrary Pointer where
   arbitrary = Pointer <$> QC.arbitrary
 
-arbitraryParameterDeclaration :: Set.Set Id -> QC.Gen ParameterDeclaration
-arbitraryParameterDeclaration typeNames =
+arbitraryParameterDeclaration :: Set.Set Id -> Int -> QC.Gen ParameterDeclaration
+arbitraryParameterDeclaration typeNames n =
   ParameterDeclaration
     <$> QC.listOf1 (arbitraryDeclarationSpecifier typeNames)
     <*> QC.oneof
-          [ Left <$> arbitraryDeclarator typeNames
-          , Right <$> arbitraryAbstractDeclarator typeNames
+          [ Left <$> arbitraryDeclarator typeNames n'
+          , Right <$> arbitraryAbstractDeclarator typeNames n'
           ]
+  where
+    n' = n `div` 2
 
-arbitraryAbstractDeclarator :: Set.Set Id -> QC.Gen AbstractDeclarator
-arbitraryAbstractDeclarator typeNames =
+arbitraryAbstractDeclarator :: Set.Set Id -> Int -> QC.Gen AbstractDeclarator
+arbitraryAbstractDeclarator typeNames n =
   AbstractDeclarator
     <$> QC.arbitrary
-    <*> QC.oneof
-          [ return Nothing
-          , Just <$> arbitraryDirectAbstractDeclarator typeNames
-          ]
+    <*> (QC.oneof $ [return Nothing] ++
+           ifPositiveSize n' [Just <$> arbitraryDirectAbstractDeclarator typeNames n'])
+  where
+    n' = n `div` 2
 
-arbitraryDirectAbstractDeclarator :: Set.Set Id -> QC.Gen DirectAbstractDeclarator
-arbitraryDirectAbstractDeclarator typeNames = QC.oneof
-    [ AbstractDeclaratorParens <$> arbitraryAbstractDeclarator typeNames
-    , ArrayOrProtoHere <$> arbitraryArrayOrProto typeNames
-    , ArrayOrProtoThere
-        <$> arbitraryDirectAbstractDeclarator typeNames
-        <*> arbitraryArrayOrProto typeNames
-    ]
+arbitraryDirectAbstractDeclarator
+  :: Set.Set Id -> Int -> QC.Gen DirectAbstractDeclarator
+arbitraryDirectAbstractDeclarator typeNames n = QC.oneof $
+    [ ArrayOrProtoHere <$> arbitraryArrayOrProto typeNames n'
+    ] ++ ifPositiveSize n
+        [ AbstractDeclaratorParens <$> arbitraryAbstractDeclarator typeNames n'
+        , ArrayOrProtoThere
+            <$> arbitraryDirectAbstractDeclarator typeNames n'
+            <*> arbitraryArrayOrProto typeNames n'
+        ]
+  where
+    n' = n `div` 2
 
 ------------------------------------------------------------------------
 -- Serial
