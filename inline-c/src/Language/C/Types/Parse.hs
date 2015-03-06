@@ -72,7 +72,9 @@ import           Control.Monad.Reader (MonadReader, ask, runReaderT, ReaderT)
 import           Data.Functor ((<$>), (<$))
 import           Data.Functor.Identity (Identity)
 import qualified Data.HashSet as HashSet
+import           Data.Maybe (mapMaybe)
 import           Data.Monoid ((<>))
+import qualified Data.Set as Set
 import           Data.String (IsString(..))
 import qualified Test.QuickCheck as QC
 import           Test.SmallCheck.Series ((\/), (<~>))
@@ -85,7 +87,6 @@ import           Text.Parser.Token
 import           Text.Parser.Token.Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
-import qualified Data.Set as Set
 
 ------------------------------------------------------------------------
 -- Parser
@@ -476,9 +477,21 @@ instance Pretty DirectAbstractDeclarator where
 ------------------------------------------------------------------------
 -- Arbitrary
 
-ifPositiveSize :: Int -> [a] -> [a]
-ifPositiveSize n xs | n > 0 = xs
-ifPositiveSize _ _ = []
+data OneOfSized a
+  = Anyhow a
+  | IfPositive a
+  deriving (Eq, Show)
+
+-- | Precondition: there is at least one 'Anyhow' in the list.
+oneOfSized :: [OneOfSized (QC.Gen a)] -> QC.Gen a
+oneOfSized xs = QC.sized $ \n -> do
+  let f (Anyhow a) = Just a
+      f (IfPositive x) | n > 0 = Just x
+      f (IfPositive _) = Nothing
+  QC.oneof $ mapMaybe f xs
+
+halveSize :: QC.Gen a -> QC.Gen a
+halveSize m = QC.sized $ \n -> QC.resize (n `div` 2) m
 
 instance QC.Arbitrary Id where
   arbitrary =
@@ -487,6 +500,8 @@ instance QC.Arbitrary Id where
       letters = ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
       digits = ['0'..'9']
 
+-- | Type used to generate an 'QC.Arbitrary' 'ParameterDeclaration' with
+-- arbitrary allowed type names.
 data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
   { pdwtnTypeNames :: Set.Set Id
   , pdwtnParameterDeclaration :: ParameterDeclaration
@@ -495,7 +510,7 @@ data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
 instance QC.Arbitrary ParameterDeclarationWithTypeNames where
   arbitrary = do
     names <- Set.fromList <$> QC.arbitrary
-    decl <- QC.sized $ arbitraryParameterDeclaration names
+    decl <- arbitraryParameterDeclaration names
     return $ ParameterDeclarationWithTypeNames names decl
 
 arbitraryDeclarationSpecifier :: Set.Set Id -> QC.Gen DeclarationSpecifier
@@ -543,11 +558,9 @@ instance QC.Arbitrary FunctionSpecifier where
     [ return INLINE
     ]
 
-arbitraryDeclarator :: Set.Set Id -> Int -> QC.Gen Declarator
-arbitraryDeclarator typeNames n =
-  Declarator <$> QC.arbitrary <*> arbitraryDirectDeclarator typeNames n'
-  where
-    n' = n `div` 2
+arbitraryDeclarator :: Set.Set Id -> QC.Gen Declarator
+arbitraryDeclarator typeNames = halveSize $
+  Declarator <$> QC.arbitrary <*> arbitraryDirectDeclarator typeNames
 
 arbitraryIdentifier :: Set.Set Id -> QC.Gen Id
 arbitraryIdentifier typeNames = do
@@ -556,26 +569,20 @@ arbitraryIdentifier typeNames = do
     then arbitraryIdentifier typeNames
     else return id'
 
-arbitraryDirectDeclarator :: Set.Set Id -> Int -> QC.Gen DirectDeclarator
-arbitraryDirectDeclarator typeNames n = QC.oneof $
-  [ DeclaratorRoot <$> arbitraryIdentifier typeNames
-  ] ++ ifPositiveSize n'
-    [ DeclaratorParens <$> arbitraryDeclarator typeNames n'
-    , ArrayOrProto
-        <$> arbitraryDirectDeclarator typeNames n'
-        <*> arbitraryArrayOrProto typeNames n'
-    ]
-  where
-    n' = n `div` 2
+arbitraryDirectDeclarator :: Set.Set Id -> QC.Gen DirectDeclarator
+arbitraryDirectDeclarator typeNames = halveSize $ oneOfSized $
+  [ Anyhow $ DeclaratorRoot <$> arbitraryIdentifier typeNames
+  , IfPositive $ DeclaratorParens <$> arbitraryDeclarator typeNames
+  , IfPositive $ ArrayOrProto
+      <$> arbitraryDirectDeclarator typeNames
+      <*> arbitraryArrayOrProto typeNames
+  ]
 
-arbitraryArrayOrProto :: Set.Set Id -> Int -> QC.Gen ArrayOrProto
-arbitraryArrayOrProto typeNames n = QC.oneof $
-  [ Array <$> QC.arbitrary
-  ] ++ ifPositiveSize n'
-      [Proto <$> QC.listOf (arbitraryParameterDeclaration typeNames n')]
-  where
-    n' = n `div` 2
-
+arbitraryArrayOrProto :: Set.Set Id -> QC.Gen ArrayOrProto
+arbitraryArrayOrProto typeNames = halveSize $ oneOfSized $
+  [ Anyhow $ Array <$> QC.arbitrary
+  , IfPositive $ Proto <$> QC.listOf (arbitraryParameterDeclaration typeNames)
+  ]
 
 instance QC.Arbitrary ArrayType where
   arbitrary = QC.oneof
@@ -588,38 +595,35 @@ instance QC.Arbitrary ArrayType where
 instance QC.Arbitrary Pointer where
   arbitrary = Pointer <$> QC.arbitrary
 
-arbitraryParameterDeclaration :: Set.Set Id -> Int -> QC.Gen ParameterDeclaration
-arbitraryParameterDeclaration typeNames n =
+arbitraryParameterDeclaration :: Set.Set Id -> QC.Gen ParameterDeclaration
+arbitraryParameterDeclaration typeNames = halveSize $
   ParameterDeclaration
     <$> QC.listOf1 (arbitraryDeclarationSpecifier typeNames)
     <*> QC.oneof
-          [ Left <$> arbitraryDeclarator typeNames n'
-          , Right <$> arbitraryAbstractDeclarator typeNames n'
+          [ Left <$> arbitraryDeclarator typeNames
+          , Right <$> arbitraryAbstractDeclarator typeNames
           ]
-  where
-    n' = n `div` 2
 
-arbitraryAbstractDeclarator :: Set.Set Id -> Int -> QC.Gen AbstractDeclarator
-arbitraryAbstractDeclarator typeNames n =
-  AbstractDeclarator
-    <$> QC.arbitrary
-    <*> (QC.oneof $ [return Nothing] ++
-           ifPositiveSize n' [Just <$> arbitraryDirectAbstractDeclarator typeNames n'])
-  where
-    n' = n `div` 2
+arbitraryAbstractDeclarator :: Set.Set Id -> QC.Gen AbstractDeclarator
+arbitraryAbstractDeclarator typeNames = halveSize $ do
+  ptrs <- QC.arbitrary
+  decl <- if null ptrs
+    then Just <$> arbitraryDirectAbstractDeclarator typeNames
+    else oneOfSized
+      [ Anyhow $ return Nothing
+      , IfPositive $ Just <$> arbitraryDirectAbstractDeclarator typeNames
+      ]
+  return $ AbstractDeclarator ptrs decl
 
 arbitraryDirectAbstractDeclarator
-  :: Set.Set Id -> Int -> QC.Gen DirectAbstractDeclarator
-arbitraryDirectAbstractDeclarator typeNames n = QC.oneof $
-    [ ArrayOrProtoHere <$> arbitraryArrayOrProto typeNames n'
-    ] ++ ifPositiveSize n
-        [ AbstractDeclaratorParens <$> arbitraryAbstractDeclarator typeNames n'
-        , ArrayOrProtoThere
-            <$> arbitraryDirectAbstractDeclarator typeNames n'
-            <*> arbitraryArrayOrProto typeNames n'
-        ]
-  where
-    n' = n `div` 2
+  :: Set.Set Id -> QC.Gen DirectAbstractDeclarator
+arbitraryDirectAbstractDeclarator typeNames = halveSize $ oneOfSized $
+  [ Anyhow $ ArrayOrProtoHere <$> arbitraryArrayOrProto typeNames
+  , IfPositive $ AbstractDeclaratorParens <$> arbitraryAbstractDeclarator typeNames
+  , IfPositive $ ArrayOrProtoThere
+      <$> arbitraryDirectAbstractDeclarator typeNames
+      <*> arbitraryArrayOrProto typeNames
+  ]
 
 ------------------------------------------------------------------------
 -- Serial
