@@ -466,5 +466,34 @@ instance PP.Pretty Type where
 pretty80 :: PP.Doc -> String
 pretty80 x = PP.displayS (PP.renderPretty 0.8 80 x) ""
 
+{-
 ------------------------------------------------------------------------
--- Tests
+-- Arbitrary
+
+data OneOfSized a
+  = Anyhow a
+  | IfPositive a
+  deriving (Eq, Show)
+
+-- | Precondition: there is at least one 'Anyhow' in the list.
+oneOfSized :: [OneOfSized (QC.Gen a)] -> QC.Gen a
+oneOfSized xs = QC.sized $ \n -> do
+  let f (Anyhow a) = Just a
+      f (IfPositive x) | n > 0 = Just x
+      f (IfPositive _) = Nothing
+  QC.oneof $ mapMaybe f xs
+
+halveSize :: QC.Gen a -> QC.Gen a
+halveSize m = QC.sized $ \n -> QC.resize (n `div` 2) m
+
+data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
+  { pdwtnTypeNames :: Set.Set Id
+  , pdwtnParameterDeclaration :: ParameterDeclaration
+  } deriving (Eq, Show)
+
+instance QC.Arbitrary ParameterDeclarationWithTypeNames where
+  arbitrary = do
+    names <- Set.fromList <$> QC.arbitrary
+    decl <- QC.sized $ arbitraryParameterDeclaration names
+    return $ ParameterDeclarationWithTypeNames names decl
+-}

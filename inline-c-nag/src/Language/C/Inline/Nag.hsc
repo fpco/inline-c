@@ -82,11 +82,11 @@ nagCtx :: Context
 nagCtx = baseCtx <> funPtrCtx <> ctx
   where
     ctx = mempty
-      { ctxConvertCTypeSpec = nagConvertCTypeSpec
+      { ctxCTypesTable = nagCTypesTable
       }
 
-nagConvertCTypeSpec :: Map.Map C.TypeSpecifier TH.TypeQ
-nagConvertCTypeSpec = Map.fromList
+nagCTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ
+nagCTypesTable = Map.fromList
   [ -- TODO this might not be a long, see nag_types.h
     (C.TypeName "Integer", [t| CLong |])
   , (C.TypeName "Complex", [t| Complex |])

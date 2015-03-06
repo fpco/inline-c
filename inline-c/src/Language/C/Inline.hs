@@ -473,28 +473,28 @@ inlineItems callSafety type_ cRetType cParams cItems = do
 -- @
 
 cexp :: TH.QuasiQuoter
-cexp = genericQuote False $ inlineExp TH.Safe
+cexp = genericQuote IO $ inlineExp TH.Safe
 
 cexp_unsafe :: TH.QuasiQuoter
-cexp_unsafe = genericQuote False $ inlineExp TH.Unsafe
+cexp_unsafe = genericQuote IO $ inlineExp TH.Unsafe
 
 cexp_pure :: TH.QuasiQuoter
-cexp_pure = genericQuote True $ inlineExp TH.Safe
+cexp_pure = genericQuote Pure $ inlineExp TH.Safe
 
 cexp_pure_unsafe :: TH.QuasiQuoter
-cexp_pure_unsafe = genericQuote True $ inlineExp TH.Unsafe
+cexp_pure_unsafe = genericQuote Pure $ inlineExp TH.Unsafe
 
 citems :: TH.QuasiQuoter
-citems = genericQuote False $ inlineItems TH.Safe
+citems = genericQuote IO $ inlineItems TH.Safe
 
 citems_unsafe :: TH.QuasiQuoter
-citems_unsafe = genericQuote False $ inlineItems TH.Unsafe
+citems_unsafe = genericQuote IO $ inlineItems TH.Unsafe
 
 citems_pure :: TH.QuasiQuoter
-citems_pure = genericQuote True $ inlineItems TH.Safe
+citems_pure = genericQuote Pure $ inlineItems TH.Safe
 
 citems_pure_unsafe :: TH.QuasiQuoter
-citems_pure_unsafe = genericQuote True $ inlineItems TH.Unsafe
+citems_pure_unsafe = genericQuote Pure $ inlineItems TH.Unsafe
 
 quoteCode
   :: (String -> TH.ExpQ)
@@ -508,7 +508,7 @@ quoteCode p = TH.QuasiQuoter
   }
 
 genericQuote
-  :: Bool
+  :: Purity
   -- ^ Whether the call and the function pointers should be pure or not.
   -> (TH.TypeQ -> C.Type -> [(C.Id, C.Type)] -> String -> TH.ExpQ)
   -- ^ Function taking that something and building an expression, see
@@ -521,7 +521,7 @@ genericQuote pure build = quoteCode $ \s -> do
   hsType <- cToHs ctx cType
   hsParams <- forM cParams $ \(cId, cTy) -> (,) cId <$> cToHs ctx cTy
   let hsFunType = convertCFunSig hsType $ map snd hsParams
-  buildFunCall ctx (build hsFunType cType cParams cExp) hsParams
+  buildFunCall ctx (build hsFunType cType cParams cExp) hsParams []
   where
     cToHs :: Context -> C.Type -> TH.TypeQ
     cToHs ctx cTy = do
@@ -530,27 +530,35 @@ genericQuote pure build = quoteCode $ \s -> do
         Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
         Just hsTy -> return hsTy
 
-    buildFunCall :: Context -> TH.ExpQ -> [(C.Id, TH.Type)] -> TH.ExpQ
-    buildFunCall _ctx f [] =
-      f
-    buildFunCall ctx f ((name, hsTy) : params) = do
+    buildFunCall :: Context -> TH.ExpQ -> [(C.Id, TH.Type)] -> [TH.Name] -> TH.ExpQ
+    buildFunCall _ctx f [] args =
+      foldl (\f' arg -> [| $f' $(TH.varE arg) |]) f args
+    buildFunCall ctx f ((name, hsTy) : params) args = do
       mbHsName <- TH.lookupValueName $ C.unId name
       case mbHsName of
         Nothing -> do
           error $ "Cannot capture Haskell variable " ++ show name ++
                   ", because it's not in scope."
         Just hsName -> do
-          mbExp <- ctxMarshaller ctx hsTy =<< TH.varE hsName
+          mbExp <- ctxBaseMarshaller ctx pure hsTy =<< TH.varE hsName
           case mbExp of
             Nothing -> error  $ "Could not marshal variable " ++ show name
-            Just exp' -> buildFunCall ctx [| $f $(return exp') |] params
+            Just exp' -> case pure of
+              Pure -> [|
+                  let arg = $(return exp')
+                  in $(buildFunCall ctx f params (args ++ ['arg]))
+                |]
+              IO -> [| $(return exp') $ \arg ->
+                  $(buildFunCall ctx f params (args ++ ['arg]))
+                |]
 
     convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
     convertCFunSig retType params0 = do
       go params0
       where
-        go [] = do
-          if pure then return retType else [t| IO $(return retType) |]
+        go [] = case pure of
+          Pure -> return retType
+          IO -> [t| IO $(return retType) |]
         go (paramType : params) = do
           [t| $(return paramType) -> $(go params) |]
 
