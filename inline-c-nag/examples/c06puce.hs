@@ -34,10 +34,10 @@ parseData :: (Int64, Int64) -> IO (A.StorableArray (Int64, Int64) Complex)
 parseData (m0, n0) = do
   x <- A.newArray ((0, 0), (m0, n0)) $ Complex 0 0
   let (m, n) = (fi m0, fi n0)
-  A.withStorableArray x $ \x -> [citems| void {
+  A.withStorableArray x $ \x -> [citems| void(Complex *x) {
       int i;
       for (i = 0; i < $(Integer m) * $(Integer n); i++)
-        scanf(" ( %lf , %lf ) ", &$(Complex *x)[i].re, &$x[i].im);
+        scanf(" ( %lf , %lf ) ", &x[i].re, &x[i].im);
     } |]
   return x
 
@@ -51,7 +51,7 @@ printGenComplxMat str x = do
       NagError fail; INIT_FAIL(fail);
       nag_gen_complx_mat_print_comp(
         Nag_RowMajor, Nag_GeneralMatrix, Nag_NonUnitDiag, $(Integer n), $(Integer m),
-        $(Complex *x), $m, Nag_BracketForm, "%6.3f", $(char *str),
+        $(Complex *x), $(Integer m), Nag_BracketForm, "%6.3f", $(char *str),
         Nag_NoLabels, 0, Nag_NoLabels, 0, 80, 0, NULL, &fail);
       return fail.code != NE_NOERROR;
     } |]
