@@ -5,6 +5,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 -- | A parser for C99 declarations, with some caveats:
 --
 -- * Array sizes can only be @*@, @n@ (where n is a positive integer),
@@ -87,6 +88,7 @@ import           Text.Parser.Token
 import           Text.Parser.Token.Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           Data.Typeable (Typeable)
 
 ------------------------------------------------------------------------
 -- Parser
@@ -119,7 +121,7 @@ runCParser
 runCParser isTypeName fn s p = Parsec.parse (runReaderT p isTypeName) fn s
 
 newtype Id = Id {unId :: String}
-  deriving (Eq, Ord, Show)
+  deriving (Typeable, Eq, Ord, Show)
 
 instance IsString Id where
   fromString s =
@@ -154,7 +156,7 @@ data DeclarationSpecifier
   | TypeSpecifier TypeSpecifier
   | TypeQualifier TypeQualifier
   | FunctionSpecifier FunctionSpecifier
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 declaration_specifiers :: forall m. CParser m => m [DeclarationSpecifier]
 declaration_specifiers = many1 $ msum
@@ -170,7 +172,7 @@ data StorageClassSpecifier
   | STATIC
   | AUTO
   | REGISTER
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 storage_class_specifier :: CParser m => m StorageClassSpecifier
 storage_class_specifier = msum
@@ -194,7 +196,7 @@ data TypeSpecifier
   | Struct Id
   | Enum Id
   | TypeName Id
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 type_specifier :: CParser m => m TypeSpecifier
 type_specifier = msum
@@ -234,7 +236,7 @@ data TypeQualifier
   = CONST
   | RESTRICT
   | VOLATILE
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 type_qualifier :: CParser m => m TypeQualifier
 type_qualifier = msum
@@ -245,7 +247,7 @@ type_qualifier = msum
 
 data FunctionSpecifier
   = INLINE
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 function_specifier :: CParser m => m FunctionSpecifier
 function_specifier = msum
@@ -255,7 +257,7 @@ function_specifier = msum
 data Declarator = Declarator
   { declaratorPointers :: [Pointer]
   , declaratorDirect :: DirectDeclarator
-  } deriving (Eq, Show)
+  } deriving (Typeable, Eq, Show)
 
 declarator :: CParser m => m Declarator
 declarator = (Declarator <$> many pointer <*> direct_declarator) <?> "declarator"
@@ -264,12 +266,12 @@ data DirectDeclarator
   = DeclaratorRoot Id
   | ArrayOrProto DirectDeclarator ArrayOrProto
   | DeclaratorParens Declarator
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 data ArrayOrProto
   = Array ArrayType
   | Proto [ParameterDeclaration] -- We don't include old prototypes.
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 array_or_proto :: CParser m => m ArrayOrProto
 array_or_proto = msum
@@ -283,7 +285,7 @@ data ArrayType
   | Unsized
   | SizedByInteger Integer
   | SizedByIdentifier Id
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 array_type :: CParser m => m ArrayType
 array_type = msum
@@ -304,7 +306,7 @@ direct_declarator =
 
 data Pointer
   = Pointer [TypeQualifier]
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 pointer :: CParser m => m Pointer
 pointer = do
@@ -318,7 +320,7 @@ parameter_list =
 data ParameterDeclaration = ParameterDeclaration
   { parameterDeclarationSpecifiers :: [DeclarationSpecifier]
   , parameterDeclarationDeclarator :: Either Declarator AbstractDeclarator
-  } deriving (Eq, Show)
+  } deriving (Typeable, Eq, Show)
 
 parameter_declaration :: CParser m => m ParameterDeclaration
 parameter_declaration =
@@ -334,7 +336,7 @@ parameter_declaration =
 data AbstractDeclarator = AbstractDeclarator
   { abstractDeclaratorPointers :: [Pointer]
   , abstractDeclaratorDirect :: Maybe DirectAbstractDeclarator
-  } deriving (Eq, Show)
+  } deriving (Typeable, Eq, Show)
 
 abstract_declarator :: CParser m => m AbstractDeclarator
 abstract_declarator = do
@@ -349,7 +351,7 @@ data DirectAbstractDeclarator
   = ArrayOrProtoHere ArrayOrProto
   | ArrayOrProtoThere DirectAbstractDeclarator ArrayOrProto
   | AbstractDeclaratorParens AbstractDeclarator
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 direct_abstract_declarator :: CParser m => m DirectAbstractDeclarator
 direct_abstract_declarator =
@@ -480,7 +482,7 @@ instance Pretty DirectAbstractDeclarator where
 data OneOfSized a
   = Anyhow a
   | IfPositive a
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 -- | Precondition: there is at least one 'Anyhow' in the list.
 oneOfSized :: [OneOfSized (QC.Gen a)] -> QC.Gen a
@@ -505,7 +507,7 @@ instance QC.Arbitrary Id where
 data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
   { pdwtnTypeNames :: Set.Set Id
   , pdwtnParameterDeclaration :: ParameterDeclaration
-  } deriving (Eq, Show)
+  } deriving (Typeable, Eq, Show)
 
 instance QC.Arbitrary ParameterDeclarationWithTypeNames where
   arbitrary = do
