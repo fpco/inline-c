@@ -9,10 +9,8 @@ import           Data.Int (Int64)
 import           Foreign.C.String (withCString)
 import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
-import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek)
 import           Language.C.Inline.Nag
-import           Text.RawString.QQ (r)
 
 setContext nagCtx
 
@@ -34,10 +32,10 @@ parseData :: (Int64, Int64) -> IO (A.StorableArray (Int64, Int64) Complex)
 parseData (m0, n0) = do
   x <- A.newArray ((0, 0), (m0, n0)) $ Complex 0 0
   let (m, n) = (fi m0, fi n0)
-  A.withStorableArray x $ \x -> [citems| void(Complex *x) {
+  A.withStorableArray x $ \xPtr -> [citems| void(Complex *xPtr) {
       int i;
       for (i = 0; i < $(Integer m) * $(Integer n); i++)
-        scanf(" ( %lf , %lf ) ", &x[i].re, &x[i].im);
+        scanf(" ( %lf , %lf ) ", &xPtr[i].re, &xPtr[i].im);
     } |]
   return x
 
@@ -46,12 +44,12 @@ printGenComplxMat
 printGenComplxMat str x = do
   ((0, 0), (m0, n0)) <- A.getBounds x
   let (m, n) = (fi m0, fi n0)
-  withCString str $ \str -> A.withStorableArray x $ \x ->
+  withCString str $ \str -> A.withStorableArray x $ \xPtr ->
     [citems| int {
       NagError fail; INIT_FAIL(fail);
       nag_gen_complx_mat_print_comp(
         Nag_RowMajor, Nag_GeneralMatrix, Nag_NonUnitDiag, $(Integer n), $(Integer m),
-        $(Complex *x), $(Integer m), Nag_BracketForm, "%6.3f", $(char *str),
+        $(Complex *xPtr), $(Integer m), Nag_BracketForm, "%6.3f", $(char *str),
         Nag_NoLabels, 0, Nag_NoLabels, 0, 80, 0, NULL, &fail);
       return fail.code != NE_NOERROR;
     } |]
@@ -61,9 +59,9 @@ sumFftComplex2d
 sumFftComplex2d flag x = do
   ((0, 0), (m0, n0)) <- A.getBounds x
   let (m, n) = (fi m0, fi n0)
-  A.withStorableArray x $ \x -> [citems| int {
+  A.withStorableArray x $ \xPtr -> [citems| int {
     NagError fail; INIT_FAIL(fail);
-    nag_sum_fft_complex_2d($(int flag), $(Integer m), $(Integer n), $(Complex *x), &fail);
+    nag_sum_fft_complex_2d($(int flag), $(Integer m), $(Integer n), $(Complex *xPtr), &fail);
     return fail.code != NE_NOERROR;
   } |]
 

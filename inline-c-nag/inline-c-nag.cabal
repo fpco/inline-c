@@ -9,16 +9,23 @@ category:            Math
 build-type:          Simple
 cabal-version:       >=1.10
 
+flag examples
+  description:         Build examples
+  default:             False
+
 library
   exposed-modules:     Language.C.Inline.Nag
+  other-modules:       Language.C.Inline.Nag.Internal
+  c-sources:           src/Language/C/Inline/Nag.c
   build-depends:       base >=4 && <5
                      , inline-c
                      , template-haskell
-                     , transformers
                      , containers
   hs-source-dirs:      src
   default-language:    Haskell2010
   include-dirs:        /opt/NAG/cll6i24dcl/include
+  ghc-options:         -Wall -O -fPIC
+  cc-options:          -O2 -m64
 
 -- Examples
 
@@ -35,6 +42,12 @@ executable a02bac
   extra-libraries:     nagc_nag imf svml irng intlc
   extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
   include-dirs:        /opt/NAG/cll6i24dcl/include
+  ghc-options:         -Wall -O -fPIC
+
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False
 
 executable c06puce
   hs-source-dirs:      examples
@@ -50,6 +63,12 @@ executable c06puce
   extra-libraries:     nagc_nag imf svml irng intlc
   extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
   include-dirs:        /opt/NAG/cll6i24dcl/include
+  ghc-options:         -Wall -O -fPIC
+
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False
 
 executable est-priors
   hs-source-dirs:      examples
@@ -65,3 +84,9 @@ executable est-priors
   extra-libraries:     nagc_nag imf svml irng intlc
   extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
   include-dirs:        /opt/NAG/cll6i24dcl/include
+  ghc-options:         -Wall -O -fPIC
+
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False

@@ -1,7 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-import           Foreign.C.Types
 import           Language.C.Inline.Nag
 import           Text.RawString.QQ (r)
 

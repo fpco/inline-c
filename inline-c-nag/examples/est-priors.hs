@@ -4,14 +4,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 import           Language.C.Inline
 import           Language.C.Inline.Nag
-import           Foreign.Ptr
 import           Foreign.ForeignPtr
 import           Foreign.C.Types
 import           Foreign.Storable
 import           Foreign.Marshal.Alloc (alloca)
-import           Data.Functor ((<$>))
 import qualified Data.Vector.Storable as V
-import qualified Data.Vector.Storable.Mutable as VM
 
 setContext nagCtx
 
@@ -21,8 +18,6 @@ include "<stdio.h>"
 include "<nag_stdlib.h>"
 include "<nage04.h>"
 include "<nagx02.h>"
-
-type CConst a = a
 
 data Optimx x = Optimx
   { optimxBest :: !x
@@ -37,25 +32,24 @@ nelderMead
   -- ^ Function to minimize
   -> CLong
   -- ^ Maximum number of iterations (must be >= 1).
-  -> IO (Maybe (Optimx (V.Vector CDouble)))
-  -- ^ Position of the minimum.  'Nothing' if something went wrong
-  -- (prints the error message)
+  -> IO (Either String (Optimx (V.Vector CDouble)))
+  -- ^ Position of the minimum.  'Left' if something went wrong, with
+  -- error message.
 nelderMead x pureFunct maxcal = do
     -- Create mutable input/output vector for C code
     xMut <- V.thaw x
     alloca $ \fPtr -> alloca $ \ncallsPtr -> do
       -- Create function that the C code will use
-      let funct n' xPtr fPtr _comm = do
+      let funct n' xPtr fPtr' _comm = do
             xFPtr <- newForeignPtr_ xPtr
             let f = pureFunct $ V.unsafeFromForeignPtr0 xFPtr $ fromIntegral n'
-            poke fPtr f
+            poke fPtr' f
       -- Create monitoring function, to record number of calls
       let monit _fmin _fmax _sim _n ncall _serror _vratio _comm = do
             poke ncallsPtr ncall
       -- Call the C code
-      res <- [citems|
-        int {
-            NagError fail; INIT_FAIL(fail);
+      res <- withNagError $ \fail_ -> [citems|
+        void {
             Nag_Comm comm;
             double tolf = sqrt(nag_machine_precision);
             double tolx = sqrt(tolf);
@@ -63,20 +57,16 @@ nelderMead x pureFunct maxcal = do
               $vec-len:xMut, $vec-ptr:(double *xMut), $(double *fPtr), tolf, tolx,
               $fun:(void (*funct)(Integer n, const double *xc, double *fc, Nag_Comm *comm)),
               $fun:(void (*monit)(double fmin, double fmax, const double sim[], Integer n, Integer ncall, double serror, double vratio, Nag_Comm *comm)),
-              $(Integer maxcal), &comm, &fail);
-            if (fail.code != NE_NOERROR) {
-              printf("Error from nag_opt_simplex_easy (e04cbc).\n%s\n", fail.message);
-            }
-            return fail.code != NE_NOERROR;
+              $(Integer maxcal), &comm, $(NagError *fail_));
         }
       |]
-      if res /= 0
-        then return Nothing
-        else do
+      case res of
+        Left err -> return $ Left err
+        Right () -> do
           f <- peek fPtr
           x' <- V.unsafeFreeze xMut
           ncalls <- peek ncallsPtr
-          return $ Just Optimx
+          return $ Right Optimx
             { optimxBest = x'
             , optimxMinCost = f
             , optimxCalls = ncalls
