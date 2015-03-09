@@ -6,7 +6,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Language.C.Inline.Spec (spec) where
+module Language.C.Inline.ParseSpec (spec) where
 
 import           Control.Applicative ((<*), (*>))
 import           Control.Monad.Trans.Class (lift)

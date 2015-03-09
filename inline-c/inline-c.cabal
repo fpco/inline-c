@@ -12,14 +12,11 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Language.C.Inline
-                     , Language.C.Inline.Spec
+                     , Language.C.Inline.Parse
                      , Language.C.Inline.Context
-                     , Language.C.Inline.Context.Spec
                      , Language.C.Types
                      , Language.C.Types.Parse
-                     , Language.C.Types.Parse.Spec
-  other-modules:       Language.C.Inline.Parse
-                     , Language.C.Inline.FunPtr
+  other-modules:       Language.C.Inline.FunPtr
   ghc-options:         -Wall -O
   ghc-prof-options:    -auto-all
   build-depends:       base >=4 && <5
@@ -30,15 +27,11 @@ library
                      , cryptohash
                      , directory
                      , filepath
-                     , hspec >= 2
-                     , hspec-smallcheck
                      , lens
                      , logict
                      , mtl
                      , parsec >= 3
                      , parsers
-                     , raw-strings-qq
-                     , regex-posix
                      , smallcheck
                      , template-haskell >= 2.9
                      , transformers >= 0.1.3.0
@@ -49,12 +42,21 @@ library
 
 test-suite tests
   type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
   main-is:             tests.hs
-  c-sources:           tests.c
+  c-sources:           test/tests.c
   build-depends:       base >=4 && <5
+                     , ansi-wl-pprint
+                     , containers
                      , hspec
+                     , hspec >= 2
+                     , hspec-smallcheck
                      , inline-c
+                     , parsers
+                     , QuickCheck
                      , raw-strings-qq
+                     , regex-posix
                      , template-haskell
+                     , transformers
                      , vector
   default-language:    Haskell2010
