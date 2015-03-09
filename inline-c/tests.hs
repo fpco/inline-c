@@ -16,7 +16,7 @@ import qualified Language.C.Inline.Spec
 import qualified Language.C.Types as C
 import qualified Language.C.Types.Parse.Spec
 
-setContext (baseCtx <> funCtx)
+setContext (baseCtx <> funCtx <> vecCtx)
 
 include "<math.h>"
 include "<stdio.h>"
@@ -121,6 +121,17 @@ main = Hspec.hspec $ do
         int x = 0;
         for (i = 0; i < $(int n); i++) {
           x += $(int *ptr)[i];
+        }
+        return x;
+      } |]
+      sum `Hspec.shouldBe` 3 * 10
+    Hspec.it "quick vectors" $ do
+      vec <- V.replicate 10 3
+      sum <- [citems| int {
+        int i;
+        int x = 0;
+        for (i = 0; i < $vec-len:vec; i++) {
+          x += $vec-ptr:(int *vec)[i];
         }
         return x;
       } |]

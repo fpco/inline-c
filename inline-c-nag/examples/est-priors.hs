@@ -41,10 +41,9 @@ nelderMead
   -- ^ Position of the minimum.  'Nothing' if something went wrong
   -- (prints the error message)
 nelderMead x pureFunct maxcal = do
-    let n = fromIntegral $ V.length x
     -- Create mutable input/output vector for C code
     xMut <- V.thaw x
-    alloca $ \fPtr -> alloca $ \ncallsPtr -> VM.unsafeWith xMut $ \xMutPtr -> do
+    alloca $ \fPtr -> alloca $ \ncallsPtr -> do
       -- Create function that the C code will use
       let funct n' xPtr fPtr _comm = do
             xFPtr <- newForeignPtr_ xPtr
@@ -61,7 +60,7 @@ nelderMead x pureFunct maxcal = do
             double tolf = sqrt(nag_machine_precision);
             double tolx = sqrt(tolf);
             nag_opt_simplex_easy(
-              $(Integer n), $(double *xMutPtr), $(double *fPtr), tolf, tolx,
+              $vec-len:xMut, $vec-ptr:(double *xMut), $(double *fPtr), tolf, tolx,
               $fun:(void (*funct)(Integer n, const double *xc, double *fc, Nag_Comm *comm)),
               $fun:(void (*monit)(double fmin, double fmax, const double sim[], Integer n, Integer ncall, double serror, double vratio, Nag_Comm *comm)),
               $(Integer maxcal), &comm, &fail);

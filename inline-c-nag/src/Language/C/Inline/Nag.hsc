@@ -79,7 +79,7 @@ type Nag_MCSInitMethod = CInt
 -- * Context
 
 nagCtx :: Context
-nagCtx = baseCtx <> funCtx <> ctx
+nagCtx = baseCtx <> funCtx <> vecCtx <> ctx
   where
     ctx = mempty
       { ctxCTypesTable = nagCTypesTable

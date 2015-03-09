@@ -31,20 +31,22 @@ module Language.C.Inline.Context
   , Context(..)
   , baseCtx
   , funCtx
+  , vecCtx
   ) where
 
 import           Control.Applicative (empty, (<|>))
 import           Control.Monad (mzero)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
-import           Data.Monoid (Monoid(..))
-import           Foreign.C.Types
-import           Foreign.Ptr (Ptr, FunPtr)
-import qualified Language.Haskell.TH as TH
 import           Data.Functor ((<$>))
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
+import           Data.Monoid (Monoid(..))
 import           Data.Typeable (Typeable)
+import qualified Data.Vector.Storable.Mutable as V
+import           Foreign.C.Types
+import           Foreign.Ptr (Ptr, FunPtr)
+import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Char as Parser
 import qualified Text.Parser.Combinators as Parser
 import qualified Text.Parser.LookAhead as Parser
@@ -199,7 +201,22 @@ isTypeName :: CTypesTable -> C.Id -> Bool
 isTypeName cTypes id' = Map.member (C.TypeName id') cTypes
 
 ------------------------------------------------------------------------
--- Function pointer removal
+-- Useful contexts
+
+getHsVariable :: String -> String -> TH.ExpQ
+getHsVariable err s = do
+  mbHsName <- TH.lookupValueName s
+  case mbHsName of
+    Nothing -> error $ "Cannot capture Haskell variable " ++ s ++
+                       ", because it's not in scope. (" ++ err ++ ")"
+    Just hsName -> TH.varE hsName
+
+convertCType_ :: String -> CTypesTable -> Purity -> C.Type -> TH.Q TH.Type
+convertCType_ err cTypes pure cTy = do
+  mbHsType <- convertCType cTypes pure cTy
+  case mbHsType of
+    Nothing -> error $ "Cannot convert C type (" ++ err ++ ")"
+    Just hsType -> return hsType
 
 -- | This 'Context' includes a 'CAntiQuoter' that removes the need for
 -- explicitely creating 'FunPtr's, named @"fun"@.
@@ -221,22 +238,75 @@ funPtrCAntiQuoter = CAntiQuoter
          let s = C.unId id'
          return (s, C.parameterDeclarationType cTy, s)
   , caqMarshaller = \cTypes pure cTy cId -> do
-      mbHsTy <- convertCType cTypes pure cTy
-      case mbHsTy of
-        Nothing -> error "Cannot convert C type (funCtx)"
-        Just hsTy -> do
-          mbHsName <- TH.lookupValueName cId
-          case mbHsName of
-            Nothing -> error $ "Cannot capture Haskell variable " ++ cId ++
-                               ", because it's not in scope. (funCtx)"
-            Just hsName -> do
-              hsExp <- TH.varE hsName
-              case hsTy of
-                TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr -> case pure of
-                  IO -> do
-                    hsExp <- [| \cont -> cont =<< $(mkFunPtr (return hsTy')) $(return hsExp) |]
-                    return (hsTy, hsExp)
-                  Pure -> error $ "Cannot convert functions to pointers " ++
-                                  "in pure quotation (funCtx)"
-                _ -> error "The `fun' marshaller captures function pointers only"
+      hsTy <- convertCType_ "funCtx" cTypes pure cTy
+      hsExp <- getHsVariable "funCtx" cId
+      case hsTy of
+        TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr -> case pure of
+          IO -> do
+            hsExp' <- [| \cont -> cont =<< $(mkFunPtr (return hsTy')) $(return hsExp) |]
+            return (hsTy, hsExp')
+          Pure -> error $ "Cannot convert functions to pointers " ++
+                          "in pure quotation (funCtx)"
+        _ -> error "The `fun' marshaller captures function pointers only"
+  }
+
+-- | This 'Context' includes two 'CAntiQuoter's that allow to easily use
+-- Haskell vectors in C.
+--
+-- Specifically, the @vec-len@ and @vec-ptr@ will get the length and the
+-- pointer underlying mutable storable vectors, 'V.IOVector'.
+--
+-- To use @vec-len@, simply write @$vec-len:x@, where @x@ is something
+-- of type @'V.IOVector' a@, for some @a@.  To use @vec-ptr@ you need to
+-- specify the type of the pointer, e.g. @$vec-len:(int *x)@ will work
+-- if @x@ has type @'V.IOVector' 'CInt'@.
+vecCtx :: Context
+vecCtx = mempty
+  { ctxCAntiQuoters = Map.fromList
+      [ ("vec-ptr", SomeCAntiQuoter vecPtrCAntiQuoter)
+      , ("vec-len", SomeCAntiQuoter vecLenCAntiQuoter)
+      ]
+  }
+
+vecPtrCAntiQuoter :: CAntiQuoter String
+vecPtrCAntiQuoter = CAntiQuoter
+  { caqParser = do
+      cTy <- Parser.parens C.parseParameterDeclaration
+      case C.parameterDeclarationId cTy of
+        Nothing -> error "Every captured vector must be named (vecCtx)"
+        Just id' -> do
+         let s = C.unId id'
+         return (s, C.parameterDeclarationType cTy, s)
+  , caqMarshaller = \cTypes pure cTy cId -> do
+      hsTy <- convertCType_ "vecCtx" cTypes pure cTy
+      hsExp <- getHsVariable "vecCtx" cId
+      case pure of
+       IO -> do
+         hsExp' <- [| V.unsafeWith $(return hsExp) |]
+         return (hsTy, hsExp')
+       Pure -> do
+         error $ "Cannot convert vectors to pointers " ++
+                 "in pure quotation (vecCtx)"
+  }
+
+vecLenCAntiQuoter :: CAntiQuoter String
+vecLenCAntiQuoter = CAntiQuoter
+  { caqParser = do
+      cId <- C.parseIdentifier
+      let s = C.unId cId
+      return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
+  , caqMarshaller = \cTypes pure cTy cId -> do
+      case cTy of
+        C.TypeSpecifier _ (C.Long C.Signed) -> do
+          hsExp <- getHsVariable "vecCtx" cId
+          hsExp' <- [| fromIntegral (V.length $(return hsExp)) |]
+          hsTy <- [t| CLong |]
+          case pure of
+            Pure -> do
+              return (hsTy, hsExp')
+            IO -> do
+              hsExp'' <- [| \cont -> cont $(return hsExp') |]
+              return (hsTy, hsExp'')
+        _ -> do
+          error "impossible: got type different from `long' (vecCtx)"
   }
