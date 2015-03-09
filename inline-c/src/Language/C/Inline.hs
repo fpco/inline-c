@@ -58,8 +58,6 @@ import           Data.Foldable (forM_)
 import           Data.Functor ((<$>))
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import           Data.Maybe (fromMaybe)
-import qualified Data.UUID as UUID
-import qualified Data.UUID.V4 as UUID
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -69,6 +67,8 @@ import           System.IO.Error (isDoesNotExistError)
 import           System.IO.Unsafe (unsafePerformIO)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import qualified Data.Map as Map
+import qualified Crypto.Hash as CryptoHash
+import qualified Data.Binary as Binary
 
 import qualified Language.C.Types as C
 import           Language.C.Inline.Context
@@ -120,6 +120,7 @@ import           Language.C.Inline.FunPtr
 data ModuleState = ModuleState
   { msModuleName :: String
   , msContext :: Context
+  , msGeneratedNames :: Int
   }
 
 {-# NOINLINE moduleStateRef #-}
@@ -145,6 +146,7 @@ initialiseModuleState mbContext = do
         writeIORef moduleStateRef $ Just ModuleState
           { msModuleName = thisModule
           , msContext = context
+          , msGeneratedNames = 0
           }
   case mbModuleState of
     Nothing -> recordThisModule
@@ -185,6 +187,14 @@ setContext ctx = do
     error "inline-c: The module has already been initialised (setContext)."
   initialiseModuleState $ Just ctx
   return []
+
+bumpGeneratedNames :: TH.Q Int
+bumpGeneratedNames = do
+  ms <- getModuleState
+  TH.runIO $ do
+    let c = msGeneratedNames ms
+    writeIORef moduleStateRef $ Just ms{msGeneratedNames = c + 1}
+    return c
 
 ------------------------------------------------------------------------
 -- Emitting
@@ -290,11 +300,11 @@ inlineCode Code{..} = do
   TH.addTopDecls [dec]
   TH.varE ffiImportName
 
-uniqueCName :: IO String
-uniqueCName = do
-  -- UUID with the dashes removed
-  unique <- filter (/= '-') . UUID.toString <$> UUID.nextRandom
-  return $ "inline_c_" ++ unique
+uniqueCName :: String -> TH.Q String
+uniqueCName x = do
+  c <- bumpGeneratedNames
+  let unique :: CryptoHash.Digest CryptoHash.SHA1 = CryptoHash.hashlazy $ Binary.encode x
+  return $ "inline_c_" ++ show c ++ "_" ++ show unique
 
 -- | Same as 'inlineItems', but with a single expression.
 --
@@ -350,10 +360,10 @@ inlineItems
   -- ^ The C items
   -> TH.ExpQ
 inlineItems callSafety type_ cRetType cParams cItems = do
-  funName <- TH.runIO uniqueCName
   let mkParam (id', paramTy) = C.ParameterDeclaration (Just id') paramTy
-      decl = C.ParameterDeclaration (Just (C.Id funName)) $
-             C.Proto cRetType (map mkParam cParams)
+  let proto = C.Proto cRetType (map mkParam cParams)
+  funName <- uniqueCName $ show proto ++ cItems
+  let decl = C.ParameterDeclaration (Just (C.Id funName)) proto
   let defs =
         prettyOneLine decl ++ " {\n" ++
         cItems ++ "\n}\n"
