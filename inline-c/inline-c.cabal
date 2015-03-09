@@ -36,12 +36,13 @@ library
                      , parsec >= 3
                      , parsers
                      , raw-strings-qq
+                     , regex-posix
                      , smallcheck
                      , template-haskell >= 2.9
                      , transformers >= 0.1.3.0
                      , unordered-containers
                      , uuid
-                     , regex-posix
+                     , vector
   hs-source-dirs:      src
   default-language:    Haskell2010
 
