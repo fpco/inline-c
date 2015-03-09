@@ -16,30 +16,33 @@ import           Text.Parser.Combinators
 import           Text.RawString.QQ (r)
 import           Control.Monad (void)
 import           Control.Exception (evaluate)
+import           Data.Monoid ((<>))
+import           Text.Regex.Posix ((=~))
 
 import qualified Language.C.Types as C
 import           Language.C.Inline.Parse
+import           Language.C.Inline.Context
 
 spec :: Hspec.SpecWith ()
 spec = do
   Hspec.describe "parsing" $ do
     Hspec.it "parses simple C expression" $ do
       (retType, params, cExp) <- goodParse [r|
-          int(double x, float y) { (int) ceil(x + ((double) y)) }
+          int(double x) { (int) ceil(x + ((double) $(float y))) }
         |]
       retType `Hspec.shouldBe` (cty "int")
-      params `Hspec.shouldMatchList` [("x", (cty "double")), ("y", (cty "float"))]
-      cExp `Hspec.shouldBe` " (int) ceil(x + ((double) y)) "
+      params `shouldMatchParameters` [(cty "double", Plain "x"), (cty "float", Plain "y")]
+      cExp `shouldMatchBody` " (int) ceil(x \\+ ((double) y[a-z0-9_]+)) "
     Hspec.it "empty argument list (1)" $ do
       void $ goodParse [r| int{ 4 } |]
     Hspec.it "empty argument list (2)" $ do
       void $ goodParse [r| int(){ 4 } |]
-    Hspec.it "does not accept conflicting declarations (1)" $ do
+    Hspec.it "does not accept duplicates in parameter list" $ do
       badParse [r| int(int x, double x) { x } |]
-    Hspec.it "does not accept conflicting declarations (2)" $ do
-      badParse [r| int(int x) { $(double x) } |]
-    Hspec.it "does not accept conflicting declarations (3)" $ do
-      badParse [r| int { $(double x) + $(int x) } |]
+    Hspec.it "accepts conflicting declarations (1)" $ do
+      void $ goodParse [r| int(int x) { $(double x) } |]
+    Hspec.it "accepts conflicting declarations (2)" $ do
+      void $ goodParse [r| int { $(double x) + $(int x) } |]
     Hspec.it "accepts agreeing declarations, if with suffix (1)" $ do
       void $ goodParse [r| int(int x) { $(int x) } |]
     Hspec.it "accepts agreeing declarations, if with suffix (2)" $ do
@@ -62,21 +65,23 @@ spec = do
       (retType, params, cExp) <-
         goodParse [r| double (*)(double) { &cos } |]
       retType `Hspec.shouldBe` (cty "double (*)(double)")
-      params `Hspec.shouldMatchList` []
-      cExp `Hspec.shouldBe` " &cos "
+      params `shouldMatchParameters` []
+      cExp `shouldMatchBody` " &cos "
     Hspec.it "parses returning function pointers with parameters" $ do
       (retType, params, cExp) <-
         goodParse [r| double (*f(int dummy))(double) { &cos } |]
       retType `Hspec.shouldBe` (cty "double (*)(double)")
-      params `Hspec.shouldMatchList` [("dummy", (cty "int"))]
-      cExp `Hspec.shouldBe` " &cos "
+      params `shouldMatchParameters` [(cty "int", Plain "dummy")]
+      cExp `shouldMatchBody` " &cos "
     Hspec.it "parses named function type" $ do
       (retType, params, cExp) <-
         goodParse [r| double c_cos(double x) { cos(x) } |]
       retType `Hspec.shouldBe` (cty "double")
-      params `Hspec.shouldMatchList` [("x", (cty "double"))]
-      cExp `Hspec.shouldBe` " cos(x) "
+      params `shouldMatchParameters` [(cty "double", Plain "x")]
+      cExp `shouldMatchBody` " cos(x) "
   where
+    ctx = baseCtx <> funCtx
+
     assertParse p s =
       case C.runCParser (const False) "spec" s (lift spaces *> p <* lift eof) of
         Left err -> error $ "Parse error (assertParse): " ++ show err
@@ -84,14 +89,28 @@ spec = do
 
     -- We use show + length to fully evaluate the result -- there
     -- might be exceptions hiding.  TODO get rid of exceptions.
-    strictParse :: String -> IO (C.Type, [(C.Id, C.Type)], String)
+    strictParse :: String -> IO (C.Type, [(C.Id, C.Type, ParameterType)], String)
     strictParse s = do
-      let x = assertParse parseTypedC s
-      void $ evaluate $ length $ show x
-      return x
+      let ParseTypedC retType pars body =
+            assertParse (parseTypedC (ctxCAntiQuoters ctx)) s
+      void $ evaluate $ length $ show (retType, pars, body)
+      return (retType, pars, body)
 
     goodParse = strictParse
     badParse s = strictParse s `Hspec.shouldThrow` Hspec.anyException
 
     cty :: String -> C.Type
     cty s = C.parameterDeclarationType $ assertParse C.parseParameterDeclaration s
+
+    shouldMatchParameters
+      :: [(C.Id, C.Type, ParameterType)] -> [(C.Type, ParameterType)] -> Hspec.Expectation
+    shouldMatchParameters pars pars' =
+      [(x, y) | (_, x, y) <- pars] `Hspec.shouldMatchList` pars'
+
+    shouldMatchBody :: String -> String -> Hspec.Expectation
+    shouldMatchBody x y = do
+      let f ch' = case ch' of
+            '(' -> "\\("
+            ')' -> "\\)"
+            ch -> [ch]
+      (x =~ concatMap f y) `Hspec.shouldBe` True

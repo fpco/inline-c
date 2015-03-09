@@ -6,6 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 -- | While "Language.C.Types.Parse" provides access to routines that
 -- parse C declarations and present them as they are, this module gives
 -- a much friendlier view to C types, by turning them in a data type
@@ -61,6 +62,7 @@ import           Control.Monad.State (execState)
 import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Data.Monoid ((<>), Monoid(..))
+import           Data.Typeable (Typeable)
 
 import qualified Language.C.Types.Parse as P
 
@@ -80,13 +82,13 @@ data TypeSpecifier
   | TypeName P.Id
   | Struct P.Id
   | Enum P.Id
-  deriving (Show, Eq, Ord)
+  deriving (Typeable, Show, Eq, Ord)
 
 data Specifiers = Specifiers
   { storageClassSpecifiers :: [P.StorageClassSpecifier]
   , typeQualifiers :: [P.TypeQualifier]
   , functionSpecifiers :: [P.FunctionSpecifier]
-  } deriving (Show, Eq)
+  } deriving (Typeable, Show, Eq)
 
 instance Monoid Specifiers where
   mempty = Specifiers [] [] []
@@ -99,17 +101,17 @@ data Type
   | Ptr [P.TypeQualifier] Type
   | Array P.ArrayType Type
   | Proto Type [ParameterDeclaration]
-  deriving (Show, Eq)
+  deriving (Typeable, Show, Eq)
 
 data Sign
   = Signed
   | Unsigned
-  deriving (Show, Eq, Ord)
+  deriving (Typeable, Show, Eq, Ord)
 
 data ParameterDeclaration = ParameterDeclaration
   { parameterDeclarationId :: Maybe P.Id
   , parameterDeclarationType :: Type
-  } deriving (Show, Eq)
+  } deriving (Typeable, Show, Eq)
 
 ------------------------------------------------------------------------
 -- Conversion
@@ -117,7 +119,7 @@ data ParameterDeclaration = ParameterDeclaration
 data UntangleErr
   = MultipleDataTypes [P.TypeSpecifier]
   | IllegalSpecifiers String [P.TypeSpecifier]
-  deriving (Show, Eq)
+  deriving (Typeable, Show, Eq)
 
 failConversion :: UntangleErr -> Either UntangleErr a
 failConversion = Left
@@ -473,7 +475,7 @@ pretty80 x = PP.displayS (PP.renderPretty 0.8 80 x) ""
 data OneOfSized a
   = Anyhow a
   | IfPositive a
-  deriving (Eq, Show)
+  deriving (Typeable, Eq, Show)
 
 -- | Precondition: there is at least one 'Anyhow' in the list.
 oneOfSized :: [OneOfSized (QC.Gen a)] -> QC.Gen a
@@ -489,7 +491,7 @@ halveSize m = QC.sized $ \n -> QC.resize (n `div` 2) m
 data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
   { pdwtnTypeNames :: Set.Set Id
   , pdwtnParameterDeclaration :: ParameterDeclaration
-  } deriving (Eq, Show)
+  } deriving (Typeable, Eq, Show)
 
 instance QC.Arbitrary ParameterDeclarationWithTypeNames where
   arbitrary = do

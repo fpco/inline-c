@@ -68,6 +68,7 @@ import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Error (isDoesNotExistError)
 import           System.IO.Unsafe (unsafePerformIO)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import qualified Data.Map as Map
 
 import qualified Language.C.Types as C
 import           Language.C.Inline.Context
@@ -517,40 +518,58 @@ genericQuote
 genericQuote pure build = quoteCode $ \s -> do
   initialiseModuleState_
   ctx <- getContext
-  (cType, cParams, cExp) <- runParserInQ s (isTypeName ctx) parseTypedC
+  ParseTypedC cType cParams cExp <-
+    runParserInQ s (isTypeName (ctxCTypesTable ctx)) $ parseTypedC $ ctxCAntiQuoters ctx
   hsType <- cToHs ctx cType
-  hsParams <- forM cParams $ \(cId, cTy) -> (,) cId <$> cToHs ctx cTy
-  let hsFunType = convertCFunSig hsType $ map snd hsParams
-  buildFunCall ctx (build hsFunType cType cParams cExp) hsParams []
+  hsParams <- forM cParams $ \(cId, cTy, parTy) -> do
+    case parTy of
+      Plain s' -> do
+        hsTy <- cToHs ctx cTy
+        mbHsName <- TH.lookupValueName s'
+        hsExp <- case mbHsName of
+          Nothing -> do
+            error $ "Cannot capture Haskell variable " ++ show cId ++
+                    ", because it's not in scope. (genericQuote)"
+          Just hsName -> do
+            hsExp <- TH.varE hsName
+            case pure of
+              Pure -> return hsExp
+              IO -> [| \cont -> cont $(return hsExp) |]
+        return (hsTy, hsExp)
+      AntiQuote antiId dyn -> do
+        case Map.lookup antiId (ctxCAntiQuoters ctx) of
+          Nothing ->
+            error $ "IMPOSSIBLE: could not find anti-quoter " ++ show antiId ++
+                    ". (genericQuote)"
+          Just (SomeCAntiQuoter antiQ) -> case fromSomeEq dyn of
+            Nothing ->
+              error  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
+                       show antiId ++ ". (genericQuote)"
+            Just x ->
+              caqMarshaller antiQ (ctxCTypesTable ctx) pure cTy x
+  let hsFunType = convertCFunSig hsType $ map fst hsParams
+  let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
+  buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
   where
     cToHs :: Context -> C.Type -> TH.TypeQ
     cToHs ctx cTy = do
-      mbHsTy <- convertCType ctx pure cTy
+      mbHsTy <- convertCType (ctxCTypesTable ctx) pure cTy
       case mbHsTy of
         Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
         Just hsTy -> return hsTy
 
-    buildFunCall :: Context -> TH.ExpQ -> [(C.Id, TH.Type)] -> [TH.Name] -> TH.ExpQ
+    buildFunCall :: Context -> TH.ExpQ -> [TH.Exp] -> [TH.Name] -> TH.ExpQ
     buildFunCall _ctx f [] args =
       foldl (\f' arg -> [| $f' $(TH.varE arg) |]) f args
-    buildFunCall ctx f ((name, hsTy) : params) args = do
-      mbHsName <- TH.lookupValueName $ C.unId name
-      case mbHsName of
-        Nothing -> do
-          error $ "Cannot capture Haskell variable " ++ show name ++
-                  ", because it's not in scope."
-        Just hsName -> do
-          mbExp <- ctxBaseMarshaller ctx pure hsTy =<< TH.varE hsName
-          case mbExp of
-            Nothing -> error  $ "Could not marshal variable " ++ show name
-            Just exp' -> case pure of
-              Pure -> [|
-                  let arg = $(return exp')
-                  in $(buildFunCall ctx f params (args ++ ['arg]))
-                |]
-              IO -> [| $(return exp') $ \arg ->
-                  $(buildFunCall ctx f params (args ++ ['arg]))
-                |]
+    buildFunCall ctx f (hsExp : params) args = do
+      case pure of
+        Pure -> [|
+           let arg = $(return hsExp)
+           in $(buildFunCall ctx f params (args ++ ['arg]))
+          |]
+        IO -> [| $(return hsExp) $ \arg ->
+            $(buildFunCall ctx f params (args ++ ['arg]))
+          |]
 
     convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
     convertCFunSig retType params0 = do

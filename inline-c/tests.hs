@@ -8,12 +8,15 @@ import           Foreign.C.Types
 import qualified Language.Haskell.TH as TH
 import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
+import           Data.Monoid ((<>))
 
 import           Language.C.Inline
 import qualified Language.C.Inline.Context.Spec
 import qualified Language.C.Inline.Spec
 import qualified Language.C.Types as C
 import qualified Language.C.Types.Parse.Spec
+
+setContext (baseCtx <> funCtx)
 
 include "<math.h>"
 include "<stdio.h>"
@@ -99,6 +102,17 @@ main = Hspec.hspec $ do
       c_add <- [cexp| int (*)(int, int) { &francescos_add } |]
       x <- $(peekFunPtr [t| CInt -> CInt -> IO CInt |]) c_add 1 2
       x `Hspec.shouldBe` 1 + 2
+    Hspec.it "quick function pointer argument" $ do
+      let ackermann m n
+            | m == 0 = n + 1
+            | m > 0 && n == 0 = ackermann (m - 1) 1
+            | m > 0 && n > 0 = ackermann (m - 1) (ackermann m (n - 1))
+            | otherwise = error "ackermann"
+      let ackermann_ m n = return $ ackermann m n
+      let x = 3
+      let y = 4
+      z <- [cexp| int { $fun:(int (*ackermann_)(int, int))($(int x), $(int y)) } |]
+      z `Hspec.shouldBe` ackermann x y
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3
