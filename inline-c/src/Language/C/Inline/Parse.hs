@@ -6,14 +6,19 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
+-- | Here you'll find the functions used internally to implement parsing
+-- of inline C code.  You shouldn't rely on this module to be stable.
 module Language.C.Inline.Parse
-  ( runParserInQ
-  , SomeEq
+  ( -- * Parsing typed C code
+    SomeEq
   , toSomeEq
   , fromSomeEq
   , ParameterType(..)
   , ParseTypedC(..)
   , parseTypedC
+
+    -- * Utils
+  , runParserInQ
   ) where
 
 import           Control.Applicative ((<*), (*>), (<|>))

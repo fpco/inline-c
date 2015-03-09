@@ -11,10 +11,10 @@ import           Text.RawString.QQ (r)
 import           Data.Monoid ((<>))
 
 import           Language.C.Inline
-import qualified Language.C.Inline.Context.Spec
-import qualified Language.C.Inline.Spec
+import qualified Language.C.Inline.ContextSpec
+import qualified Language.C.Inline.ParseSpec
 import qualified Language.C.Types as C
-import qualified Language.C.Types.Parse.Spec
+import qualified Language.C.Types.ParseSpec
 
 setContext (baseCtx <> funCtx <> vecCtx)
 
@@ -31,9 +31,9 @@ foreign import ccall "francescos_mul" francescos_mul :: Int -> Int -> Int
 
 main :: IO ()
 main = Hspec.hspec $ do
-  Hspec.describe "Language.C.Types.Parse" Language.C.Types.Parse.Spec.spec
-  Hspec.describe "Language.C.Inline.Context" Language.C.Inline.Context.Spec.spec
-  Hspec.describe "Language.C.Inline" Language.C.Inline.Spec.spec
+  Hspec.describe "Language.C.Types.Parse" Language.C.Types.ParseSpec.spec
+  Hspec.describe "Language.C.Inline.Context" Language.C.Inline.ContextSpec.spec
+  Hspec.describe "Language.C.Inline.Parse" Language.C.Inline.ParseSpec.spec
   Hspec.describe "TH integration" $ do
     Hspec.it "inlineCode" $ do
       let c_add = $(inlineCode $ Code

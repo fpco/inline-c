@@ -3,7 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Language.C.Types.Parse.Spec (spec) where
+module Language.C.Types.ParseSpec (spec) where
 
 import           Control.Applicative ((<*), (*>))
 import           Control.Monad.Trans.Class (lift)

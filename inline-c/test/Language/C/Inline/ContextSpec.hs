@@ -5,7 +5,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Language.C.Inline.Context.Spec (spec) where
+module Language.C.Inline.ContextSpec (spec) where
 
 import           Control.Applicative ((<*), (*>))
 import           Control.Monad.Trans.Class (lift)
