@@ -2,13 +2,12 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
-import           Data.Monoid (mempty)
+import           Data.Monoid ((<>), mempty)
 import qualified Data.Vector.Storable.Mutable as V
 import           Foreign.C.Types
 import qualified Language.Haskell.TH as TH
 import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
-import           Data.Monoid ((<>))
 
 import           Language.C.Inline
 import qualified Language.C.Inline.ContextSpec

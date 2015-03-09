@@ -495,12 +495,12 @@ oneOfSized xs = QC.sized $ \n -> do
 halveSize :: QC.Gen a -> QC.Gen a
 halveSize m = QC.sized $ \n -> QC.resize (n `div` 2) m
 
-instance QC.Arbitrary Id where
-  arbitrary =
-      Id <$> ((:) <$> QC.elements letters <*> QC.listOf (QC.elements (letters ++ digits)))
-    where
-      letters = ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
-      digits = ['0'..'9']
+arbitraryId :: QC.Gen Id
+arbitraryId =
+    Id <$> ((:) <$> QC.elements letters <*> QC.listOf (QC.elements (letters ++ digits)))
+  where
+    letters = ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
+    digits = ['0'..'9']
 
 -- | Type used to generate an 'QC.Arbitrary' 'ParameterDeclaration' with
 -- arbitrary allowed type names.
@@ -511,7 +511,7 @@ data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
 
 instance QC.Arbitrary ParameterDeclarationWithTypeNames where
   arbitrary = do
-    names <- Set.fromList <$> QC.arbitrary
+    names <- Set.fromList <$> QC.listOf arbitraryId
     decl <- arbitraryParameterDeclaration names
     return $ ParameterDeclarationWithTypeNames names decl
 
@@ -543,8 +543,8 @@ arbitraryTypeSpecifier typeNames = QC.oneof $
   , return DOUBLE
   , return SIGNED
   , return UNSIGNED
-  , Struct <$> QC.arbitrary
-  , Enum <$> QC.arbitrary
+  , Struct <$> arbitraryIdentifier typeNames
+  , Enum <$> arbitraryIdentifier typeNames
   ] ++ if Set.null typeNames then []
        else [TypeName <$> QC.elements (Set.toList typeNames)]
 
@@ -566,7 +566,7 @@ arbitraryDeclarator typeNames = halveSize $
 
 arbitraryIdentifier :: Set.Set Id -> QC.Gen Id
 arbitraryIdentifier typeNames = do
-  id' <- QC.arbitrary
+  id' <- arbitraryId
   if Set.member id' typeNames
     then arbitraryIdentifier typeNames
     else return id'
@@ -582,17 +582,17 @@ arbitraryDirectDeclarator typeNames = halveSize $ oneOfSized $
 
 arbitraryArrayOrProto :: Set.Set Id -> QC.Gen ArrayOrProto
 arbitraryArrayOrProto typeNames = halveSize $ oneOfSized $
-  [ Anyhow $ Array <$> QC.arbitrary
+  [ Anyhow $ Array <$> arbitraryArrayType typeNames
   , IfPositive $ Proto <$> QC.listOf (arbitraryParameterDeclaration typeNames)
   ]
 
-instance QC.Arbitrary ArrayType where
-  arbitrary = QC.oneof
-    [ return VariablySized
-    , SizedByInteger . QC.getNonNegative <$> QC.arbitrary
-    , SizedByIdentifier <$> QC.arbitrary
-    , return Unsized
-    ]
+arbitraryArrayType :: Set.Set Id -> QC.Gen ArrayType
+arbitraryArrayType typeNames = QC.oneof
+  [ return VariablySized
+  , SizedByInteger . QC.getNonNegative <$> QC.arbitrary
+  , SizedByIdentifier <$> arbitraryIdentifier typeNames
+  , return Unsized
+  ]
 
 instance QC.Arbitrary Pointer where
   arbitrary = Pointer <$> QC.arbitrary
