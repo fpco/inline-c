@@ -34,11 +34,9 @@ module Language.C.Inline.Context
   , vecCtx
   ) where
 
-import           Control.Applicative (empty, (<|>))
 import           Control.Monad (mzero)
 import           Control.Monad.Trans.Class (lift)
-import           Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
-import           Data.Functor ((<$>))
+import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
 import           Data.Monoid (Monoid(..))
@@ -47,9 +45,6 @@ import qualified Data.Vector.Storable.Mutable as V
 import           Foreign.C.Types
 import           Foreign.Ptr (Ptr, FunPtr)
 import qualified Language.Haskell.TH as TH
-import qualified Text.Parser.Char as Parser
-import qualified Text.Parser.Combinators as Parser
-import qualified Text.Parser.LookAhead as Parser
 import qualified Text.Parser.Token as Parser
 
 import           Language.C.Inline.FunPtr
@@ -295,7 +290,7 @@ vecLenCAntiQuoter = CAntiQuoter
       cId <- C.parseIdentifier
       let s = C.unId cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
-  , caqMarshaller = \cTypes pure cTy cId -> do
+  , caqMarshaller = \_cTypes pure cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "vecCtx" cId
