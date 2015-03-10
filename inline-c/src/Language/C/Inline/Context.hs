@@ -124,7 +124,6 @@ instance Monoid Context where
 -- in "Foreign.C.Types" (TODO currently slightly incomplete).
 --
 -- No 'ctxCAntiQuoters'.
--- @
 baseCtx :: Context
 baseCtx = mempty
   { ctxCTypesTable = baseCTypesTable

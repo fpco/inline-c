@@ -77,6 +77,7 @@ import           Data.Maybe (mapMaybe)
 import           Data.Monoid ((<>))
 import qualified Data.Set as Set
 import           Data.String (IsString(..))
+import           Data.Typeable (Typeable)
 import qualified Test.QuickCheck as QC
 import           Test.SmallCheck.Series ((\/), (<~>))
 import qualified Test.SmallCheck.Series as SC
@@ -88,7 +89,6 @@ import           Text.Parser.Token
 import           Text.Parser.Token.Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
-import           Data.Typeable (Typeable)
 
 ------------------------------------------------------------------------
 -- Parser

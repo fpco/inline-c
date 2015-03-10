@@ -2,7 +2,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-
 -- | The main goal of this module is to allow painless embedding of C
 -- code in Haskell code.  If you're interested in how to use the
 -- library, skip to the "Inline C" section.  To build, read the first
@@ -11,9 +10,12 @@ module Language.C.Inline
     ( -- * Build process
       -- $building
 
-      -- * Context
+      -- * Contexts
       -- $context
-      module Language.C.Inline.Context
+      Context
+    , baseCtx
+    , funCtx
+    , vecCtx
     , setContext
 
       -- * Inline C
@@ -50,14 +52,24 @@ module Language.C.Inline
     , inlineCode
     , inlineExp
     , inlineItems
+
+      -- ** Re-exports
+    , module Foreign.C.Types
+    , Ptr
+    , FunPtr
     ) where
 
 import           Control.Exception (catch, throwIO)
 import           Control.Monad (void, unless, forM)
+import qualified Crypto.Hash as CryptoHash
+import qualified Data.Binary as Binary
 import           Data.Foldable (forM_)
 import           Data.Functor ((<$>))
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
+import           Foreign.C.Types
+import           Foreign.Ptr (Ptr, FunPtr)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -66,9 +78,6 @@ import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Error (isDoesNotExistError)
 import           System.IO.Unsafe (unsafePerformIO)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
-import qualified Data.Map as Map
-import qualified Crypto.Hash as CryptoHash
-import qualified Data.Binary as Binary
 
 import qualified Language.C.Types as C
 import           Language.C.Inline.Context
