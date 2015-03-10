@@ -382,7 +382,9 @@ if something goes wrong.
 ### Nelder-Mead optimization
 
 For a more complex example, we'll write an Haskell function that
-performs Nelder-Mead optimization using
+performs Nelder-Mead optimization using the
+[`nag_opt_simplex_easy`](http://www.nag.com/numeric/CL/nagdoc_cl24/html/E04/e04cbc.html)
+function provided by NAG.
 
 ```
 {-# LANGUAGE TemplateHaskell #-}
