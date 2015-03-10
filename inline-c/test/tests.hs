@@ -115,7 +115,7 @@ main = Hspec.hspec $ do
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3
-      sum <- V.unsafeWith vec $ \ptr -> [citems| int {
+      sum <- V.unsafeWith vec $ \ptr -> [c| int {
         int i;
         int x = 0;
         for (i = 0; i < $(int n); i++) {
@@ -126,7 +126,7 @@ main = Hspec.hspec $ do
       sum `Hspec.shouldBe` 3 * 10
     Hspec.it "quick vectors" $ do
       vec <- V.replicate 10 3
-      sum <- [citems| int {
+      sum <- [c| int {
         int i;
         int x = 0;
         for (i = 0; i < $vec-len:vec; i++) {

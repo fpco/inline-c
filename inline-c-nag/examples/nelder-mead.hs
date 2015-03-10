@@ -32,7 +32,7 @@ nelderMead xImm pureFunct maxcal = do
     x <- V.thaw xImm
     -- Call the C code
     withNagError $ \fail_ -> do
-      [citems| void {
+      [c| void {
           // The function requires an exit parameter where to store the minimum
           // cost.  We use a variable defined in C to have something to work
           // with, although we do not use the result that wil be stored in it.
