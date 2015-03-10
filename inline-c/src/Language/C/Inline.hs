@@ -201,9 +201,9 @@ bumpGeneratedNames :: TH.Q Int
 bumpGeneratedNames = do
   ms <- getModuleState
   TH.runIO $ do
-    let c = msGeneratedNames ms
-    writeIORef moduleStateRef $ Just ms{msGeneratedNames = c + 1}
-    return c
+    let c' = msGeneratedNames ms
+    writeIORef moduleStateRef $ Just ms{msGeneratedNames = c' + 1}
+    return c'
 
 ------------------------------------------------------------------------
 -- Emitting
@@ -311,9 +311,9 @@ inlineCode Code{..} = do
 
 uniqueCName :: String -> TH.Q String
 uniqueCName x = do
-  c <- bumpGeneratedNames
+  c' <- bumpGeneratedNames
   let unique :: CryptoHash.Digest CryptoHash.SHA1 = CryptoHash.hashlazy $ Binary.encode x
-  return $ "inline_c_" ++ show c ++ "_" ++ show unique
+  return $ "inline_c_" ++ show c' ++ "_" ++ show unique
 
 -- | Same as 'inlineItems', but with a single expression.
 --
