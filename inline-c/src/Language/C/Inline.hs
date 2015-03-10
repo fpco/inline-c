@@ -24,10 +24,10 @@ module Language.C.Inline
     , cexp_unsafe
     , cexp_pure
     , cexp_pure_unsafe
-    , citems
-    , citems_unsafe
-    , citems_pure
-    , citems_pure_unsafe
+    , c
+    , c_unsafe
+    , c_pure
+    , c_pure_unsafe
 
       -- * 'FunPtr' utils
       --
@@ -181,7 +181,7 @@ getContext = msContext <$> getModuleState
 
 -- $context
 --
--- The inline C functions ('cexp', 'citems', etc.) need a 'Context' to
+-- The inline C functions ('cexp', 'c', etc.) need a 'Context' to
 -- operate.  Said context can be explicitely set with 'setContext'.
 -- Otherwise, at the first usage of one of the TH functions in this
 -- module the 'Context' is implicitely set to 'baseCtx'.
@@ -354,7 +354,7 @@ inlineExp callSafety type_ cRetType cParams cExp =
 --   TH.Unsafe
 --   [t| Double -> Double |]
 --   [cty| double |] [cparams| double x |]
---   [citems| return cos(x); |])
+--   [c| return cos(x); |])
 -- @
 inlineItems
   :: TH.Safety
@@ -410,7 +410,7 @@ inlineItems callSafety type_ cRetType cParams cItems = do
 --   omitted.
 --
 -- * The syntax of the @\<C code\>@ depends on the quasi-quoter used.
---   @cexp@ functions accept a C expression.  @citems@ functions accept
+--   @cexp@ functions accept a C expression.  @c@ functions accept
 --   'C.BlockItem's, which are basically what goes inside a C
 --   function.
 --
@@ -431,7 +431,7 @@ inlineItems callSafety type_ cRetType cParams cItems = do
 --
 -- === @pure@ and impure calls
 --
--- Both @cexp@ and @citems@ quasi-quoters are present in impure (the
+-- Both @cexp@ and @c@ quasi-quoters are present in impure (the
 -- default) and pure (postfixed with @_pure@) versions.  The impure
 -- version will generate expressions of type @'IO' a@, where @a@ is the
 -- specified return type.  On the other hand, @pure@ versions will
@@ -483,7 +483,7 @@ inlineItems callSafety type_ cRetType cParams cItems = do
 -- parseVector :: 'CInt' -> 'IO' (V.IOVector 'CDouble')
 -- parseVector len = do
 --   vec <- V.new $ 'fromIntegral' len0
---   V.unsafeWith vec $ \\ptr -> ['citems'| void(int len, double *ptr) {
+--   V.unsafeWith vec $ \\ptr -> ['c'| void(int len, double *ptr) {
 --     int i;
 --     for (i = 0; i < len; i++) {
 --       scanf("%lf ", &ptr[i]);
@@ -504,17 +504,17 @@ cexp_pure = genericQuote Pure $ inlineExp TH.Safe
 cexp_pure_unsafe :: TH.QuasiQuoter
 cexp_pure_unsafe = genericQuote Pure $ inlineExp TH.Unsafe
 
-citems :: TH.QuasiQuoter
-citems = genericQuote IO $ inlineItems TH.Safe
+c :: TH.QuasiQuoter
+c = genericQuote IO $ inlineItems TH.Safe
 
-citems_unsafe :: TH.QuasiQuoter
-citems_unsafe = genericQuote IO $ inlineItems TH.Unsafe
+c_unsafe :: TH.QuasiQuoter
+c_unsafe = genericQuote IO $ inlineItems TH.Unsafe
 
-citems_pure :: TH.QuasiQuoter
-citems_pure = genericQuote Pure $ inlineItems TH.Safe
+c_pure :: TH.QuasiQuoter
+c_pure = genericQuote Pure $ inlineItems TH.Safe
 
-citems_pure_unsafe :: TH.QuasiQuoter
-citems_pure_unsafe = genericQuote Pure $ inlineItems TH.Unsafe
+c_pure_unsafe :: TH.QuasiQuoter
+c_pure_unsafe = genericQuote Pure $ inlineItems TH.Unsafe
 
 quoteCode
   :: (String -> TH.ExpQ)

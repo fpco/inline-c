@@ -62,7 +62,7 @@ referentially transparent.
 ## Multiple statements
 
 We can also include C code composed of multiple statements, rather than
-a single expression.  This is accomplished with the `citems`
+a single expression.  This is accomplished with the `c`
 quasi-quoter, instead of `cexp`.
 
 ```
@@ -74,7 +74,7 @@ include "<stdio.h>"
 
 main :: IO ()
 main = do
-  x <- [citems| int {
+  x <- [c| int {
       // Read and sum 5 integers
       int i, sum = 0, tmp;
       for (i = 0; i < 5; i++) {
@@ -86,11 +86,11 @@ main = do
   print x
 ```
 
-Note how, when we use `citems`, we still type the whole C block (`int`
+Note how, when we use `c`, we still type the whole C block (`int`
 in this case), but we must `return` the value explicitly, like we would in
 a C function.
 
-A pure version of `citems` exists too -- `citems_pure` -- but in this
+A pure version of `c` exists too -- `c_pure` -- but in this
 case we must not use it, since the C code is impure.
 
 ## Capturing Haskell variables -- parameter declaration
@@ -113,7 +113,7 @@ include "<stdio.h>"
 -- | @readAndSum n@ reads @n@ numbers from standard input and returns
 -- their sum.
 readAndSum :: CInt -> IO CInt
-readAndSum n  = [citems| int (int n) {
+readAndSum n  = [c| int (int n) {
     // Read and sum n integers
     int i, sum = 0, tmp;
     for (i = 0; i < n; i++) {
@@ -146,7 +146,7 @@ The second way to capture Haskell variables is by "anti-quoting" them.
 
 ```
 readAndSum :: CInt -> IO CInt
-readAndSum n  = [citems| int {
+readAndSum n  = [c| int {
     // Read and sum n integers
     int i, sum = 0, tmp;
     for (i = 0; i < $(int n); i++) {
@@ -202,7 +202,7 @@ import qualified Data.Vector.Storable.Mutable as V
 setContext (baseCtx <> vecCtx)
 
 sumVec :: V.IOVector CDouble -> IO CDouble
-sumVec vec = [citems| double {
+sumVec vec = [c| double {
     double sum = 0;
     int i;
     for (i = 0; i < $vec-len:vec; i++) {
@@ -421,7 +421,7 @@ nelderMead xImm pureFunct maxcal = do
     x <- V.thaw xImm
     -- Call the C code
     withNagError $ \fail_ -> do
-      [citems| void {
+      [c| void {
           // The function requires an exit parameter where to store the minimum
           // cost.  We use a variable defined in C to have something to work
           // with, although we do not use the result that wil be stored in it.
