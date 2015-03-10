@@ -26,6 +26,7 @@ import           Control.Applicative ((<*>))
 import           Data.Functor ((<$>))
 
 import           Language.C.Inline
+import           Language.C.Inline.Context
 import qualified Language.C.Types as C
 
 #include <nag.h>

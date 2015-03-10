@@ -21,7 +21,6 @@ module Language.C.Inline.Nag
 import           Data.Functor ((<$>))
 import           Foreign.C.String (peekCStringLen)
 import           Foreign.Marshal.Alloc (alloca)
-import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (Storable(..))
 
 import           Language.C.Inline.Nag.Internal

@@ -59,6 +59,27 @@ executable c06puce
                      , inline-c-nag
                      , raw-strings-qq
   default-language:    Haskell2010
+  cc-options:          -O2 -m64 -w
+  extra-libraries:     nagc_nag imf svml irng intlc
+  extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
+  include-dirs:        /opt/NAG/cll6i24dcl/include
+  ghc-options:         -Wall -O -fPIC
+
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False
+
+executable one-dim-fft
+  hs-source-dirs:      examples
+  main-is:             one-dim-fft.hs
+  c-sources:           examples/one-dim-fft.c
+  build-depends:       base >=4 && <5
+                     , array
+                     , inline-c
+                     , inline-c-nag
+                     , vector
+  default-language:    Haskell2010
   cc-options:          -O2 -m64
   extra-libraries:     nagc_nag imf svml irng intlc
   extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
@@ -70,10 +91,10 @@ executable c06puce
   else
     buildable: False
 
-executable est-priors
+executable nelder-mead
   hs-source-dirs:      examples
-  main-is:             est-priors.hs
-  c-sources:           examples/est-priors.c
+  main-is:             nelder-mead.hs
+  c-sources:           examples/nelder-mead.c
   build-depends:       base >=4 && <5
                      , array
                      , inline-c
