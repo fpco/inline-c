@@ -288,7 +288,7 @@ section for examples using a `Context` tailored for a library -- in this
 case NAG.
 
 For information regarding how to define `Context`s, see the Haddock
-docs.
+docs for `Language.C.Inline.Context`.
 
 ## Using `inline-c` with NAG
 
