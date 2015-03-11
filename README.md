@@ -5,7 +5,8 @@
 simple use cases and gradually showing every feature with more complex
 examples.
 
-Build details are reserved to the [last section](#how-to-build).
+Build details are reserved to the [last section](#how-to-build).  You'll
+need those if you want to get working.
 
 ## Getting started
 
@@ -90,8 +91,9 @@ Note how, when we use `c`, we still type the whole C block (`int`
 in this case), but we must `return` the value explicitly, like we would in
 a C function.
 
-A pure version of `c` exists too -- `c_pure` -- but in this
-case we must not use it, since the C code is impure.
+A pure version of `c` exists too -- `c_pure` -- but in this case we must
+not use it, since the C code is impure, given that it reads from
+standard input.
 
 ## Capturing Haskell variables -- parameter declaration
 
@@ -182,23 +184,21 @@ using [contexts](#contexts).
 Everything beyond the base functionality provided by `inline-c` is
 specified in a structure that we call "`Context`".  From a user
 perspective, if we want to use anything but the default context
-(`baseCtx`), before using any of the facilities provided by `inline-c`
-we must specify the `Context` we want to use using the `setContext`
-function.
+(`baseCtx`), we must set the `Context` explicitely using the
+`setContext` function.  The next two sections include several examples.
 
-Specifically, the `Context` allows to extend `inline-c` to support
+The `Context` allows to extend `inline-c` to support
 
 * Custom C types beyond the basic ones;
 * And [additional anti-quoters](#more-anti-quoters).
 
-`Context`s can be composed using their `Monoid` instance, as we will see
-in the next section.
+`Context`s can be composed using their `Monoid` instance.
 
 Ideally a `Context` will be provided for each C library that should be
 used with `inline-c`, so that the user will simply use that, or combine
-multiple ones if multiple libraries are to be used.  See the following
-section for examples using a `Context` tailored for a library -- in this
-case NAG.
+multiple ones if multiple libraries are to be used.  See the
+[section about NAG](#using-inline-c-with-nag) for examples using a
+`Context` tailored for a library.
 
 For information regarding how to define `Context`s, see the Haddock
 docs for `Language.C.Inline.Context`.
@@ -206,9 +206,9 @@ docs for `Language.C.Inline.Context`.
 ## More anti-quoters
 
 Besides the basic anti-quoter, which captures variables as they are,
-some more anti-quoters are provided with additional functionality.  In
-fact, `inline-c` can easily be extended with anti-quoters defined by the
-user, using [contexts](#contexts).
+some more anti-quoters are provided with additional functionality.  As
+mentioned, `inline-c` can easily be extended with anti-quoters defined
+by the user, using [contexts](#contexts).
 
 ### Vectors
 
@@ -283,8 +283,11 @@ main = do
 In this example, we capture a Haskell function of type `CLong -> CLong
 -> IO CLong`, `ackermannIO`, to a function pointer in C, using the `fun`
 anti-quoter.  Note how we need to specify the function pointer type when
-we capture `ackermannIO`, using standard C declaration syntax.  In
-general, when anti-quoting, if the type can be inferred (like in the
+we capture `ackermannIO`, using standard C declaration syntax.  Also
+note that the `fun` anti-quoter works with `IO` functions, and so we
+needed to modify `ackermann` to make it have the right type.
+
+In general, when anti-quoting, if the type can be inferred (like in the
 case of `vec-len`), only the Haskell identifier appears.  If it can't,
 the target C type and the Haskell identifier are mentioned using C
 declaration syntax.
@@ -477,7 +480,7 @@ Each module that uses at least one of the `inline-c` functions gets a C
 file associated to it, where the filename of said file will be the same
 as the module but with a C extension.  This C file must be built after
 the Haskell code and linked appropriately.  If you use cabal, all you
-have to do is declare each associated C file in the @.cabal@ file and
+have to do is declare each associated C file in the `.cabal` file and
 you are good.
 
 For example we might have
@@ -497,12 +500,13 @@ executable foo
   ...
 ```
 
-Note that currently @cabal repl@ is not supported, because the C code
-is not compiled and linked appropriately.
+Note that currently `cabal repl` is not supported, because the C code is
+not compiled and linked appropriately.  Type-checking will still be
+performed, so `cabal repl` can still be used to develop.
 
 See `sample-cabal-project` for a working example.
 
-If we were to compile the above manaully we could do
+If we were to compile the above manually we could do
 
 ```
 $ ghc -c Main.hs
