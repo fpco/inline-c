@@ -132,21 +132,24 @@ instance IsString Id where
 identLetter :: CParser m => m Char
 identLetter = oneOf $ ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
 
+reservedWords :: HashSet.HashSet String
+reservedWords = HashSet.fromList
+  [ "auto", "else", "long", "switch"
+  , "break", "enum", "register", "typedef"
+  , "case", "extern", "return", "union"
+  , "char", "float", "short", "unsigned"
+  , "const", "for", "signed", "void"
+  , "continue", "goto", "sizeof", "volatile"
+  , "default", "if", "static", "while"
+  , "do", "int", "struct", "double"
+  ]
+
 identStyle :: CParser m => IdentifierStyle m
 identStyle = IdentifierStyle
   { _styleName = "C identifier"
   , _styleStart = identLetter
   , _styleLetter = identLetter <|> digit
-  , _styleReserved = HashSet.fromList
-      [ "auto", "else", "long", "switch"
-      , "break", "enum", "register", "typedef"
-      , "case", "extern", "return", "union"
-      , "char", "float", "short", "unsigned"
-      , "const", "for", "signed", "void"
-      , "continue", "goto", "sizeof", "volatile"
-      , "default", "if", "static", "while"
-      , "do", "int", "struct", "double"
-      ]
+  , _styleReserved = reservedWords
   , _styleHighlight = Identifier
   , _styleReservedHighlight = ReservedIdentifier
   }
@@ -496,8 +499,11 @@ halveSize :: QC.Gen a -> QC.Gen a
 halveSize m = QC.sized $ \n -> QC.resize (n `div` 2) m
 
 arbitraryId :: QC.Gen Id
-arbitraryId =
-    Id <$> ((:) <$> QC.elements letters <*> QC.listOf (QC.elements (letters ++ digits)))
+arbitraryId = do
+    s <- ((:) <$> QC.elements letters <*> QC.listOf (QC.elements (letters ++ digits)))
+    if HashSet.member s reservedWords
+      then arbitraryId
+      else return $ Id s
   where
     letters = ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
     digits = ['0'..'9']
