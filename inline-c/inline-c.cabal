@@ -12,7 +12,7 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Language.C.Inline
-                     , Language.C.Inline.Parse
+                     , Language.C.Inline.Internal
                      , Language.C.Inline.Context
                      , Language.C.Types
                      , Language.C.Types.Parse
