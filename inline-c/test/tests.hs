@@ -10,6 +10,7 @@ import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
 
 import           Language.C.Inline
+import           Language.C.Inline.Internal
 import qualified Language.C.Inline.ContextSpec
 import qualified Language.C.Inline.ParseSpec
 import qualified Language.C.Types as C

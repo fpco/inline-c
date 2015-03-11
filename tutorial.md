@@ -177,18 +177,44 @@ and arrays get converted to `Ptr`.  Function pointers get converted to
 they are instances of `Storable` and that you tell `inline-c` about them
 using [contexts](#contexts).
 
+## Contexts
+
+Everything beyond the base functionality provided by `inline-c` is
+specified in a structure that we call "`Context`".  From a user
+perspective, if we want to use anything but the default context
+(`baseCtx`), before using any of the facilities provided by `inline-c`
+we must specify the `Context` we want to use using the `setContext`
+function.
+
+Specifically, the `Context` allows to extend `inline-c` to support
+
+* Custom C types beyond the basic ones;
+* And [additional anti-quoters](#more-anti-quoters).
+
+`Context`s can be composed using their `Monoid` instance, as we will see
+in the next section.
+
+Ideally a `Context` will be provided for each C library that should be
+used with `inline-c`, so that the user will simply use that, or combine
+multiple ones if multiple libraries are to be used.  See the following
+section for examples using a `Context` tailored for a library -- in this
+case NAG.
+
+For information regarding how to define `Context`s, see the Haddock
+docs for `Language.C.Inline.Context`.
+
 ## More anti-quoters
 
 Besides the basic anti-quoter, which captures variables as they are,
 some more anti-quoters are provided with additional functionality.  In
-fact, `inline-c` can easily be extended with more anti-quoters, using
-[contexts](#contexts).
+fact, `inline-c` can easily be extended with anti-quoters defined by the
+user, using [contexts](#contexts).
 
 ### Vectors
 
-The `vec-len` and `vec-ptr` anti-quoters let us easily use
-[Haskell vectors](http://hackage.haskell.org/package/vector) in C.
-Continuing along the "summing" theme, we can write code that sums
+The `vec-len` and `vec-ptr` anti-quoters in the `vecCtx` context let us
+easily use [Haskell vectors](http://hackage.haskell.org/package/vector)
+in C.  Continuing along the "summing" theme, we can write code that sums
 Haskell vectors in C:
 
 ```
@@ -196,6 +222,7 @@ Haskell vectors in C:
 {-# LANGUAGE TemplateHaskell #-}
 import           Language.C.Inline
 import qualified Data.Vector.Storable.Mutable as V
+import           Data.Monoid ((<>))
 
 -- To use the vector anti-quoters, we need the 'vecCtx' along with the
 -- 'baseCtx'.
@@ -224,8 +251,8 @@ Since `vec` is a vector of `CDouble`s, we want a pointer to `double`s.
 
 ### Function pointers
 
-Using the `fun` anti-quoter we can easily turn Haskell function into
-function pointers.
+Using the `fun` anti-quoter, present in the `funCtx` context, we can
+easily turn Haskell function into function pointers.
 
 ```
 {-# LANGUAGE QuasiQuotes #-}
@@ -261,34 +288,6 @@ general, when anti-quoting, if the type can be inferred (like in the
 case of `vec-len`), only the Haskell identifier appears.  If it can't,
 the target C type and the Haskell identifier are mentioned using C
 declaration syntax.
-
-## Contexts
-
-Everything beyond the base functionality provided by `inline-c` is
-specified in a structure that we call "`Context`".  From a user
-perspective, if we want to use anything but the default context
-(`baseCtx`), before using any of the facilities provided by `inline-c`
-we must specify the `Context` we want to use using the `setContext`
-function.
-
-Specifically, the `Context` allows to extend `inline-c` to support
-
-* Custom C types beyond the basic ones;
-* And additional anti-quoters, like the already mentioned ones regarding
-  vectors and function pointers.
-
-`Context`s can be composed using their `Monoid` instance.  For example
-`baseCtx <> vecCtx` will add the vectors anti-quoters to the base
-context.
-
-Ideally a `Context` will be provided for each C library that should be
-used with `inline-c`, so that the user will simply use that, or combine
-multiple ones if multiple libraries are to be used.  See the following
-section for examples using a `Context` tailored for a library -- in this
-case NAG.
-
-For information regarding how to define `Context`s, see the Haddock
-docs for `Language.C.Inline.Context`.
 
 ## Using `inline-c` with NAG
 
@@ -474,7 +473,7 @@ specify a well-designed Haskell interface for it.
 
 ## How to build
 
-Each module that uses at least one of the `inline-c` functionsgets a C
+Each module that uses at least one of the `inline-c` functions gets a C
 file associated to it, where the filename of said file will be the same
 as the module but with a C extension.  This C file must be built after
 the Haskell code and linked appropriately.  If you use cabal, all you

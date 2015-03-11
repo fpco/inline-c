@@ -21,7 +21,7 @@ module Language.C.Inline.Context
   , CArray
   , isTypeName
 
-    -- * ''CAntiQuoter'
+    -- * 'CAntiQuoter'
   , CAntiQuoter(..)
   , CAntiQuoterId
   , SomeCAntiQuoter(..)
@@ -82,10 +82,10 @@ data CAntiQuoter a = CAntiQuoter
     -- expression that will be passed in as the parameter.
     --
     -- If the 'Purity' argument is 'Pure' and the type returned is @ty@,
-    -- 'TH.Exp' *must* have type @ty@.
+    -- 'TH.Exp' __must__ have type @ty@.
     --
     -- If the 'Purity' argument is 'IO' and the type returned is @ty@,
-    -- the 'TH.Exp' *must* have type @forall a. (ty -> IO a) -> IO a@.
+    -- the 'TH.Exp' __must__ have type @forall a. (ty -> IO a) -> IO a@.
   }
 
 -- | An identifier for a 'CAntiQuoter'.
@@ -96,8 +96,10 @@ data SomeCAntiQuoter = forall a. (Eq a, Typeable a) => SomeCAntiQuoter (CAntiQuo
 
 type CAntiQuoters = Map.Map CAntiQuoterId SomeCAntiQuoter
 
--- | A 'Context' stores information needed to convert C types to Haskell
--- types, and to convert Haskell values to C values.
+-- | A 'Context' does two things:
+--
+-- * Stores the information needed to convert C types to Haskell types;
+-- * Stores anti-quoters used to capture Haskell variables.
 --
 -- 'Context's can be composed with their 'Monoid' instance, where
 -- 'mappend' is right-biased -- in @'mappend' x y@ @y@ will take
@@ -121,7 +123,7 @@ instance Monoid Context where
 -- | Context useful to work with vanilla C.  Used by default.
 --
 -- 'ctxCTypesTable': converts C basic types to their counterparts
--- in "Foreign.C.Types" (TODO currently slightly incomplete).
+-- in "Foreign.C.Types".
 --
 -- No 'ctxCAntiQuoters'.
 baseCtx :: Context

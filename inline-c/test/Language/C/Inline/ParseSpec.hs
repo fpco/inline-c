@@ -20,7 +20,7 @@ import           Data.Monoid ((<>))
 import           Text.Regex.Posix ((=~))
 
 import qualified Language.C.Types as C
-import           Language.C.Inline.Parse
+import           Language.C.Inline.Internal
 import           Language.C.Inline.Context
 
 spec :: Hspec.SpecWith ()

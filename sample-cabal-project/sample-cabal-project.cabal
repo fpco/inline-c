@@ -13,9 +13,6 @@ executable sample-cabal-project
   hs-source-dirs:      src
   build-depends:       base >=4 && <5
                      , inline-c
-                     , language-c-quote
-                     , template-haskell
-                     , raw-strings-qq
   default-language:    Haskell2010
 
   -- Here the corresponding C sources must be listed for every module
@@ -23,3 +20,4 @@ executable sample-cabal-project
   -- this.
   c-sources:           src/Main.c
   cc-options:          -Wall
+  ghc-options:         -Wall
