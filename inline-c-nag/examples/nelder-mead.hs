@@ -19,9 +19,10 @@ nelderMead
   -- ^ Function to minimize
   -> Nag_Integer
   -- ^ Maximum number of iterations (must be >= 1).
-  -> IO (Either String (V.Vector CDouble))
+  -> IO (Either String (CDouble, V.Vector CDouble))
   -- ^ Position of the minimum.  'Left' if something went wrong, with
-  -- error message.
+  -- error message. 'Right', together with the minimum cost and its
+  -- position, if it could be found.
 nelderMead xImm pureFunct maxcal = do
     -- Create function that the C code will use.
     let funct n xc fc _comm = do
@@ -32,10 +33,9 @@ nelderMead xImm pureFunct maxcal = do
     x <- V.thaw xImm
     -- Call the C code
     withNagError $ \fail_ -> do
-      [c| void {
-          // The function requires an exit parameter where to store the minimum
-          // cost.  We use a variable defined in C to have something to work
-          // with, although we do not use the result that wil be stored in it.
+      minCost <- [c| double {
+          // The function takes an exit parameter to store the minimum
+          // cost.
           double f;
           // We hardcode sensible values (see NAG documentation) for the
           // error tolerance, computed using NAG's nag_machine_precision.
@@ -57,9 +57,11 @@ nelderMead xImm pureFunct maxcal = do
             NULL,
             // Pass the NagError parameter provided by withNagError
             $(NagError *fail_));
+          return f;
         } |]
       -- Get a new immutable vector by freezing the mutable one.
-      V.freeze x
+      minCostPos <- V.freeze x
+      return (minCost, minCostPos)
 
 -- Optimize a two-dimensional function.  Example taken from
 -- <http://www.nag.com/numeric/CL/nagdoc_cl24/examples/source/e04cbce.c>.
@@ -70,9 +72,6 @@ main = do
             x1 = x V.! 1
         in exp x0 * (4*x0*(x0+x1)+2*x1*(x1+1.0)+1.0)
       start = V.fromList [-1, 1]
-  Right end <- nelderMead start funct 500
-  printVec end
-  where
-    printVec vec = do
-      V.forM_ vec $ \x -> putStr $ show x ++ " "
-      putStrLn ""
+  Right (minCost, minPos) <- nelderMead start funct 500
+  putStrLn $ "Minimum cost: " ++ show minCost
+  putStrLn $ "End positition: " ++ show (minPos V.! 0) ++ ", " ++ show (minPos V.! 1)

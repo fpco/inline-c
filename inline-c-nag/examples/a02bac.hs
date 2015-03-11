@@ -2,6 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 import           Language.C.Inline.Nag
+import           Language.C.Inline.Internal
 import           Text.RawString.QQ (r)
 
 include "<nag.h>"
