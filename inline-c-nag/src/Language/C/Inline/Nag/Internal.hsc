@@ -11,6 +11,7 @@ module Language.C.Inline.Nag.Internal
   , Nag_Boolean
   , Nag_Integer
   , Nag_Comm
+  , Nag_User
     -- * Context
   , nagCtx
   ) where
@@ -19,7 +20,6 @@ import qualified Data.Map as Map
 import           Data.Monoid ((<>), mempty)
 import           Foreign.C.String (CString)
 import           Foreign.C.Types
-import           Foreign.Ptr (Ptr, FunPtr)
 import           Foreign.Storable (Storable(..))
 import qualified Language.Haskell.TH as TH
 import           Control.Applicative ((<*>))
@@ -86,6 +86,13 @@ instance Storable Nag_Comm where
     peek _ = error "peek not implemented for Nag_Comm"
     poke _ _ = error "poke not implemented for Nag_Comm"
 
+data Nag_User
+instance Storable Nag_User where
+    sizeOf _ = (#size Nag_User)
+    alignment _ = alignment (undefined :: Ptr ())
+    peek _ = error "peek not implemented for Nag_User"
+    poke _ _ = error "poke not implemented for Nag_User"
+
 -- * Enums
 
 type Nag_Boolean = CInt
@@ -108,4 +115,5 @@ nagCTypesTable = Map.fromList
   , (C.TypeName "NagError", [t| NagError |])
   , (C.TypeName "Nag_Boolean", [t| Nag_Boolean |])
   , (C.TypeName "Nag_Comm", [t| Nag_Comm |])
+  , (C.TypeName "Nag_User", [t| Nag_User |])
   ]

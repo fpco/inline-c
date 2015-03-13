@@ -12,6 +12,7 @@ module Language.C.Inline.Nag
   , Nag_Boolean
   , Nag_Integer
   , Nag_Comm
+  , Nag_User
     -- * Context
   , nagCtx
     -- * Utilities

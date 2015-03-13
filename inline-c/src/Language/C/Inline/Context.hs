@@ -4,6 +4,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 -- | A 'Context' is used to define the capabilities of the
 -- TemplateHaskell code that handles the inline C code.  See the
 -- documentation of the data type for more details.
@@ -32,6 +35,7 @@ module Language.C.Inline.Context
   , baseCtx
   , funCtx
   , vecCtx
+  , VecCtx(..)
   ) where
 
 import           Control.Monad (mzero)
@@ -41,11 +45,13 @@ import qualified Data.Map as Map
 import           Data.Monoid ((<>))
 import           Data.Monoid (Monoid(..))
 import           Data.Typeable (Typeable)
-import qualified Data.Vector.Storable.Mutable as V
+import qualified Data.Vector.Storable as V
+import qualified Data.Vector.Storable.Mutable as VM
 import           Foreign.C.Types
 import           Foreign.Ptr (Ptr, FunPtr)
 import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Token as Parser
+import           Foreign.Storable (Storable)
 
 import           Language.C.Inline.FunPtr
 import qualified Language.C.Types as C
@@ -250,12 +256,14 @@ funPtrCAntiQuoter = CAntiQuoter
 -- Haskell vectors in C.
 --
 -- Specifically, the @vec-len@ and @vec-ptr@ will get the length and the
--- pointer underlying mutable storable vectors, 'V.IOVector'.
+-- pointer underlying mutable ('V.IOVector') and immutable ('V.Vector')
+-- storable vectors.
 --
 -- To use @vec-len@, simply write @$vec-len:x@, where @x@ is something
--- of type @'V.IOVector' a@, for some @a@.  To use @vec-ptr@ you need to
--- specify the type of the pointer, e.g. @$vec-len:(int *x)@ will work
--- if @x@ has type @'V.IOVector' 'CInt'@.
+-- of type @'V.IOVector' a@ or @'V.Vector' a@, for some @a@.  To use
+-- @vec-ptr@ you need to specify the type of the pointer,
+-- e.g. @$vec-len:(int *x)@ will work if @x@ has type @'V.IOVector'
+-- 'CInt'@.
 vecCtx :: Context
 vecCtx = mempty
   { ctxCAntiQuoters = Map.fromList
@@ -263,6 +271,25 @@ vecCtx = mempty
       , ("vec-len", SomeCAntiQuoter vecLenCAntiQuoter)
       ]
   }
+
+-- | Type class used to implement the anti-quoters in 'vecCtx'.
+class VecCtx a where
+  type VecCtxScalar a :: *
+
+  vecCtxLength :: Storable (VecCtxScalar a) => a -> Int
+  vecCtxUnsafeWith :: Storable (VecCtxScalar a) => a -> (Ptr (VecCtxScalar a) -> IO b) -> IO b
+
+instance VecCtx (V.Vector a) where
+  type VecCtxScalar (V.Vector a) = a
+
+  vecCtxLength = V.length
+  vecCtxUnsafeWith = V.unsafeWith
+
+instance VecCtx (VM.IOVector a) where
+  type VecCtxScalar (VM.IOVector a) = a
+
+  vecCtxLength = VM.length
+  vecCtxUnsafeWith = VM.unsafeWith
 
 vecPtrCAntiQuoter :: CAntiQuoter String
 vecPtrCAntiQuoter = CAntiQuoter
@@ -278,7 +305,7 @@ vecPtrCAntiQuoter = CAntiQuoter
       hsExp <- getHsVariable "vecCtx" cId
       case pure of
        IO -> do
-         hsExp' <- [| V.unsafeWith $(return hsExp) |]
+         hsExp' <- [| vecCtxUnsafeWith $(return hsExp) |]
          return (hsTy, hsExp')
        Pure -> do
          error $ "Cannot convert vectors to pointers " ++
@@ -295,7 +322,7 @@ vecLenCAntiQuoter = CAntiQuoter
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "vecCtx" cId
-          hsExp' <- [| fromIntegral (V.length $(return hsExp)) |]
+          hsExp' <- [| fromIntegral (vecCtxLength $(return hsExp)) |]
           hsTy <- [t| CLong |]
           case pure of
             Pure -> do
