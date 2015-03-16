@@ -283,7 +283,7 @@ genericQuote pure build = quoteCode $ \s -> do
         mbHsName <- TH.lookupValueName s'
         hsExp <- case mbHsName of
           Nothing -> do
-            error $ "Cannot capture Haskell variable " ++ show cId ++
+            error $ "Cannot capture Haskell variable " ++ s' ++
                     ", because it's not in scope. (genericQuote)"
           Just hsName -> do
             hsExp <- TH.varE hsName
