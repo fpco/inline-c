@@ -9,6 +9,7 @@ module Language.C.Inline.Nag.Internal
   , _NAG_ERROR_BUF_LEN
   , _NE_NOERROR
   , Nag_Boolean
+  , Nag_ErrorControl
   , Nag_Integer
   , Nag_Comm
   , Nag_User
@@ -96,6 +97,10 @@ instance Storable Nag_User where
 -- * Enums
 
 type Nag_Boolean = CInt
+type Nag_ErrorControl = CInt
+
+-- * Utils
+
 type Nag_Integer = CLong
 
 -- * Context
@@ -116,4 +121,5 @@ nagCTypesTable = Map.fromList
   , (C.TypeName "Nag_Boolean", [t| Nag_Boolean |])
   , (C.TypeName "Nag_Comm", [t| Nag_Comm |])
   , (C.TypeName "Nag_User", [t| Nag_User |])
+  , (C.TypeName "Nag_ErrorControl", [t| Nag_ErrorControl |])
   ]
