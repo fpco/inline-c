@@ -5,7 +5,7 @@
 module Language.C.Inline.Nag.Internal
   ( -- * Types
     Complex(..)
-  , NagError(..)
+  , NagError
   , _NAG_ERROR_BUF_LEN
   , _NE_NOERROR
   , Nag_Boolean
@@ -19,7 +19,6 @@ module Language.C.Inline.Nag.Internal
 
 import qualified Data.Map as Map
 import           Data.Monoid ((<>), mempty)
-import           Foreign.C.String (CString)
 import           Foreign.C.Types
 import           Foreign.Storable (Storable(..))
 import qualified Language.Haskell.TH as TH
@@ -50,28 +49,12 @@ instance Storable Complex where
     (#poke Complex, re) ptr complRe
     (#poke Complex, im) ptr complIm
 
-data NagError = NagError
-  { nagErrorCode :: {-# UNPACK #-} !CInt
-  , nagErrorPrint :: {-# UNPACK #-} !Nag_Boolean
-  , nagErrorMessage :: {-# UNPACK #-} !CString
-  , nagErrorHandler :: {-# UNPACK #-} !(FunPtr (Ptr CChar -> CInt -> Ptr CChar -> IO ()))
-  , nagErrorErrNum :: {-# UNPACK #-} !Nag_Integer
-  , nagErrorIFlag :: {-# UNPACK #-} !Nag_Integer
-  , nagErrorIVal :: {-# UNPACK #-} !Nag_Integer
-  } deriving (Show, Eq)
+data NagError
 
 instance Storable NagError where
     sizeOf _ = (#size NagError)
     alignment _ = alignment (undefined :: Ptr ())
-    peek ptr = do
-      NagError
-        <$> (#peek NagError, code) ptr
-        <*> (#peek NagError, print) ptr
-        <*> (#peek NagError, message) ptr
-        <*> (#peek NagError, handler) ptr
-        <*> (#peek NagError, errnum) ptr
-        <*> (#peek NagError, iflag) ptr
-        <*> (#peek NagError, ival) ptr
+    peek = error "peek not implemented for NagError"
     poke _ _ = error "poke not implemented for NagError"
 
 _NE_NOERROR :: CInt

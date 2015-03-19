@@ -6,7 +6,7 @@ module Language.C.Inline.Nag
   ( module Language.C.Inline
     -- * Types
   , Complex(..)
-  , NagError(..)
+  , NagError
   , _NAG_ERROR_BUF_LEN
   , _NE_NOERROR
   , Nag_Boolean
@@ -20,9 +20,8 @@ module Language.C.Inline.Nag
   ) where
 
 import           Data.Functor ((<$>))
-import           Foreign.C.String (peekCStringLen)
+import           Foreign.C.String (peekCString)
 import           Foreign.Marshal.Alloc (alloca)
-import           Foreign.Storable (Storable(..))
 
 import           Language.C.Inline.Nag.Internal
 import           Language.C.Inline
@@ -34,7 +33,9 @@ withNagError :: (Ptr NagError -> IO a) -> IO (Either String a)
 withNagError f = alloca $ \ptr -> do
   [cexp| void{ INIT_FAIL(*$(NagError *ptr)) } |]
   x <- f ptr
-  nagErr <- peek ptr
-  if nagErrorCode nagErr /= _NE_NOERROR
-    then Left <$> peekCStringLen (nagErrorMessage nagErr, fromIntegral _NAG_ERROR_BUF_LEN)
+  errCode <- [cexp| int { $(NagError *ptr)->code } |]
+  if errCode /= _NE_NOERROR
+    then do
+      ch <- [cexp| char * { $(NagError *ptr)->message } |]
+      Left <$> peekCString ch
     else return $ Right x
