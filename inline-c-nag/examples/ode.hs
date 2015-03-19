@@ -1,16 +1,16 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+import           Data.Functor ((<$>))
+import           Data.IORef
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
 import           Foreign.ForeignPtr (newForeignPtr_)
+import           Foreign.Ptr (nullFunPtr)
 import           Foreign.Storable (Storable, peek, poke)
 import           Language.C.Inline.Nag
-import           Data.Functor ((<$>))
-import           Data.IORef
 import           System.IO.Unsafe (unsafePerformIO)
-import           Foreign.Ptr (nullFunPtr)
-import           Control.Monad (forM_)
 
 setContext nagCtx
 
@@ -69,10 +69,10 @@ solveIO
   -> Fn
   -> Maybe Jac
   -> Interval
-  -> OutputIO a
+  -> Maybe (OutputIO a)
   -> V.Vector CDouble
-  -> IO (Either Failure a)
-solveIO Options{..} fcn mbJac (x, xend) OutputIO{..} y = do
+  -> IO (Either Failure (V.Vector CDouble, Maybe a))
+solveIO Options{..} fcn mbJac (x, xend) mbOutput y = do
   -- IO version of the right-hande function
   let fcnIO neq x y f _comm = do
         fImm <- fcn x <$> vectorFromC neq y
@@ -87,14 +87,19 @@ solveIO Options{..} fcn mbJac (x, xend) OutputIO{..} y = do
             pwImm <- jac x <$> vectorFromC neq y
             vectorToC pwImm (neq*neq) pw
       $(mkFunPtr [t| Nag_Integer -> CDouble -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_User -> IO () |]) jacIO
-  outputStateRef <- newIORef outputIOStartState
-  let outputIO neq xsol y _comm = do
-        x <- peek xsol
-        y' <- vectorFromC neq y
-        outputState <- readIORef outputStateRef
-        (outputState', x') <- outputIOStep outputState x y'
-        writeIORef outputStateRef outputState'
-        poke xsol x'
+  (outputFunPtr, outputGetResult) <- case mbOutput of
+    Nothing -> return (nullFunPtr, return Nothing)
+    Just OutputIO{..} -> do
+      outputStateRef <- newIORef outputIOStartState
+      let outputIO neq xsol y _comm = do
+            x <- peek xsol
+            y' <- vectorFromC neq y
+            outputState <- readIORef outputStateRef
+            (outputState', x') <- outputIOStep outputState x y'
+            writeIORef outputStateRef outputState'
+            poke xsol x'
+      outputFunPtr <- $(mkFunPtr [t| Nag_Integer -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_User -> IO ()|]) outputIO
+      return (outputFunPtr, Just <$> readIORef outputStateRef)
   -- Error control
   let err = case optionsErrorControl of
         Relative -> [cexp_pure| Nag_ErrorControl{ Nag_Relative } |]
@@ -103,28 +108,30 @@ solveIO Options{..} fcn mbJac (x, xend) OutputIO{..} y = do
   -- Record the last visited x in an 'IORef' to store it in the
   -- 'Failure' if there was a problem.
   xendRef <- newIORef x
+  yMut <- V.thaw y
   res <- withNagError $ \fail_ -> do
     xend' <- [c| double {
         double x = $(double x);
         Nag_User comm;
         nag_ode_ivp_bdf_gen(
-          $vec-len:y,
+          $vec-len:yMut,
           $fun:(void (*fcnIO)(Integer neq, double x, const double y[], double f[], Nag_User *comm)),
           $(void (*jacFunPtr)(Integer neq, double x, const double y[], double pw[], Nag_User *comm)),
-          &x, $vec-ptr:(double y[]), $(double xend),
+          &x, $vec-ptr:(double yMut[]), $(double xend),
           $(double optionsTolerance), $(Nag_ErrorControl err),
-          $fun:(void (*outputIO)(Integer neq, double *xsol, const double y[], Nag_User *comm)),
+          $(void (*outputFunPtr)(Integer neq, double *xsol, const double y[], Nag_User *comm)),
           NULLDFN, &comm, $(NagError *fail_));
         return x;
       } |]
     writeIORef xendRef xend'
-    readIORef outputStateRef
   case res of
     Left s -> do
       xend' <- readIORef xendRef
       return $ Left $ Failure s xend'
-    Right x -> return $ Right x
-
+    Right () -> do
+      y' <- V.freeze yMut
+      mbOutput <- outputGetResult
+      return $ Right (y', mbOutput)
 
 -- Pure solver
 ------------------------------------------------------------------------
@@ -134,11 +141,27 @@ data Output a = Output
   , outputStep :: a -> CDouble -> V.Vector CDouble -> (a, CDouble)
   }
 
+{-
 outputInterval :: CDouble -> Output [(CDouble, V.Vector CDouble)]
 outputInterval interval = Output
   { outputStartState = []
   , outputStep = \xs x y -> (xs ++ [(x, y)], x + interval)
   }
+
+outputFixed :: [CDouble] -> Output ([CDouble], [(CDouble, V.Vector CDouble)])
+outputFixed xs = Output
+  { outputStartState = (xs, [])
+  , outputStep = \(steps, ys) x y -> case steps of
+      [] -> ((steps, ys), x+1)
+      step:steps -> ((steps, ys ++ [(x, y)]), step)
+  }
+
+outputNothing :: CDouble -> Output ()
+outputNothing x = Output
+  { outputStartState = ()
+  , outputStep = \() _ _ -> ((), x)
+  }
+-}
 
 {-# NOINLINE solve #-}
 solve
@@ -146,29 +169,28 @@ solve
   -> Fn
   -> Maybe Jac
   -> Interval
-  -> Output a
+  -> Maybe (Output a)
   -> V.Vector CDouble
-  -> Either Failure a
-solve opts fcn mbJac int Output{..} y = unsafePerformIO $
-  solveIO opts fcn mbJac int outputIO y
+  -> Either Failure (V.Vector CDouble, Maybe a)
+solve opts fcn mbJac int mbOutput y = unsafePerformIO $
+  solveIO opts fcn mbJac int mbOutputIO y
   where
-    outputIO = OutputIO outputStartState $ \s x y -> return $ outputStep s x y
+    mbOutputIO = case mbOutput of
+      Nothing -> Nothing
+      Just Output{..} -> Just $ OutputIO outputStartState $ \s x y -> return $ outputStep s x y
 
 -- Oregonator
 ------------------------------------------------------------------------
 
-oregonatorTest :: IO ()
-oregonatorTest = do
-  let testtols = takeWhile (>= 1.0E-10) $ iterate (/ 2) 1.0E-3
-  forM_ testtols $ \tol -> do
-    putStrLn "---"
-    putStrLn $ "tol: " ++ show tol
-    let mbRes = solve
-          (Options tol Relative) oregonatorF (Just oregonatorJac) (0, 360)
-          (outputInterval 0.01) oregonatorY0
-    case mbRes of
-      Left _ -> error "Oregonator failed"
-      Right _ -> return ()
+oregonator :: IO (V.Vector CDouble)
+oregonator = do
+  let x = 0
+  let xend = 360
+  let tol = 1e-5
+  let res = solve (Options tol Relative) f (Just jac) (x, xend) Nothing y0
+  case res of
+    Left err -> error $ "Oregonator failed " ++ failureMessage err
+    Right (v, _) -> return v
   where
     f :: Fn
     f _ y =
@@ -195,14 +217,14 @@ oregonatorTest = do
 -- Hires
 ------------------------------------------------------------------------
 
-hiresTest :: IO ()
-hiresTest = do
+hires :: IO (V.Vector CDouble)
+hires = do
   let x = 0
   let xend = 321.8122
-  let res = solve (Options tol Relative) f (Just jac) (x, xend) (outputInterval 0.1) y0
+  let res = solve (Options tol Relative) f (Just jac) (x, xend) Nothing y0
   case res of
     Left err -> error $ "Hires failed " ++ failureMessage err
-    Right _ -> return ()
+    Right (v, _) -> return v
   where
     f :: Fn
     f _ y =
@@ -241,43 +263,42 @@ hiresTest = do
 -- NAG
 ------------------------------------------------------------------------
 
-nagTest :: IO ()
+nagTest :: IO (V.Vector CDouble)
 nagTest = do
   let fcn _x y =
-        let y0 = y V.! 0
-            y1 = y V.! 1
-            y2 = y V.! 2
+        let y1 = y V.! 0
+            y2 = y V.! 1
+            y3 = y V.! 2
         in V.fromList
-          [ y0 * (-0.04) + y1 * 1e4 * y2
-          , y0 * 0.04 - y1 * 1e4 * y2 - y1 * 3e7 * y1
-          , y1 * 3e7 * y1
+          [ y1 * (-0.04) + y2 * 1e4 * y3
+          , y1 * 0.04 - y2 * 1e4 * y3 - y2 * 3e7 * y2
+          , y2 * 3e7 * y2
           ]
   let jac _x y =
-        let _y0 = y V.! 0
-            y1 = y V.! 1
-            y2 = y V.! 2
+        let _y1 = y V.! 0
+            y2 = y V.! 1
+            y3 = y V.! 2
         in V.fromList
-          [  -0.04,  y2 * 1e4,                y1 * 1e4
-          ,  0.04,   y2 * (-1e4) - y1 * 6e7,  y1 * (-1e4)
-          ,  0.0,    y1 * 6e7,                0.0
+          [  -0.04,  y3 * 1e4,                y2 * 1e4
+          ,  0.04,   y3 * (-1e4) - y2 * 6e7,  y2 * (-1e4)
+          ,  0.0,    y2 * 6e7,                0.0
           ]
   let x = 1
   let y = V.fromList [1.0, 0.0, 0.0]
   let tol = 10**(-3)
-  let res = solve (Options tol Relative) fcn (Just jac) (x, 10) (outputInterval 1) y
-  print res
+  let res = solve (Options tol Relative) fcn (Just jac) (x, 10) Nothing y
+  case res of
+    Left err -> error $ "NAG test failed " ++ show err
+    Right (y', _) -> return y'
 
 -- Main
 ------------------------------------------------------------------------
 
 main :: IO ()
 main = do
-  putStrLn "NAG"
-  nagTest
-  putStrLn "Oregonator"
-  oregonatorTest
-  putStrLn "Hires"
-  hiresTest
+  print =<< nagTest
+  print =<< oregonator
+  print =<< hires
 
 -- Utils
 ------------------------------------------------------------------------
