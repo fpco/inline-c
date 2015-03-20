@@ -117,10 +117,31 @@ executable ode
   main-is:             ode.hs
   c-sources:           examples/ode.c
   build-depends:       base >=4 && <5
-                     , array
                      , inline-c
                      , inline-c-nag
                      , vector
+  default-language:    Haskell2010
+  cc-options:          -O2 -m64
+  extra-libraries:     nagc_nag imf svml irng intlc
+  extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
+  include-dirs:        /opt/NAG/cll6i24dcl/include
+  ghc-options:         -Wall -O -fPIC -fno-warn-name-shadowing -debug -dcore-lint
+
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False
+
+executable ode-runge-kutta
+  hs-source-dirs:      examples
+  main-is:             ode-runge-kutta.hs
+  c-sources:           examples/ode-runge-kutta.c
+  build-depends:       base >=4 && <5
+                     , inline-c-nag
+                     , vector
+                     , transformers
+                     , transformers-compat
+                     , monad-control
   default-language:    Haskell2010
   cc-options:          -O2 -m64
   extra-libraries:     nagc_nag imf svml irng intlc

@@ -17,6 +17,8 @@ module Language.C.Inline.Nag
   , nagCtx
     -- * Utilities
   , withNagError
+  , initNagError
+  , checkNagError
   ) where
 
 import           Data.Functor ((<$>))
@@ -30,9 +32,16 @@ setContext nagCtx
 include "<nag.h>"
 
 withNagError :: (Ptr NagError -> IO a) -> IO (Either String a)
-withNagError f = alloca $ \ptr -> do
+withNagError f = initNagError $ \ptr -> checkNagError ptr $ f ptr
+
+initNagError :: (Ptr NagError -> IO a) -> IO a
+initNagError f = alloca $ \ptr -> do
   [cexp| void{ INIT_FAIL(*$(NagError *ptr)) } |]
-  x <- f ptr
+  f ptr
+
+checkNagError :: Ptr NagError -> IO a -> IO (Either String a)
+checkNagError ptr f = do
+  x <- f
   errCode <- [cexp| int { $(NagError *ptr)->code } |]
   if errCode /= _NE_NOERROR
     then do
