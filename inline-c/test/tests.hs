@@ -4,7 +4,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Data.Monoid ((<>), mempty)
 import qualified Data.Vector.Storable.Mutable as V
-import           Foreign.C.Types
 import qualified Language.Haskell.TH as TH
 import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
@@ -46,7 +45,7 @@ main = Hspec.hspec $ do
     Hspec.it "inlineItems" $ do
       let c_add3 = $(inlineItems
             TH.Unsafe
-            [t| CInt -> CInt |]
+            [t| Int32 -> Int32 |]
             (C.TypeSpecifier mempty (C.Int C.Signed))
             [("x", C.TypeSpecifier mempty (C.Int C.Signed))]
             [r| return x + 3; |])
@@ -54,7 +53,7 @@ main = Hspec.hspec $ do
     Hspec.it "inlineExp" $ do
       let x = $(inlineExp
             TH.Safe
-            [t| CInt |]
+            [t| Int32 |]
             (C.TypeSpecifier mempty (C.Int C.Signed))
             []
             [r| 1 + 4 |])
@@ -93,14 +92,14 @@ main = Hspec.hspec $ do
             | m > 0 && n == 0 = ackermann (m - 1) 1
             | m > 0 && n > 0 = ackermann (m - 1) (ackermann m (n - 1))
             | otherwise = error "ackermann"
-      ackermannPtr <- $(mkFunPtr [t| CInt -> CInt -> CInt |]) ackermann
+      ackermannPtr <- $(mkFunPtr [t| Int32 -> Int32 -> Int32 |]) ackermann
       let x = 3
       let y = 4
       let z = [cexp_pure| int { $(int (*ackermannPtr)(int, int))($(int x), $(int y)) } |]
       z `Hspec.shouldBe` ackermann x y
     Hspec.it "function pointer result" $ do
       c_add <- [cexp| int (*)(int, int) { &francescos_add } |]
-      x <- $(peekFunPtr [t| CInt -> CInt -> IO CInt |]) c_add 1 2
+      x <- $(peekFunPtr [t| Int32 -> Int32 -> IO Int32 |]) c_add 1 2
       x `Hspec.shouldBe` 1 + 2
     Hspec.it "quick function pointer argument" $ do
       let ackermann m n

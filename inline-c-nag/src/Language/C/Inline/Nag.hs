@@ -24,6 +24,7 @@ module Language.C.Inline.Nag
 import           Data.Functor ((<$>))
 import           Foreign.C.String (peekCString)
 import           Foreign.Marshal.Alloc (alloca)
+import           Foreign.Ptr (castPtr)
 
 import           Language.C.Inline.Nag.Internal
 import           Language.C.Inline
@@ -46,5 +47,5 @@ checkNagError ptr f = do
   if errCode /= _NE_NOERROR
     then do
       ch <- [cexp| char * { $(NagError *ptr)->message } |]
-      Left <$> peekCString ch
+      Left <$> peekCString (castPtr ch)
     else return $ Right x

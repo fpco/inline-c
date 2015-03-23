@@ -3,14 +3,15 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 import           Control.Applicative ((<*>))
 import           Control.Monad (void)
-import qualified Data.Array.Storable as A
 import           Data.Functor ((<$>))
 import           Data.Int (Int64)
 import           Foreign.C.String (withCString)
 import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
+import           Foreign.Ptr (castPtr)
 import           Foreign.Storable (peek)
 import           Language.C.Inline.Nag
+import qualified Data.Array.Storable as A
 
 setContext nagCtx
 
@@ -40,22 +41,23 @@ parseData (m0, n0) = do
   return x
 
 printGenComplxMat
-  :: String -> A.StorableArray (Int64, Int64) Complex -> IO CInt
+  :: String -> A.StorableArray (Int64, Int64) Complex -> IO Int32
 printGenComplxMat str x = do
   ((0, 0), (m0, n0)) <- A.getBounds x
   let (m, n) = (fi m0, fi n0)
-  withCString str $ \str -> A.withStorableArray x $ \xPtr ->
+  withCString str $ \str -> A.withStorableArray x $ \xPtr -> do
+    let str_ = castPtr str
     [c| int {
-      NagError fail; INIT_FAIL(fail);
-      nag_gen_complx_mat_print_comp(
-        Nag_RowMajor, Nag_GeneralMatrix, Nag_NonUnitDiag, $(Integer n), $(Integer m),
-        $(Complex *xPtr), $(Integer m), Nag_BracketForm, "%6.3f", $(char *str),
-        Nag_NoLabels, 0, Nag_NoLabels, 0, 80, 0, NULL, &fail);
-      return fail.code != NE_NOERROR;
-    } |]
+        NagError fail; INIT_FAIL(fail);
+        nag_gen_complx_mat_print_comp(
+          Nag_RowMajor, Nag_GeneralMatrix, Nag_NonUnitDiag, $(Integer n), $(Integer m),
+          $(Complex *xPtr), $(Integer m), Nag_BracketForm, "%6.3f", $(char *str_),
+          Nag_NoLabels, 0, Nag_NoLabels, 0, 80, 0, NULL, &fail);
+        return fail.code != NE_NOERROR;
+      } |]
 
 sumFftComplex2d
-  :: CInt -> A.StorableArray (Int64, Int64) Complex -> IO CInt
+  :: Int32 -> A.StorableArray (Int64, Int64) Complex -> IO Int32
 sumFftComplex2d flag x = do
   ((0, 0), (m0, n0)) <- A.getBounds x
   let (m, n) = (fi m0, fi n0)

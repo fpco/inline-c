@@ -13,13 +13,13 @@ include "<nage04.h>"
 include "<nagx02.h>"
 
 nelderMead
-  :: V.Vector CDouble
+  :: V.Vector Double
   -- ^ Starting point
-  -> (V.Vector CDouble -> CDouble)
+  -> (V.Vector Double -> Double)
   -- ^ Function to minimize
   -> Nag_Integer
   -- ^ Maximum number of iterations (must be >= 1).
-  -> IO (Either String (CDouble, V.Vector CDouble))
+  -> IO (Either String (Double, V.Vector Double))
   -- ^ Position of the minimum.  'Left' if something went wrong, with
   -- error message. 'Right', together with the minimum cost and its
   -- position, if it could be found.

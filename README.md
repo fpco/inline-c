@@ -45,7 +45,7 @@ in this case, where the block has type `double`.
 The type of the inline C Haskell expression will be determined by the
 type of the C block.  In this case, since the C block is typed `double`,
 the Haskell expression `[cexp| double { cos(1) } |]` will have type `IO
-CDouble`.
+Double`.
 
 We can also include C code as pure, non-IO Haskell expressions, using
 `cexp_pure`:
@@ -114,7 +114,7 @@ include "<stdio.h>"
 
 -- | @readAndSum n@ reads @n@ numbers from standard input and returns
 -- their sum.
-readAndSum :: CInt -> IO CInt
+readAndSum :: Int32 -> IO Int32
 readAndSum n  = [c| int (int n) {
     // Read and sum n integers
     int i, sum = 0, tmp;
@@ -140,14 +140,14 @@ the C snippet.
 
 For each specified parameter, a variable with a matching type is
 expected in the Haskell environment.  In this case `inline-c` expects a
-variable named `n` of type `CInt`, which is the case.
+variable named `n` of type `Int32`, which is the case.
 
 ## Capturing Haskell variables -- anti-quotation
 
 The second way to capture Haskell variables is by "anti-quoting" them.
 
 ```
-readAndSum :: CInt -> IO CInt
+readAndSum :: Int32 -> IO Int32
 readAndSum n  = [c| int {
     // Read and sum n integers
     int i, sum = 0, tmp;
@@ -171,9 +171,10 @@ freely.
 
 Every of the stock types in the C language can be easily represented in
 Haskell.  Basic types (`int`, `long`, `double`, `float`, etc.) get
-converted to their Haskell equivalents in `Foreign.C.Types`.  Pointers
-and arrays get converted to `Ptr`.  Function pointers get converted to
-`FunPtr`.
+converted to their Haskell equivalents `Data.Int` and `Data.Word`.  Note
+that we do not use the `newtypes` in `Foreign.C.Types` to be able to use
+existing data without explicitely converting.  Pointers and arrays get
+converted to `Ptr`.  Function pointers get converted to `FunPtr`.
 
 `inline-c` can also handle user-defined structs and enums, provided that
 they are instances of `Storable` and that you tell `inline-c` about them
@@ -228,7 +229,7 @@ import           Data.Monoid ((<>))
 -- 'baseCtx'.
 setContext (baseCtx <> vecCtx)
 
-sumVec :: V.IOVector CDouble -> IO CDouble
+sumVec :: V.IOVector Double -> IO Double
 sumVec vec = [c| double {
     double sum = 0;
     int i;
@@ -247,7 +248,7 @@ main = do
 The `vec-len` anti-quoter is used simply by specifying the vector we
 want to get the length of (in our case, `vec`).  To use the `vec-ptr`
 anti-quoter it is also required to specify the pointer type we want.
-Since `vec` is a vector of `CDouble`s, we want a pointer to `double`s.
+Since `vec` is a vector of `Double`s, we want a pointer to `double`s.
 
 ### Function pointers
 
@@ -263,7 +264,7 @@ import           Language.C.Inline
 -- the 'baseCtx'.
 setContext (baseCtx <> funCtx)
 
-ackermann :: CLong -> CLong -> CLong
+ackermann :: Int64 -> Int64 -> Int64
 ackermann m n
   | m == 0 = n + 1
   | m > 0 && n == 0 = ackermann (m - 1) 1
@@ -280,8 +281,8 @@ main = do
   print z
 ```
 
-In this example, we capture a Haskell function of type `CLong -> CLong
--> IO CLong`, `ackermannIO`, to a function pointer in C, using the `fun`
+In this example, we capture a Haskell function of type `Int64 -> Int64
+-> IO Int64`, `ackermannIO`, to a function pointer in C, using the `fun`
 anti-quoter.  Note how we need to specify the function pointer type when
 we capture `ackermannIO`, using standard C declaration syntax.  Also
 note that the `fun` anti-quoter works with `IO` functions, and so we
@@ -404,13 +405,13 @@ include "<nage04.h>"
 include "<nagx02.h>"
 
 nelderMead
-  :: V.Vector CDouble
+  :: V.Vector Double
   -- ^ Starting point
-  -> (V.Vector CDouble -> CDouble)
+  -> (V.Vector Double -> Double)
   -- ^ Function to minimize
   -> Nag_Integer
   -- ^ Maximum number of iterations (must be >= 1).
-  -> IO (Either String (CDouble, V.Vector CDouble))
+  -> IO (Either String (Double, V.Vector Double))
   -- ^ Position of the minimum.  'Left' if something went wrong, with
   -- error message. 'Right', together with the minimum cost and its
   -- position, if it could be found.
