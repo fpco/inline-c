@@ -40,14 +40,22 @@ module Language.C.Inline
     , peekFunPtr
 
       -- * Re-exports
-    , module Foreign.C.Types
+    , Int8
+    , Int16
+    , Int32
+    , Int64
+    , Word8
+    , Word16
+    , Word32
+    , Word64
     , Ptr
     , FunPtr
     ) where
 
 import           Control.Monad (forM)
+import           Data.Int (Int8, Int16, Int32, Int64)
 import qualified Data.Map as Map
-import           Foreign.C.Types
+import           Data.Word (Word8, Word16, Word32, Word64)
 import           Foreign.Ptr (Ptr, FunPtr)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
@@ -147,7 +155,7 @@ import           Language.C.Inline.FunPtr
 -- list, their type is assumed to be of the Haskell type corresponding
 -- to the C type provided.  For example, if we capture variable @x@
 -- using @double x@ in the parameter list, the code will expect a
--- variable @x@ of type @CDouble@ in Haskell.
+-- variable @x@ of type @Double@ in Haskell.
 --
 -- === Anti-quoters
 --
@@ -161,7 +169,7 @@ import           Language.C.Inline.FunPtr
 -- ['cexp'| double { cos($(double x)) } |]
 -- @
 --
--- Which would capture the Haskell variable @x@ of type @'CDouble'@.
+-- Which would capture the Haskell variable @x@ of type @'Double'@.
 --
 -- Parameter list capturing and anti-quoting can be freely mixed.
 --
@@ -175,8 +183,8 @@ import           Language.C.Inline.FunPtr
 -- to function pointers.  Impure quasi-quoters will convert C function
 -- pointers to @'IO'@ functions in Haskell.  For example, if an argument
 -- is of type @int (*add)(int, int)@, the impure quasi-quoters will
--- expect a @'FunPtr' ('CInt' -> 'CInt' -> 'IO' 'CInt')@, while the pure
--- ones a @'FunPtr' ('CInt' -> 'CInt' -> 'IO' 'CInt')@.
+-- expect a @'FunPtr' ('Int32' -> 'Int32' -> 'IO' 'Int32')@, while the pure
+-- ones a @'FunPtr' ('Int32' -> 'Int32' -> 'IO' 'Int32')@.
 --
 -- Obviously pure quoters should be used with care, since if the C code
 -- is not pure you can break referential transparency.
@@ -196,12 +204,11 @@ import           Language.C.Inline.FunPtr
 -- @
 -- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
--- import           "Foreign.C.Types"
 -- import           "Language.C.Inline"
 --
 -- 'include' "\<math.h\>"
 --
--- c_cos :: 'CDouble' -> 'CDouble'
+-- c_cos :: 'Double' -> 'Double'
 -- c_cos x = ['cexp_pure_unsafe'| double { cos($(double x)) } |]
 -- @
 --
@@ -211,12 +218,11 @@ import           Language.C.Inline.FunPtr
 -- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
 -- import qualified Data.Vector.Storable.Mutable as V
--- import           "Foreign.C.Types"
 -- import           "Language.C.Inline"
 --
 -- 'include' "\<stdio.h\>"
 --
--- parseVector :: 'CInt' -> 'IO' (V.IOVector 'CDouble')
+-- parseVector :: 'Int32' -> 'IO' (V.IOVector 'Double')
 -- parseVector len = do
 --   vec <- V.new $ 'fromIntegral' len0
 --   V.unsafeWith vec $ \\ptr -> ['c'| void(double *ptr) {
@@ -276,7 +282,7 @@ genericQuote pure build = quoteCode $ \s -> do
   ParseTypedC cType cParams cExp <-
     runParserInQ s (isTypeName (ctxCTypesTable ctx)) $ parseTypedC $ ctxCAntiQuoters ctx
   hsType <- cToHs ctx cType
-  hsParams <- forM cParams $ \(cId, cTy, parTy) -> do
+  hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
     case parTy of
       Plain s' -> do
         hsTy <- cToHs ctx cTy
