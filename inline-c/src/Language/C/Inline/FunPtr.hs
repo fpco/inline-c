@@ -13,11 +13,11 @@ import qualified Language.Haskell.TH.Syntax as TH
 ------------------------------------------------------------------------
 -- FFI wrappers
 
--- | @$('mkFunPtr' [t| 'Double' -> 'IO' 'Double' |] @ generates a foreign import
+-- | @$('mkFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |] @ generates a foreign import
 -- wrapper of type
 --
 -- @
--- ('Double' -> 'IO' 'Double') -> 'IO' ('FunPtr' ('Double' -> 'IO' 'Double'))
+-- ('CDouble' -> 'IO' 'CDouble') -> 'IO' ('FunPtr' ('CDouble' -> 'IO' 'CDouble'))
 -- @
 --
 -- And invokes it.
@@ -28,11 +28,11 @@ mkFunPtr hsTy = do
   TH.addTopDecls [dec]
   TH.varE ffiImportName
 
--- | @$('peekFunPtr' [t| 'Double' -> 'IO' 'Double' |])@ generates a foreign import
+-- | @$('peekFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |])@ generates a foreign import
 -- dynamic of type
 --
 -- @
--- 'FunPtr' ('Double' -> 'IO' 'Double') -> ('Double' -> 'IO' 'Double')
+-- 'FunPtr' ('CDouble' -> 'IO' 'CDouble') -> ('CDouble' -> 'IO' 'CDouble')
 -- @
 --
 -- And invokes it.
