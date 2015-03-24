@@ -1,21 +1,23 @@
-# `inline-c` tutorial
+# inline-c
 
-`inline-c` is a library to seamlessy write C code -- using C libraries
--- from Haskell.  In this tutorial we'll work by example, starting with
-simple use cases and gradually showing every feature with more complex
-examples.
+`inline-c` is a library for seamlessly mixing Haskell and C source
+code in the same source file. Mixing code is . In this tutorial we'll
+work through some of the features of `inline-c` by way of examples,
+starting with simple use cases.
 
-Build details are reserved to the [last section](#how-to-build).  You'll
-need those if you want to get working.
+Build details are reserved to the [last section](#how-to-build).
+You'll need those if you want to get the examples working.
 
 ## Getting started
 
 Let's say we want to compute the cosine of a number using C from
-Haskell.  With `inline-c` it's a breeze:
+Haskell. `inline-c` let's you write this function call inline, without
+any need for a binding to the foreign function:
 
 ```
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+
 import           Language.C.Inline
 
 include "<math.h>"
@@ -26,26 +28,24 @@ main = do
   print x
 ```
 
-The code is quite self-explanatory, but it's still worth analyzing it
-piece by piece.
+`inline-c` leverages the [quasiquotation][ghc-manual-quasiquotation]
+language extension implemented in GHC.
+[Template Haskell][ghc-manual-template-haskell] is also required.
+Importing the `Language.C.Inline` module brings in scope most required
+Haskell definitions. `include "<math.h>"` brings into scope the
+foreign function `cos()` that we wish to call. Finally, in the `main`
+function, `[cexp| double { cos(1) } |]` denotes an inline C expression
+of type `double`. `cexp` stands for "C expression". It is a custom
+quasiquoter provided by `inline-c`.
 
-The first three lines enable the Haskell language extensions that we
-need to work with `inline-c`, and import the `inline-c` module,
-`Language.C.Inline`.
+A `cexp` quasiquotation always includes a type annotation for the
+inline C expression. This annotation determins the type of the
+quasiquotation in Haskell. Out of the box, `inline-c` knows how to map
+many common C types to Haskell type. In this case, 
 
-The line containing `inline "<math.h>"` will have the effect of an
-`#include <math.h>` directive being included in the C code that will
-contain all the inline C that follows.
-
-Finally, in the `main` function, `[cexp| double { cos(1) } |]` is the
-expression which actually includes the C code, `cexp` standing for "C
-expression".  Every inline C code is included as a typed block, as shown
-in this case, where the block has type `double`.
-
-The type of the inline C Haskell expression will be determined by the
-type of the C block.  In this case, since the C block is typed `double`,
-the Haskell expression `[cexp| double { cos(1) } |]` will have type `IO
-Double`.
+```
+[cexp| double { cos(1) } |] :: IO Double
+```
 
 We can also include C code as pure, non-IO Haskell expressions, using
 `cexp_pure`:
@@ -57,18 +57,19 @@ main = do
   print x
 ```
 
-Obviously in this case the user needs to make sure that the C code is
-referentially transparent.
+Of course, `cexp_pure` must be used carefully: it is only appropriate
+for inlining C expressions that are referentially transparent
+(expressions whose evaluation has no observable side effects).
 
 ## Multiple statements
 
-We can also include C code composed of multiple statements, rather than
-a single expression.  This is accomplished with the `c`
-quasi-quoter, instead of `cexp`.
+`inline-c` allows embedding arbitrary C code, not just expressions, in
+the form of a sequence of statements, using the `c` quasiquoter:
 
 ```
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+
 import           Language.C.Inline
 
 include "<stdio.h>"
@@ -87,23 +88,23 @@ main = do
   print x
 ```
 
-Note how, when we use `c`, we still type the whole C block (`int`
-in this case), but we must `return` the value explicitly, like we would in
-a C function.
+Just as with `cexp`, we need a type annotation on the entire C block.
+The annotation specifies the return type. That is, the type of the
+expression in any return statement.
 
-A pure version of `c` exists too -- `c_pure` -- but in this case we must
-not use it, since the C code is impure, given that it reads from
-standard input.
+Just as with `cexp`, `c` has a pure version `c_pure`. In the above
+example, we *must not* use the pure quasiquoter because the code block
+has a side effect: reading from standard input.
 
 ## Capturing Haskell variables -- parameter declaration
 
-`inline-c` offers the possibility of using Haskell variables from C.  We
-can do so in two ways: declaring a parameter and using an anti-quoter.
-We'll talk about the former first.
+`inline-c` allows referring to Haskell variables inside C expressions
+and code blocks. We can do so in two ways: declaring a parameter and
+using an antiquotation. We'll talk about the former first.
 
-Let's say that we wanted to parametrize the function we wrote above by
-how many numbers we should read.  We can do so by defining an Haskell
-function with the right parameter and using said parameter from C.
+Let's say that we wanted to parameterize the function we wrote above
+by how many numbers we should read. We can do so by defining a Haskell
+function whose parameter we can refer to from within C:
 
 ```
 {-# LANGUAGE QuasiQuotes #-}
@@ -132,9 +133,9 @@ main = do
 ```
 
 The interesting bit in the code above is right next to the type
-declaration for the C block, `int (int n) { ... }`.  Along the return
-type, `int`, we also have a parameter list, in this case composed of
-just one parameter, `int n`.  The parameters specified in this way are
+declaration for the C block, `int (int n) { ... }`. Following the
+return type, `int`, we have a parameter list, in this case composed of
+just one parameter, `int n`. The parameters specified in this way are
 then available in the C code, as shown here, `n` being used throughout
 the C snippet.
 
@@ -159,22 +160,22 @@ readAndSum n  = [c| int {
   } |]
 ```
 
-In this case the Haskell variable `n` is not captured via a parameter
-declaration, but right where we need it using `$(int n)`.  When the
-captured variable is used one, anti-quotation provide a cheaper notation
-to do what we need.
+Here, the Haskell variable `n` is not captured via a parameter
+declaration, but right where we need it using `$(int n)`. When the
+captured variable is used once, anti-quotation provides a cheaper
+notation.
 
 Note that parameter declarations and anti-quotations can be mixed
 freely.
 
 ## What can be captured and returned?
 
-Every of the stock types in the C language can be easily represented in
-Haskell.  Basic types (`int`, `long`, `double`, `float`, etc.) get
-converted to their Haskell equivalents `Data.Int` and `Data.Word`.  Note
-that we do not use the `newtypes` in `Foreign.C.Types` to be able to use
-existing data without explicitely converting.  Pointers and arrays get
-converted to `Ptr`.  Function pointers get converted to `FunPtr`.
+All C types correspond to exactly one Haskell type. Basic types
+(`int`, `long`, `double`, `float`, etc.) get converted to their
+Haskell equivalents `Int`, `Data.Word.Word`, `Double`, `Float`. Note
+that the size of the types are not always equivalent on all platforms,
+so truncation error may result. Pointers and arrays get converted to
+`Ptr`. Function pointers get converted to `FunPtr`.
 
 `inline-c` can also handle user-defined structs and enums, provided that
 they are instances of `Storable` and that you tell `inline-c` about them
@@ -185,7 +186,7 @@ using [contexts](#contexts).
 Everything beyond the base functionality provided by `inline-c` is
 specified in a structure that we call "`Context`".  From a user
 perspective, if we want to use anything but the default context
-(`baseCtx`), we must set the `Context` explicitely using the
+(`baseCtx`), we must set the `Context` explicitly using the
 `setContext` function.  The next two sections include several examples.
 
 The `Context` allows to extend `inline-c` to support
@@ -196,13 +197,13 @@ The `Context` allows to extend `inline-c` to support
 `Context`s can be composed using their `Monoid` instance.
 
 Ideally a `Context` will be provided for each C library that should be
-used with `inline-c`, so that the user will simply use that, or combine
-multiple ones if multiple libraries are to be used.  See the
-[section about NAG](#using-inline-c-with-nag) for examples using a
-`Context` tailored for a library.
+used with `inline-c`. The user can then combine multiple contexts
+together if multiple libraries are to be used in the same program. See
+the [section about NAG](#using-inline-c-with-nag) for examples using
+a `Context` tailored for a library.
 
-For information regarding how to define `Context`s, see the Haddock
-docs for `Language.C.Inline.Context`.
+For information regarding how to define `Context`s, see the
+Haddock-generated API documentation for `Language.C.Inline.Context`.
 
 ## More anti-quoters
 
@@ -506,7 +507,7 @@ performed, so `cabal repl` can still be used to develop.
 
 See `sample-cabal-project` for a working example.
 
-If we were to compile the above manually we could do
+If we were to compile the above manually we could do:
 
 ```
 $ ghc -c Main.hs
@@ -516,3 +517,7 @@ $ ghc Bar.hs
 $ cc -c Bar.c -o Bar_c.o
 $ ghc Main.o Foo.o Bar.o Main_c.o Bar_c.o -lm -o Main
 ```
+
+[ghc-manual-quasiquotation]:
+https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/template-haskell.html#th-quasiquotation
+[ghc-manual-template-haskell]: https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/template-haskell.html
