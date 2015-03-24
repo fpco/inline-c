@@ -47,12 +47,11 @@ import           Data.Monoid (Monoid(..))
 import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
+import           Foreign.C.Types
 import           Foreign.Ptr (Ptr, FunPtr)
 import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Token as Parser
 import           Foreign.Storable (Storable)
-import           Data.Int (Int8, Int16, Int32, Int64)
-import           Data.Word (Word8, Word16, Word32, Word64)
 
 import           Language.C.Inline.FunPtr
 import qualified Language.C.Types as C
@@ -141,19 +140,19 @@ baseCtx = mempty
 baseCTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ
 baseCTypesTable = Map.fromList
   [ (C.Void, [t| () |])
-  , (C.Char Nothing, [t| Int8 |])
-  , (C.Char (Just C.Signed), [t| Int8 |])
-  , (C.Char (Just C.Unsigned), [t| Word8 |])
-  , (C.Short C.Signed, [t| Int16 |])
-  , (C.Short C.Unsigned, [t| Word16 |])
-  , (C.Int C.Signed, [t| Int32 |])
-  , (C.Int C.Unsigned, [t| Word32 |])
-  , (C.Long C.Signed, [t| Int64 |])
-  , (C.Long C.Unsigned, [t| Word64 |])
-  , (C.LLong C.Signed, [t| Int64 |])
-  , (C.LLong C.Unsigned, [t| Word64 |])
-  , (C.Float, [t| Float |])
-  , (C.Double, [t| Double |])
+  , (C.Char Nothing, [t| CChar |])
+  , (C.Char (Just C.Signed), [t| CChar |])
+  , (C.Char (Just C.Unsigned), [t| CUChar |])
+  , (C.Short C.Signed, [t| CShort |])
+  , (C.Short C.Unsigned, [t| CUShort |])
+  , (C.Int C.Signed, [t| CInt |])
+  , (C.Int C.Unsigned, [t| CUInt |])
+  , (C.Long C.Signed, [t| CLong |])
+  , (C.Long C.Unsigned, [t| CULong |])
+  , (C.LLong C.Signed, [t| CLLong |])
+  , (C.LLong C.Unsigned, [t| CULLong |])
+  , (C.Float, [t| CFloat |])
+  , (C.Double, [t| CDouble |])
   ]
 
 -- | An alias for 'Ptr'.
@@ -224,8 +223,8 @@ convertCType_ err cTypes pure cTy = do
 -- | This 'Context' includes a 'CAntiQuoter' that removes the need for
 -- explicitely creating 'FunPtr's, named @"fun"@.
 --
--- For example, we can capture function @f@ of type @Int32 -> Int32 -> IO
--- Int32@ in C code using @$fun:(int (*f)(int, int))@.
+-- For example, we can capture function @f@ of type @CInt -> CInt -> IO
+-- CInt@ in C code using @$fun:(int (*f)(int, int))@.
 funCtx :: Context
 funCtx = mempty
   { ctxCAntiQuoters = Map.fromList [("fun", SomeCAntiQuoter funPtrCAntiQuoter)]
@@ -264,7 +263,7 @@ funPtrCAntiQuoter = CAntiQuoter
 -- of type @'V.IOVector' a@ or @'V.Vector' a@, for some @a@.  To use
 -- @vec-ptr@ you need to specify the type of the pointer,
 -- e.g. @$vec-len:(int *x)@ will work if @x@ has type @'V.IOVector'
--- 'Int32'@.
+-- 'CInt'@.
 vecCtx :: Context
 vecCtx = mempty
   { ctxCAntiQuoters = Map.fromList
@@ -324,7 +323,7 @@ vecLenCAntiQuoter = CAntiQuoter
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "vecCtx" cId
           hsExp' <- [| fromIntegral (vecCtxLength $(return hsExp)) |]
-          hsTy <- [t| Int64 |]
+          hsTy <- [t| CLong |]
           case pure of
             Pure -> do
               return (hsTy, hsExp')

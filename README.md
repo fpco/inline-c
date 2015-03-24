@@ -44,8 +44,7 @@ quasiquotation in Haskell. Out of the box, `inline-c` knows how to map
 many common C types to Haskell type. In this case, 
 
 ```
-[cexp| double { cos(1) } |] :: IO Double
-```
+[cexp| double { cos(1) } |] :: IO CDouble
 
 We can also include C code as pure, non-IO Haskell expressions, using
 `cexp_pure`:
@@ -115,7 +114,7 @@ include "<stdio.h>"
 
 -- | @readAndSum n@ reads @n@ numbers from standard input and returns
 -- their sum.
-readAndSum :: Int32 -> IO Int32
+readAndSum :: CInt -> IO CInt
 readAndSum n  = [c| int (int n) {
     // Read and sum n integers
     int i, sum = 0, tmp;
@@ -141,14 +140,14 @@ the C snippet.
 
 For each specified parameter, a variable with a matching type is
 expected in the Haskell environment.  In this case `inline-c` expects a
-variable named `n` of type `Int32`, which is the case.
+variable named `n` of type `CInt`, which is the case.
 
 ## Capturing Haskell variables -- anti-quotation
 
 The second way to capture Haskell variables is by "anti-quoting" them.
 
 ```
-readAndSum :: Int32 -> IO Int32
+readAndSum :: CInt -> IO CInt
 readAndSum n  = [c| int {
     // Read and sum n integers
     int i, sum = 0, tmp;
@@ -170,12 +169,10 @@ freely.
 
 ## What can be captured and returned?
 
-All C types correspond to exactly one Haskell type. Basic types
-(`int`, `long`, `double`, `float`, etc.) get converted to their
-Haskell equivalents `Int`, `Data.Word.Word`, `Double`, `Float`. Note
-that the size of the types are not always equivalent on all platforms,
-so truncation error may result. Pointers and arrays get converted to
-`Ptr`. Function pointers get converted to `FunPtr`.
+All C types correspond to exactly one Haskell type. Basic types (`int`,
+`long`, `double`, `float`, etc.) get converted to their Haskell
+equivalents `CInt`, `CLong`, `CDouble`, `CFloat`. Pointers and arrays
+get converted to `Ptr`. Function pointers get converted to `FunPtr`.
 
 `inline-c` can also handle user-defined structs and enums, provided that
 they are instances of `Storable` and that you tell `inline-c` about them
@@ -230,7 +227,7 @@ import           Data.Monoid ((<>))
 -- 'baseCtx'.
 setContext (baseCtx <> vecCtx)
 
-sumVec :: V.IOVector Double -> IO Double
+sumVec :: V.IOVector CDouble -> IO CDouble
 sumVec vec = [c| double {
     double sum = 0;
     int i;
@@ -249,7 +246,7 @@ main = do
 The `vec-len` anti-quoter is used simply by specifying the vector we
 want to get the length of (in our case, `vec`).  To use the `vec-ptr`
 anti-quoter it is also required to specify the pointer type we want.
-Since `vec` is a vector of `Double`s, we want a pointer to `double`s.
+Since `vec` is a vector of `CDouble`s, we want a pointer to `double`s.
 
 ### Function pointers
 
@@ -265,7 +262,7 @@ import           Language.C.Inline
 -- the 'baseCtx'.
 setContext (baseCtx <> funCtx)
 
-ackermann :: Int64 -> Int64 -> Int64
+ackermann :: CLong -> CLong -> CLong
 ackermann m n
   | m == 0 = n + 1
   | m > 0 && n == 0 = ackermann (m - 1) 1
@@ -282,8 +279,8 @@ main = do
   print z
 ```
 
-In this example, we capture a Haskell function of type `Int64 -> Int64
--> IO Int64`, `ackermannIO`, to a function pointer in C, using the `fun`
+In this example, we capture a Haskell function of type `CLong -> CLong
+-> IO CLong`, `ackermannIO`, to a function pointer in C, using the `fun`
 anti-quoter.  Note how we need to specify the function pointer type when
 we capture `ackermannIO`, using standard C declaration syntax.  Also
 note that the `fun` anti-quoter works with `IO` functions, and so we
@@ -406,13 +403,13 @@ include "<nage04.h>"
 include "<nagx02.h>"
 
 nelderMead
-  :: V.Vector Double
+  :: V.Vector CDouble
   -- ^ Starting point
-  -> (V.Vector Double -> Double)
+  -> (V.Vector CDouble -> CDouble)
   -- ^ Function to minimize
   -> Nag_Integer
   -- ^ Maximum number of iterations (must be >= 1).
-  -> IO (Either String (Double, V.Vector Double))
+  -> IO (Either String (CDouble, V.Vector CDouble))
   -- ^ Position of the minimum.  'Left' if something went wrong, with
   -- error message. 'Right', together with the minimum cost and its
   -- position, if it could be found.

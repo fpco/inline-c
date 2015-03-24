@@ -28,20 +28,20 @@ data Method
 
 data SolveOptions = SolveOptions
   { _soMethod :: Method
-  , _soTolerance :: Double
-  , _soInitialStepSize :: Double
+  , _soTolerance :: CDouble
+  , _soInitialStepSize :: CDouble
   } deriving (Eq, Show)
 
 {-# NOINLINE solve #-}
 solve
   :: SolveOptions
-  -> (Double -> V.Vector Double -> V.Vector Double)
+  -> (CDouble -> V.Vector CDouble -> V.Vector CDouble)
   -- ^ ODE to solve
-  -> [Double]
+  -> [CDouble]
   -- ^ @x@ values at which to approximate the solution.
-  -> V.Vector Double
+  -> V.Vector CDouble
   -- ^ The initial values of the solution.
-  -> Either String [(Double, V.Vector Double)]
+  -> Either String [(CDouble, V.Vector CDouble)]
   -- ^ Either an error, or the @y@ values corresponding to the @x@
   -- values input.
 solve (SolveOptions method tol hstart) f xs y0 = unsafePerformIO $ runExceptT $ do
@@ -66,7 +66,7 @@ solve (SolveOptions method tol hstart) f xs y0 = unsafePerformIO $ runExceptT $ 
   ygot <- lift $ VM.new n
   ypgot <- lift $ VM.new n
   ymax <- lift $ VM.new n
-  let fIO :: Double -> Nag_Integer -> Ptr Double -> Ptr Double -> Ptr Nag_Comm -> IO ()
+  let fIO :: CDouble -> Nag_Integer -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_Comm -> IO ()
       fIO t n y _yp  _comm = do
         yFore <- newForeignPtr_ y
         let yVec = VM.unsafeFromForeignPtr0 yFore $ fromIntegral n

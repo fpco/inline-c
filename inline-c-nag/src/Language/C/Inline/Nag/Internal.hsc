@@ -17,13 +17,13 @@ module Language.C.Inline.Nag.Internal
   , nagCtx
   ) where
 
-import           Control.Applicative ((<*>))
-import           Data.Functor ((<$>))
-import           Data.Int (Int32, Int64)
 import qualified Data.Map as Map
 import           Data.Monoid ((<>), mempty)
+import           Foreign.C.Types
 import           Foreign.Storable (Storable(..))
 import qualified Language.Haskell.TH as TH
+import           Control.Applicative ((<*>))
+import           Data.Functor ((<$>))
 
 import           Language.C.Inline
 import           Language.C.Inline.Context
@@ -34,13 +34,13 @@ import qualified Language.C.Types as C
 -- * Records
 
 data Complex = Complex
-  { complRe :: {-# UNPACK #-} !Double
-  , complIm :: {-# UNPACK #-} !Double
+  { complRe :: {-# UNPACK #-} !CDouble
+  , complIm :: {-# UNPACK #-} !CDouble
   } deriving (Show, Read, Eq, Ord)
 
 instance Storable Complex where
   sizeOf _ = (#size Complex)
-  alignment _ = alignment (undefined :: Ptr Double)
+  alignment _ = alignment (undefined :: Ptr CDouble)
   peek ptr = do
     re <- (#peek Complex, re) ptr
     im <- (#peek Complex, im) ptr
@@ -57,10 +57,10 @@ instance Storable NagError where
     peek = error "peek not implemented for NagError"
     poke _ _ = error "poke not implemented for NagError"
 
-_NE_NOERROR :: Int32
+_NE_NOERROR :: CInt
 _NE_NOERROR = (#const NE_NOERROR)
 
-_NAG_ERROR_BUF_LEN :: Int32
+_NAG_ERROR_BUF_LEN :: CInt
 _NAG_ERROR_BUF_LEN = (#const NAG_ERROR_BUF_LEN)
 
 data Nag_Comm
@@ -79,12 +79,12 @@ instance Storable Nag_User where
 
 -- * Enums
 
-type Nag_Boolean = Int32
-type Nag_ErrorControl = Int32
+type Nag_Boolean = CInt
+type Nag_ErrorControl = CInt
 
 -- * Utils
 
-type Nag_Integer = Int64
+type Nag_Integer = CLong
 
 -- * Context
 

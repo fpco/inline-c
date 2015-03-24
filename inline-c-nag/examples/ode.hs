@@ -22,27 +22,27 @@ include "<nagd02.h>"
 ------------------------------------------------------------------------
 
 type Fn
-  =  Double
+  =  CDouble
      -- ^ The indipendent variable @x@
-  -> V.Vector Double
+  -> V.Vector CDouble
      -- ^ @y_i@ for @i = 1, 2, ..., neq@
-  -> V.Vector Double
+  -> V.Vector CDouble
      -- ^ @f_i@ for @i = 1, 2, ..., neq@
 
 type Jac
-  =  Double
+  =  CDouble
      -- ^ The indipendent variable @x@
-  -> V.Vector Double
+  -> V.Vector CDouble
      -- ^ @y_i@ for @i = 1, 2, ..., neq@
-  -> V.Vector Double
+  -> V.Vector CDouble
      -- ^ Jacobian matrix, @pw[(i - 1) * neq + j - 1@ must contain the
      -- value of @∂f_i/∂y_j@, for @i, j = 1, 2, ..., neq@
 
-type Interval = (Double, Double)
+type Interval = (CDouble, CDouble)
 
 data Failure = Failure
   {  failureMessage :: String
-  , _failureAt :: Double
+  , _failureAt :: CDouble
   } deriving (Eq, Show)
 
 data ErrorControl
@@ -52,7 +52,7 @@ data ErrorControl
   deriving (Eq, Show)
 
 data Options = Options
-  { optionsTolerance :: !Double
+  { optionsTolerance :: !CDouble
   , optionsErrorControl :: !ErrorControl
   } deriving (Eq, Show)
 
@@ -61,7 +61,7 @@ data Options = Options
 
 data OutputIO a = OutputIO
   { outputIOStartState :: a
-  , outputIOStep :: a -> Double -> V.Vector Double -> IO (a, Double)
+  , outputIOStep :: a -> CDouble -> V.Vector CDouble -> IO (a, CDouble)
   }
 
 solveIO
@@ -70,8 +70,8 @@ solveIO
   -> Maybe Jac
   -> Interval
   -> Maybe (OutputIO a)
-  -> V.Vector Double
-  -> IO (Either Failure (V.Vector Double, Maybe a))
+  -> V.Vector CDouble
+  -> IO (Either Failure (V.Vector CDouble, Maybe a))
 solveIO Options{..} fcn mbJac (x, xend) mbOutput y = do
   -- IO version of the right-hande function
   let fcnIO neq x y f _comm = do
@@ -86,7 +86,7 @@ solveIO Options{..} fcn mbJac (x, xend) mbOutput y = do
       let jacIO neq x y pw  _comm = do
             pwImm <- jac x <$> vectorFromC neq y
             vectorToC pwImm (neq*neq) pw
-      $(mkFunPtr [t| Nag_Integer -> Double -> Ptr Double -> Ptr Double -> Ptr Nag_User -> IO () |]) jacIO
+      $(mkFunPtr [t| Nag_Integer -> CDouble -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_User -> IO () |]) jacIO
   (outputFunPtr, outputGetResult) <- case mbOutput of
     Nothing -> return (nullFunPtr, return Nothing)
     Just OutputIO{..} -> do
@@ -98,7 +98,7 @@ solveIO Options{..} fcn mbJac (x, xend) mbOutput y = do
             (outputState', x') <- outputIOStep outputState x y'
             writeIORef outputStateRef outputState'
             poke xsol x'
-      outputFunPtr <- $(mkFunPtr [t| Nag_Integer -> Ptr Double -> Ptr Double -> Ptr Nag_User -> IO ()|]) outputIO
+      outputFunPtr <- $(mkFunPtr [t| Nag_Integer -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_User -> IO ()|]) outputIO
       return (outputFunPtr, Just <$> readIORef outputStateRef)
   -- Error control
   let err = case optionsErrorControl of
@@ -138,17 +138,17 @@ solveIO Options{..} fcn mbJac (x, xend) mbOutput y = do
 
 data Output a = Output
   { outputStartState :: a
-  , outputStep :: a -> Double -> V.Vector Double -> (a, Double)
+  , outputStep :: a -> CDouble -> V.Vector CDouble -> (a, CDouble)
   }
 
 {-
-outputInterval :: Double -> Output [(Double, V.Vector Double)]
+outputInterval :: CDouble -> Output [(CDouble, V.Vector CDouble)]
 outputInterval interval = Output
   { outputStartState = []
   , outputStep = \xs x y -> (xs ++ [(x, y)], x + interval)
   }
 
-outputFixed :: [Double] -> Output ([Double], [(Double, V.Vector Double)])
+outputFixed :: [CDouble] -> Output ([CDouble], [(CDouble, V.Vector CDouble)])
 outputFixed xs = Output
   { outputStartState = (xs, [])
   , outputStep = \(steps, ys) x y -> case steps of
@@ -156,7 +156,7 @@ outputFixed xs = Output
       step:steps -> ((steps, ys ++ [(x, y)]), step)
   }
 
-outputNothing :: Double -> Output ()
+outputNothing :: CDouble -> Output ()
 outputNothing x = Output
   { outputStartState = ()
   , outputStep = \() _ _ -> ((), x)
@@ -170,8 +170,8 @@ solve
   -> Maybe Jac
   -> Interval
   -> Maybe (Output a)
-  -> V.Vector Double
-  -> Either Failure (V.Vector Double, Maybe a)
+  -> V.Vector CDouble
+  -> Either Failure (V.Vector CDouble, Maybe a)
 solve opts fcn mbJac int mbOutput y = unsafePerformIO $
   solveIO opts fcn mbJac int mbOutputIO y
   where
@@ -182,7 +182,7 @@ solve opts fcn mbJac int mbOutput y = unsafePerformIO $
 -- Oregonator
 ------------------------------------------------------------------------
 
-oregonator :: IO (V.Vector Double)
+oregonator :: IO (V.Vector CDouble)
 oregonator = do
   let x = 0
   let xend = 360
@@ -217,7 +217,7 @@ oregonator = do
 -- Hires
 ------------------------------------------------------------------------
 
-hires :: IO (V.Vector Double)
+hires :: IO (V.Vector CDouble)
 hires = do
   let x = 0
   let xend = 321.8122
@@ -263,7 +263,7 @@ hires = do
 -- NAG
 ------------------------------------------------------------------------
 
-nagTest :: IO (V.Vector Double)
+nagTest :: IO (V.Vector CDouble)
 nagTest = do
   let fcn _x y =
         let y1 = y V.! 0
