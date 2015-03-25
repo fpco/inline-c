@@ -16,6 +16,8 @@ import qualified Language.C.Inline.ParseSpec
 import qualified Language.C.Types as C
 import qualified Language.C.Types.ParseSpec
 
+import           Dummy
+
 setContext (baseCtx <> funCtx <> vecCtx)
 
 include "<math.h>"
@@ -113,6 +115,10 @@ main = Hspec.hspec $ do
       let y = 4
       z <- [cexp| int { $fun:(int (*ackermann_)(int, int))($(int x), $(int y)) } |]
       z `Hspec.shouldBe` ackermann x y
+    Hspec.it "test mkFunPtrFromName" $ do
+      fun <- $(mkFunPtrFromName 'dummyFun)
+      let z = [cexp_pure| double { $(double (*fun)(double))(3.0) } |]
+      z `Hspec.shouldBe` dummyFun 3.0
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3

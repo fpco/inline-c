@@ -41,6 +41,7 @@ module Language.C.Inline
       -- in C, and vice-versa.  However, consider using 'funCtx' if you're
       -- doing this a lot.
     , mkFunPtr
+    , mkFunPtrFromName
     , peekFunPtr
 
       -- * Re-exports
@@ -282,7 +283,7 @@ genericQuote pure build = quoteCode $ \s -> do
   ParseTypedC cType cParams cExp <-
     runParserInQ s (isTypeName (ctxCTypesTable ctx)) $ parseTypedC $ ctxCAntiQuoters ctx
   hsType <- cToHs ctx cType
-  hsParams <- forM cParams $ \(cId, cTy, parTy) -> do
+  hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
     case parTy of
       Plain s' -> do
         hsTy <- cToHs ctx cTy
