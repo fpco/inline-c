@@ -2,6 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Language.C.Inline.FunPtr
   ( mkFunPtr
+  , mkFunPtrFromName
   , peekFunPtr
   , uniqueFfiImportName
   ) where
@@ -27,6 +28,16 @@ mkFunPtr hsTy = do
   dec <- TH.forImpD TH.CCall TH.Safe "wrapper" ffiImportName [t| $(hsTy) -> IO (FunPtr $(hsTy)) |]
   TH.addTopDecls [dec]
   TH.varE ffiImportName
+
+-- | @$('mkFunPtrFromName' 'foo)@, if @foo :: 'CDouble' -> 'IO'
+-- 'CDouble'@, splices in an expression of type @'IO' ('FunPtr'
+-- ('CDouble' -> 'IO' 'CDouble'))@.
+mkFunPtrFromName :: TH.Name -> TH.ExpQ
+mkFunPtrFromName name = do
+  i <- TH.reify name
+  case i of
+    TH.VarI _ ty _ _ -> [| $(mkFunPtr (return ty)) $(TH.varE name) |]
+    x -> error "mkFunPtrFromName: expecting a variable as argument."
 
 -- | @$('peekFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |])@ generates a foreign import
 -- dynamic of type
