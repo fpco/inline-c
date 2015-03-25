@@ -30,6 +30,10 @@ module Language.C.Inline
     , c_pure_unsafe
     , include
 
+      -- * 'Ptr' utils
+    , withPtr
+    , withPtr_
+
       -- * 'FunPtr' utils
       --
       -- | Functions to quickly convert from/to 'FunPtr's.  They're provided
@@ -48,7 +52,9 @@ module Language.C.Inline
 import           Control.Monad (forM)
 import qualified Data.Map as Map
 import           Foreign.C.Types
+import           Foreign.Marshal.Alloc (alloca)
 import           Foreign.Ptr (Ptr, FunPtr)
+import           Foreign.Storable (peek, Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
@@ -354,6 +360,23 @@ include s
   | null s = error "inline-c: empty string (include)"
   | head s == '<' = emitLiteral $ "#include " ++ s
   | otherwise = emitLiteral $ "#include \"" ++ s ++ "\""
+
+------------------------------------------------------------------------
+-- 'Ptr' utils
+
+-- | Like 'alloca', but also peeks the contents of the 'Ptr' and returns
+-- them once the provided action has finished.
+withPtr :: (Storable a) => (Ptr a -> IO b) -> IO (a, b)
+withPtr f = do
+  alloca $ \ptr -> do
+    x <- f ptr
+    y <- peek ptr
+    return (y, x)
+
+withPtr_ :: (Storable a) => (Ptr a -> IO ()) -> IO a
+withPtr_ f = do
+  (x, ()) <- withPtr f
+  return x
 
 ------------------------------------------------------------------------
 -- Utils

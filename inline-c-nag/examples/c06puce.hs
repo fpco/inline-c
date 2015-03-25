@@ -7,9 +7,6 @@ import qualified Data.Array.Storable as A
 import           Data.Functor ((<$>))
 import           Data.Int (Int64)
 import           Foreign.C.String (withCString)
-import           Foreign.C.Types
-import           Foreign.Marshal.Alloc (alloca)
-import           Foreign.Storable (peek)
 import           Language.C.Inline.Nag
 
 setContext nagCtx
@@ -23,10 +20,10 @@ fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 
 parseBounds :: IO (Int64, Int64)
-parseBounds =
-  alloca $ \m -> alloca $ \n -> do
+parseBounds = do
+  (m, n) <- withPtr $ \m -> withPtr_ $ \n ->
     [cexp| void{ scanf("%*[^\n] %ld%ld%*[^\n]", $(long *m), $(long *n)) } |]
-    (,) <$> (fi <$> peek m) <*> (fi <$> peek n)
+  return (fi m, fi n)
 
 parseData :: (Int64, Int64) -> IO (A.StorableArray (Int64, Int64) Complex)
 parseData (m0, n0) = do
