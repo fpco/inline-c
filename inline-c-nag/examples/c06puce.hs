@@ -67,7 +67,7 @@ main = do
   bounds <- parseBounds
   x <- parseData bounds
   void $ printGenComplxMat "\n Original data values\n" x
-  void $ sumFftComplex2d [cexp_pure| int{ Nag_ForwardTransform } |] x
+  void $ sumFftComplex2d <$> [cexp| int{ Nag_ForwardTransform } |] <*> return x
   void $ printGenComplxMat "\n Components of discrete Fourier transform\n" x
-  void $ sumFftComplex2d [cexp_pure| int{ Nag_BackwardTransform } |] x
+  void $ sumFftComplex2d <$> [cexp| int{ Nag_BackwardTransform } |] <*> return x
   void $ printGenComplxMat "\n Original sequence as restored by inverse transform\n" x

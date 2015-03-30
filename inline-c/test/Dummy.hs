@@ -3,5 +3,5 @@ module Dummy (dummyFun) where
 
 import           Foreign.C.Types
 
-dummyFun :: CDouble -> CDouble
-dummyFun = cos
+dummyFun :: CDouble -> IO CDouble
+dummyFun x = return $ cos x

@@ -101,10 +101,10 @@ solveIO Options{..} fcn mbJac (x, xend) mbOutput y = do
       outputFunPtr <- $(mkFunPtr [t| Nag_Integer -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_User -> IO ()|]) outputIO
       return (outputFunPtr, Just <$> readIORef outputStateRef)
   -- Error control
-  let err = case optionsErrorControl of
-        Relative -> [cexp_pure| Nag_ErrorControl{ Nag_Relative } |]
-        Absolute -> [cexp_pure| Nag_ErrorControl{ Nag_Absolute } |]
-        Mixed -> [cexp_pure| Nag_ErrorControl{ Nag_Mixed } |]
+  err <- case optionsErrorControl of
+    Relative -> [cexp| Nag_ErrorControl{ Nag_Relative } |]
+    Absolute -> [cexp| Nag_ErrorControl{ Nag_Absolute } |]
+    Mixed -> [cexp| Nag_ErrorControl{ Nag_Mixed } |]
   -- Record the last visited x in an 'IORef' to store it in the
   -- 'Failure' if there was a problem.
   xendRef <- newIORef x

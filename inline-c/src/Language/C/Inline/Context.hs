@@ -15,11 +15,8 @@
 -- that defines new C types, to allow the TemplateHaskell code to
 -- interpret said types correctly.
 module Language.C.Inline.Context
-  ( -- * 'Purity'
-    Purity(..)
-
-    -- * 'CTypesTable'
-  , CTypesTable
+  ( -- * 'CTypesTable'
+    CTypesTable
   , convertCType
   , CArray
   , isTypeName
@@ -56,10 +53,6 @@ import           Foreign.Storable (Storable)
 import           Language.C.Inline.FunPtr
 import qualified Language.C.Types as C
 
--- | Type more descriptive than 'Bool' and used in many functions here.
-data Purity = Pure | IO
-  deriving (Eq, Show)
-
 -- | A mapping from 'C.TypeSpecifier's to Haskell types.  Needed both to
 -- parse C types, and to convert them to Haskell types.
 type CTypesTable = Map.Map C.TypeSpecifier TH.TypeQ
@@ -80,18 +73,15 @@ data CAntiQuoter a = CAntiQuoter
     -- name to assign to the variable that will replace the
     -- anti-quotation, the type of said variable, and some arbitrary
     -- data which will then be fed to 'caqMarshaller'.
-  , caqMarshaller :: CTypesTable -> Purity -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
+  , caqMarshaller :: CTypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
     -- ^ Takes the type and the body returned by 'caqParser', together
-    -- with the required purity and the current 'CTypesTable'.
+    -- with the current 'CTypesTable'.
     --
     -- Returns the Haskell type for the parameter, and the Haskell
     -- expression that will be passed in as the parameter.
     --
-    -- If the 'Purity' argument is 'Pure' and the type returned is @ty@,
-    -- 'TH.Exp' __must__ have type @ty@.
-    --
-    -- If the 'Purity' argument is 'IO' and the type returned is @ty@,
-    -- the 'TH.Exp' __must__ have type @forall a. (ty -> IO a) -> IO a@.
+    -- If the the type returned is @ty@, the 'TH.Exp' __must__ have type
+    -- @forall a. (ty -> IO a) -> IO a@.
   }
 
 -- | An identifier for a 'CAntiQuoter'.
@@ -165,11 +155,9 @@ type CArray = Ptr
 -- arbitrary C types.
 convertCType
   :: CTypesTable
-  -> Purity
-  -- ^ Whether function pointers should be pure or not.
   -> C.Type
   -> TH.Q (Maybe TH.Type)
-convertCType cTypes pure = runMaybeT . go
+convertCType cTypes = runMaybeT . go
   where
     goDecl = go . C.parameterDeclarationType
 
@@ -193,9 +181,8 @@ convertCType cTypes pure = runMaybeT . go
         -- We cannot convert standalone prototypes
         mzero
 
-    buildArr [] hsRetType = case pure of
-      Pure -> [t| $(return hsRetType) |]
-      IO -> [t| IO $(return hsRetType) |]
+    buildArr [] hsRetType =
+      [t| IO $(return hsRetType) |]
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
 
@@ -213,9 +200,9 @@ getHsVariable err s = do
                        ", because it's not in scope. (" ++ err ++ ")"
     Just hsName -> TH.varE hsName
 
-convertCType_ :: String -> CTypesTable -> Purity -> C.Type -> TH.Q TH.Type
-convertCType_ err cTypes pure cTy = do
-  mbHsType <- convertCType cTypes pure cTy
+convertCType_ :: String -> CTypesTable -> C.Type -> TH.Q TH.Type
+convertCType_ err cTypes cTy = do
+  mbHsType <- convertCType cTypes cTy
   case mbHsType of
     Nothing -> error $ "Cannot convert C type (" ++ err ++ ")"
     Just hsType -> return hsType
@@ -239,16 +226,13 @@ funPtrCAntiQuoter = CAntiQuoter
         Just id' -> do
          let s = C.unId id'
          return (s, C.parameterDeclarationType cTy, s)
-  , caqMarshaller = \cTypes pure cTy cId -> do
-      hsTy <- convertCType_ "funCtx" cTypes pure cTy
+  , caqMarshaller = \cTypes cTy cId -> do
+      hsTy <- convertCType_ "funCtx" cTypes cTy
       hsExp <- getHsVariable "funCtx" cId
       case hsTy of
-        TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr -> case pure of
-          IO -> do
-            hsExp' <- [| \cont -> cont =<< $(mkFunPtr (return hsTy')) $(return hsExp) |]
-            return (hsTy, hsExp')
-          Pure -> error $ "Cannot convert functions to pointers " ++
-                          "in pure quotation (funCtx)"
+        TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr -> do
+          hsExp' <- [| \cont -> cont =<< $(mkFunPtr (return hsTy')) $(return hsExp) |]
+          return (hsTy, hsExp')
         _ -> error "The `fun' marshaller captures function pointers only"
   }
 
@@ -300,16 +284,11 @@ vecPtrCAntiQuoter = CAntiQuoter
         Just id' -> do
          let s = C.unId id'
          return (s, C.parameterDeclarationType cTy, s)
-  , caqMarshaller = \cTypes pure cTy cId -> do
-      hsTy <- convertCType_ "vecCtx" cTypes pure cTy
+  , caqMarshaller = \cTypes cTy cId -> do
+      hsTy <- convertCType_ "vecCtx" cTypes cTy
       hsExp <- getHsVariable "vecCtx" cId
-      case pure of
-       IO -> do
-         hsExp' <- [| vecCtxUnsafeWith $(return hsExp) |]
-         return (hsTy, hsExp')
-       Pure -> do
-         error $ "Cannot convert vectors to pointers " ++
-                 "in pure quotation (vecCtx)"
+      hsExp' <- [| vecCtxUnsafeWith $(return hsExp) |]
+      return (hsTy, hsExp')
   }
 
 vecLenCAntiQuoter :: CAntiQuoter String
@@ -318,18 +297,14 @@ vecLenCAntiQuoter = CAntiQuoter
       cId <- C.parseIdentifier
       let s = C.unId cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
-  , caqMarshaller = \_cTypes pure cTy cId -> do
+  , caqMarshaller = \_cTypes cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "vecCtx" cId
           hsExp' <- [| fromIntegral (vecCtxLength $(return hsExp)) |]
           hsTy <- [t| CLong |]
-          case pure of
-            Pure -> do
-              return (hsTy, hsExp')
-            IO -> do
-              hsExp'' <- [| \cont -> cont $(return hsExp') |]
-              return (hsTy, hsExp'')
+          hsExp'' <- [| \cont -> cont $(return hsExp') |]
+          return (hsTy, hsExp'')
         _ -> do
           error "impossible: got type different from `long' (vecCtx)"
   }

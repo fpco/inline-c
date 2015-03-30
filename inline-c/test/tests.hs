@@ -73,20 +73,11 @@ main = Hspec.hspec $ do
       let y = 10
       z <- [cexp_unsafe| int(int x, int y){ 7 + x + y } |]
       z `Hspec.shouldBe` x + y + 7
-    Hspec.it "cexp_pure" $ do
-      let x = 2
-      let y = 10
-      let z = [cexp_pure| int(int x, int y){ x + 10 + y } |]
-      z `Hspec.shouldBe` x + y + 10
-    Hspec.it "cexp_pure_unsafe" $ do
-      let x = 2
-      let y = 10
-      let z = [cexp_pure_unsafe| int(int x, int y){ x * 2 + y } |]
-      z `Hspec.shouldBe` x * 2 + y
     Hspec.it "suffix type" $ do
       let x = 3
       let y = 4
-      [cexp_pure| int { $(int x) + $(int y) } |] `Hspec.shouldBe` 7
+      z <- [cexp| int { $(int x) + $(int y) } |]
+      z `Hspec.shouldBe` 7
     Hspec.it "void exp" $ do
       [cexp| void { printf("Hello\n") } |]
     Hspec.it "function pointer argument" $ do
@@ -95,10 +86,10 @@ main = Hspec.hspec $ do
             | m > 0 && n == 0 = ackermann (m - 1) 1
             | m > 0 && n > 0 = ackermann (m - 1) (ackermann m (n - 1))
             | otherwise = error "ackermann"
-      ackermannPtr <- $(mkFunPtr [t| CInt -> CInt -> CInt |]) ackermann
+      ackermannPtr <- $(mkFunPtr [t| CInt -> CInt -> IO CInt |]) $ \m n -> return $ ackermann m n
       let x = 3
       let y = 4
-      let z = [cexp_pure| int { $(int (*ackermannPtr)(int, int))($(int x), $(int y)) } |]
+      z <- [cexp| int { $(int (*ackermannPtr)(int, int))($(int x), $(int y)) } |]
       z `Hspec.shouldBe` ackermann x y
     Hspec.it "function pointer result" $ do
       c_add <- [cexp| int (*)(int, int) { &francescos_add } |]
@@ -117,8 +108,9 @@ main = Hspec.hspec $ do
       z `Hspec.shouldBe` ackermann x y
     Hspec.it "test mkFunPtrFromName" $ do
       fun <- $(mkFunPtrFromName 'dummyFun)
-      let z = [cexp_pure| double { $(double (*fun)(double))(3.0) } |]
-      z `Hspec.shouldBe` dummyFun 3.0
+      z <- [cexp| double { $(double (*fun)(double))(3.0) } |]
+      z' <- dummyFun 3.0
+      z `Hspec.shouldBe` z'
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3

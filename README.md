@@ -46,20 +46,6 @@ many common C types to Haskell type. In this case,
 ```
 [cexp| double { cos(1) } |] :: IO CDouble
 
-We can also include C code as pure, non-IO Haskell expressions, using
-`cexp_pure`:
-
-```
-main :: IO ()
-main = do
-  let x = [cexp_pure| double{ cos(1) } |]
-  print x
-```
-
-Of course, `cexp_pure` must be used carefully: it is only appropriate
-for inlining C expressions that are referentially transparent
-(expressions whose evaluation has no observable side effects).
-
 ## Multiple statements
 
 `inline-c` allows embedding arbitrary C code, not just expressions, in
@@ -90,10 +76,6 @@ main = do
 Just as with `cexp`, we need a type annotation on the entire C block.
 The annotation specifies the return type. That is, the type of the
 expression in any return statement.
-
-Just as with `cexp`, `c` has a pure version `c_pure`. In the above
-example, we *must not* use the pure quasiquoter because the code block
-has a side effect: reading from standard input.
 
 ## Capturing Haskell variables -- parameter declaration
 

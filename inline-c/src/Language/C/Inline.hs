@@ -22,12 +22,8 @@ module Language.C.Inline
       -- $quoting
     , cexp
     , cexp_unsafe
-    , cexp_pure
-    , cexp_pure_unsafe
     , c
     , c_unsafe
-    , c_pure
-    , c_pure_unsafe
     , include
 
       -- * 'Ptr' utils
@@ -172,21 +168,11 @@ import           Language.C.Inline.FunPtr
 --
 -- Parameter list capturing and anti-quoting can be freely mixed.
 --
--- === @pure@ and impure calls
+-- == Function purity
 --
--- Both @cexp@ and @c@ quasi-quoters are present in impure (the
--- default) and pure (postfixed with @_pure@) versions.  The impure
--- version will generate expressions of type @'IO' a@, where @a@ is the
--- specified return type.  On the other hand, @pure@ versions will
--- generate pure code.  Moreover, this difference will also carry over
--- to function pointers.  Impure quasi-quoters will convert C function
--- pointers to @'IO'@ functions in Haskell.  For example, if an argument
--- is of type @int (*add)(int, int)@, the impure quasi-quoters will
--- expect a @'FunPtr' ('CInt' -> 'CInt' -> 'IO' 'CInt')@, while the pure
--- ones a @'FunPtr' ('CInt' -> 'CInt' -> 'IO' 'CInt')@.
---
--- Obviously pure quoters should be used with care, since if the C code
--- is not pure you can break referential transparency.
+-- Everything in @inline-c@ happens in IO.  If you know the embedded C
+-- code is pure, wrap it inside an @unsafePerformIO@ as you would do
+-- with standard impure-but-pure Haskell code.
 --
 -- === Safe and @unsafe@ calls
 --
@@ -203,13 +189,12 @@ import           Language.C.Inline.FunPtr
 -- @
 -- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
--- import           "Foreign.C.Types"
 -- import           "Language.C.Inline"
 --
 -- 'include' "\<math.h\>"
 --
--- c_cos :: 'CDouble' -> 'CDouble'
--- c_cos x = ['cexp_pure_unsafe'| double { cos($(double x)) } |]
+-- c_cos :: 'CDouble' -> IO 'CDouble'
+-- c_cos x = ['cexp_unsafe'| double { cos($(double x)) } |]
 -- @
 --
 -- === Inline C statements
@@ -218,7 +203,6 @@ import           Language.C.Inline.FunPtr
 -- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
 -- import qualified Data.Vector.Storable.Mutable as V
--- import           "Foreign.C.Types"
 -- import           "Language.C.Inline"
 --
 -- 'include' "\<stdio.h\>"
@@ -236,28 +220,16 @@ import           Language.C.Inline.FunPtr
 -- @
 
 cexp :: TH.QuasiQuoter
-cexp = genericQuote IO $ inlineExp TH.Safe
+cexp = genericQuote $ inlineExp TH.Safe
 
 cexp_unsafe :: TH.QuasiQuoter
-cexp_unsafe = genericQuote IO $ inlineExp TH.Unsafe
-
-cexp_pure :: TH.QuasiQuoter
-cexp_pure = genericQuote Pure $ inlineExp TH.Safe
-
-cexp_pure_unsafe :: TH.QuasiQuoter
-cexp_pure_unsafe = genericQuote Pure $ inlineExp TH.Unsafe
+cexp_unsafe = genericQuote $ inlineExp TH.Unsafe
 
 c :: TH.QuasiQuoter
-c = genericQuote IO $ inlineItems TH.Safe
+c = genericQuote $ inlineItems TH.Safe
 
 c_unsafe :: TH.QuasiQuoter
-c_unsafe = genericQuote IO $ inlineItems TH.Unsafe
-
-c_pure :: TH.QuasiQuoter
-c_pure = genericQuote Pure $ inlineItems TH.Safe
-
-c_pure_unsafe :: TH.QuasiQuoter
-c_pure_unsafe = genericQuote Pure $ inlineItems TH.Unsafe
+c_unsafe = genericQuote $ inlineItems TH.Unsafe
 
 quoteCode
   :: (String -> TH.ExpQ)
@@ -271,13 +243,11 @@ quoteCode p = TH.QuasiQuoter
   }
 
 genericQuote
-  :: Purity
-  -- ^ Whether the call and the function pointers should be pure or not.
-  -> (TH.TypeQ -> C.Type -> [(C.Id, C.Type)] -> String -> TH.ExpQ)
+  :: (TH.TypeQ -> C.Type -> [(C.Id, C.Type)] -> String -> TH.ExpQ)
   -- ^ Function taking that something and building an expression, see
   -- 'inlineExp' for other args.
   -> TH.QuasiQuoter
-genericQuote pure build = quoteCode $ \s -> do
+genericQuote build = quoteCode $ \s -> do
   initialiseModuleState_
   ctx <- getContext
   ParseTypedC cType cParams cExp <-
@@ -294,9 +264,7 @@ genericQuote pure build = quoteCode $ \s -> do
                     ", because it's not in scope. (genericQuote)"
           Just hsName -> do
             hsExp <- TH.varE hsName
-            case pure of
-              Pure -> return hsExp
-              IO -> [| \cont -> cont $(return hsExp) |]
+            [| \cont -> cont $(return hsExp) |]
         return (hsTy, hsExp)
       AntiQuote antiId dyn -> do
         case Map.lookup antiId (ctxCAntiQuoters ctx) of
@@ -308,14 +276,14 @@ genericQuote pure build = quoteCode $ \s -> do
               error  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
                        show antiId ++ ". (genericQuote)"
             Just x ->
-              caqMarshaller antiQ (ctxCTypesTable ctx) pure cTy x
+              caqMarshaller antiQ (ctxCTypesTable ctx) cTy x
   let hsFunType = convertCFunSig hsType $ map fst hsParams
   let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
   buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
   where
     cToHs :: Context -> C.Type -> TH.TypeQ
     cToHs ctx cTy = do
-      mbHsTy <- convertCType (ctxCTypesTable ctx) pure cTy
+      mbHsTy <- convertCType (ctxCTypesTable ctx) cTy
       case mbHsTy of
         Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
         Just hsTy -> return hsTy
@@ -323,23 +291,17 @@ genericQuote pure build = quoteCode $ \s -> do
     buildFunCall :: Context -> TH.ExpQ -> [TH.Exp] -> [TH.Name] -> TH.ExpQ
     buildFunCall _ctx f [] args =
       foldl (\f' arg -> [| $f' $(TH.varE arg) |]) f args
-    buildFunCall ctx f (hsExp : params) args = do
-      case pure of
-        Pure -> [|
-           let arg = $(return hsExp)
-           in $(buildFunCall ctx f params (args ++ ['arg]))
-          |]
-        IO -> [| $(return hsExp) $ \arg ->
+    buildFunCall ctx f (hsExp : params) args =
+       [| $(return hsExp) $ \arg ->
             $(buildFunCall ctx f params (args ++ ['arg]))
-          |]
+       |]
 
     convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
     convertCFunSig retType params0 = do
       go params0
       where
-        go [] = case pure of
-          Pure -> return retType
-          IO -> [t| IO $(return retType) |]
+        go [] =
+          [t| IO $(return retType) |]
         go (paramType : params) = do
           [t| $(return paramType) -> $(go params) |]
 
