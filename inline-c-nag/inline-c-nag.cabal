@@ -153,3 +153,23 @@ executable ode-runge-kutta
     buildable: True
   else
     buildable: False
+
+executable interpolation
+  hs-source-dirs:      examples
+  main-is:             interpolation.hs
+  c-sources:           examples/interpolation.c
+  build-depends:       base >=4 && <5
+                     , inline-c-nag
+                     , vector
+  default-language:    Haskell2010
+  cc-options:          -O2 -m64
+  extra-libraries:     nagc_nag imf svml irng intlc
+  extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
+  include-dirs:        /opt/NAG/cll6i24dcl/include
+  ghc-options:         -Wall -O -fPIC -fno-warn-name-shadowing -debug -dcore-lint
+
+  if flag(examples)
+    buildable: True
+  else
+    buildable: False
+
