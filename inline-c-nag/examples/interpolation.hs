@@ -1,10 +1,17 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 -- import           Control.Applicative ((<*>))
--- import           Data.Functor ((<$>))
+import           Control.Monad (forM)
+import           Data.Functor ((<$>))
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
+import           Graphics.Rendering.Chart.Backend.Cairo (toFile)
+import           Graphics.Rendering.Chart.Easy (layout_title, (.=), plot, line, points, def)
 import           Language.C.Inline.Nag
+import           Statistics.Distribution (genContVar)
+import qualified Statistics.Distribution.Normal as Normal
+import qualified System.Random.MWC as MWC
+import           Data.Coerce (coerce)
 
 setContext nagCtx
 
@@ -68,6 +75,32 @@ monotonicEvaluate (Monotonic x f d) px = do
 --       $vec-len:x, $vec-ptr:(double *x), $vec-ptr:(double *f), $vec-ptr:(double *d),
 --       $(double a), $(double b), $(double *integral), $(NagError *fail_)) } |]
 
+signal :: [Double] -> IO [(Double,Double)]
+signal xs = do
+  g <- MWC.create
+  forM xs $ \x -> do
+    noise <- (/ 100) <$> genContVar Normal.standard g
+    return (x, 1/x**2 + noise)
+
+main :: IO ()
+main = do
+  pts <- signal [0.5,1..10.5]
+  let (xs, ys) = unzip pts
+  mntnc <- assertNag $ monotonicInterpolate (coerce (V.fromList xs)) (coerce (V.fromList ys))
+  let lineXs = filter (< 10.5) [0.5,0.51..10.5] ++ [10.5]
+  lineYs <- V.toList <$> assertNag (monotonicEvaluate mntnc (V.fromList lineXs))
+  toFile def "/tmp/interpolation.png" $ do
+    layout_title .= "Interpolation test"
+    plot (line "curve" [coerce (zip lineXs lineYs)])
+    plot (points "noisy points" pts)
+  where
+    assertNag m = do
+      x <- m
+      case x of
+        Left err -> error err
+        Right y -> return y
+
+{-
 main :: IO ()
 main = do
   Right mntnc <- monotonicInterpolate x f
@@ -108,3 +141,4 @@ main = do
     step = (last - first) / (m - 1);
 
     px = V.fromList $ [first,(first+step)..(last-1)] ++ [last]
+-}
