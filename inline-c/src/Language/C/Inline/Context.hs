@@ -260,16 +260,16 @@ vecCtx = mempty
 class VecCtx a where
   type VecCtxScalar a :: *
 
-  vecCtxLength :: Storable (VecCtxScalar a) => a -> Int
-  vecCtxUnsafeWith :: Storable (VecCtxScalar a) => a -> (Ptr (VecCtxScalar a) -> IO b) -> IO b
+  vecCtxLength :: a -> Int
+  vecCtxUnsafeWith :: a -> (Ptr (VecCtxScalar a) -> IO b) -> IO b
 
-instance VecCtx (V.Vector a) where
+instance Storable a => VecCtx (V.Vector a) where
   type VecCtxScalar (V.Vector a) = a
 
   vecCtxLength = V.length
   vecCtxUnsafeWith = V.unsafeWith
 
-instance VecCtx (VM.IOVector a) where
+instance Storable a => VecCtx (VM.IOVector a) where
   type VecCtxScalar (VM.IOVector a) = a
 
   vecCtxLength = VM.length
