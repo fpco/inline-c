@@ -32,7 +32,6 @@ library
                      , mtl
                      , parsec >= 3
                      , parsers
-                     , smallcheck
                      , template-haskell >= 2.9
                      , transformers >= 0.1.3.0
                      , unordered-containers
@@ -50,7 +49,6 @@ test-suite tests
                      , containers
                      , hspec
                      , hspec >= 2
-                     , hspec-smallcheck
                      , inline-c
                      , parsers
                      , QuickCheck
