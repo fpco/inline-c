@@ -35,6 +35,7 @@ module Language.C.Inline.Context
   , VecCtx(..)
   ) where
 
+import           Control.Applicative ((<|>))
 import           Control.Monad (mzero)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
@@ -46,9 +47,9 @@ import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
 import           Foreign.C.Types
 import           Foreign.Ptr (Ptr, FunPtr)
+import           Foreign.Storable (Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Token as Parser
-import           Foreign.Storable (Storable)
 
 import           Language.C.Inline.FunPtr
 import qualified Language.C.Types as C
@@ -103,17 +104,23 @@ type CAntiQuoters = Map.Map CAntiQuoterId SomeCAntiQuoter
 data Context = Context
   { ctxCTypesTable :: CTypesTable
   , ctxCAntiQuoters :: CAntiQuoters
+  , ctxFileExtension :: Maybe String
+  , ctxOutput :: Maybe (String -> String)
   }
 
 instance Monoid Context where
   mempty = Context
     { ctxCTypesTable = mempty
     , ctxCAntiQuoters = mempty
+    , ctxFileExtension = Nothing
+    , ctxOutput = Nothing
     }
 
   mappend ctx2 ctx1 = Context
     { ctxCTypesTable = ctxCTypesTable ctx1 <> ctxCTypesTable ctx2
     , ctxCAntiQuoters = ctxCAntiQuoters ctx1 <> ctxCAntiQuoters ctx2
+    , ctxFileExtension = ctxFileExtension ctx1 <|> ctxFileExtension ctx2
+    , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     }
 
 -- | Context useful to work with vanilla C.  Used by default.

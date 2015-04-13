@@ -248,8 +248,7 @@ genericQuote
   -- 'inlineExp' for other args.
   -> TH.QuasiQuoter
 genericQuote build = quoteCode $ \s -> do
-  initialiseModuleState_
-  ctx <- getContext
+  ctx <- initialiseModuleState_
   ParseTypedC cType cParams cExp <-
     runParserInQ s (isTypeName (ctxCTypesTable ctx)) $ parseTypedC $ ctxCAntiQuoters ctx
   hsType <- cToHs ctx cType
