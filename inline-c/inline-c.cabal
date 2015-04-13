@@ -14,6 +14,7 @@ library
   exposed-modules:     Language.C.Inline
                      , Language.C.Inline.Internal
                      , Language.C.Inline.Context
+                     , Language.C.Inline.Cpp
                      , Language.C.Types
                      , Language.C.Types.Parse
   other-modules:       Language.C.Inline.FunPtr
@@ -28,7 +29,6 @@ library
                      , directory
                      , filepath
                      , lens
-                     , logict
                      , mtl
                      , parsec >= 3
                      , parsers
@@ -58,3 +58,13 @@ test-suite tests
                      , transformers
                      , vector
   default-language:    Haskell2010
+
+test-suite tests-cpp
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             tests-cpp.hs
+  c-sources:           test/tests-cpp.cpp
+  build-depends:       base >=4 && <5
+                     , inline-c
+  default-language:    Haskell2010
+  extra-libraries:     stdc++

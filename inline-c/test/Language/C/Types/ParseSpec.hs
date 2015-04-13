@@ -9,7 +9,6 @@ import           Control.Applicative ((<*), (*>))
 import           Control.Monad.Trans.Class (lift)
 import qualified Data.Set as Set
 import qualified Test.Hspec as Hspec
-import qualified Test.Hspec.SmallCheck as SC
 import qualified Test.QuickCheck as QC
 import           Text.Parser.Char
 import           Text.Parser.Combinators
@@ -20,10 +19,10 @@ import qualified Language.C.Types as Types
 
 spec :: Hspec.SpecWith ()
 spec = do
-  Hspec.it "parses everything which is pretty-printable (SmallCheck)" $ do
-    SC.property $ \ty ->
-      let ty' = assertParse (const False) parameter_declaration (prettyOneLine ty)
-      in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
+  -- Hspec.it "parses everything which is pretty-printable (SmallCheck)" $ do
+  --   SC.property $ \ty ->
+  --     let ty' = assertParse (const False) parameter_declaration (prettyOneLine ty)
+  --     in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
   Hspec.it "parses everything which is pretty-printable (QuickCheck)" $ do
     QC.property $ \(ParameterDeclarationWithTypeNames typeNames ty) ->
       let ty' = assertParse (`Set.member` typeNames) parameter_declaration (prettyOneLine ty)

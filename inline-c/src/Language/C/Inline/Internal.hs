@@ -11,7 +11,6 @@ module Language.C.Inline.Internal
     (
       -- * Context handling
       setContext
-    , getContext
     , initialiseModuleState_
 
       -- * Emitting and invoking C code
@@ -93,9 +92,9 @@ initialiseModuleState
   :: Maybe Context
   -- ^ The 'Context' to use if we initialise the module.  If 'Nothing',
   -- 'baseCtx' will be used.
-  -> TH.Q ()
+  -> TH.Q Context
 initialiseModuleState mbContext = do
-  cFile <- cSourceLoc
+  cFile <- cSourceLoc context
   mbModuleState <- TH.runIO $ readIORef moduleStateRef
   thisModule <- TH.loc_module <$> TH.location
   let recordThisModule = TH.runIO $ do
@@ -108,15 +107,16 @@ initialiseModuleState mbContext = do
           , msContext = context
           , msGeneratedNames = 0
           }
+        return context
   case mbModuleState of
     Nothing -> recordThisModule
-    Just ms | msModuleName ms == thisModule -> return ()
+    Just ms | msModuleName ms == thisModule -> return $ msContext ms
     Just _ms -> recordThisModule
   where
     context = fromMaybe baseCtx mbContext
 
 -- | Make sure that the current module is initialised.
-initialiseModuleState_ :: TH.Q ()
+initialiseModuleState_ :: TH.Q Context
 initialiseModuleState_ = initialiseModuleState Nothing
 
 getModuleState :: TH.Q ModuleState
@@ -127,10 +127,6 @@ getModuleState = do
     Nothing -> error "inline-c: ModuleState not present"
     Just ms | msModuleName ms == thisModule -> return ms
     Just _ms -> error "inline-c: stale ModuleState"
-
--- | Get 'Context' for current module.
-getContext :: TH.Q Context
-getContext = msContext <$> getModuleState
 
 -- $context
 --
@@ -147,7 +143,7 @@ setContext ctx = do
   mbModuleState <- TH.runIO $ readIORef moduleStateRef
   forM_ mbModuleState $ \_moduleState -> do
     error "inline-c: The module has already been initialised (setContext)."
-  initialiseModuleState $ Just ctx
+  void $ initialiseModuleState $ Just ctx
   return []
 
 bumpGeneratedNames :: TH.Q Int
@@ -161,10 +157,11 @@ bumpGeneratedNames = do
 ------------------------------------------------------------------------
 -- Emitting
 
-cSourceLoc :: TH.Q FilePath
-cSourceLoc = do
+cSourceLoc :: Context -> TH.Q FilePath
+cSourceLoc ctx = do
   thisFile <- TH.loc_filename <$> TH.location
-  return $ dropExtension thisFile `addExtension` "c"
+  let ext = fromMaybe "c" $ ctxFileExtension ctx
+  return $ dropExtension thisFile `addExtension` ext
 
 removeIfExists :: FilePath -> IO ()
 removeIfExists fileName = removeFile fileName `catch` handleExists
@@ -174,8 +171,8 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 -- | Simply appends some string to the module's C file.  Use with care.
 emitLiteral :: String -> TH.DecsQ
 emitLiteral s = do
-  initialiseModuleState_         -- Make sure that things are up-to-date
-  cFile <- cSourceLoc
+  ctx <- initialiseModuleState_         -- Make sure that things are up-to-date
+  cFile <- cSourceLoc ctx
   TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
   return []
 
@@ -234,9 +231,10 @@ data Code = Code
 -- @
 inlineCode :: Code -> TH.ExpQ
 inlineCode Code{..} = do
-  initialiseModuleState_         -- Make sure that things are up-to-date
   -- Write out definitions
-  void $ emitLiteral codeDefs
+  ctx <- initialiseModuleState_
+  let out = fromMaybe id $ ctxOutput ctx
+  void $ emitLiteral $ out codeDefs
   -- Create and add the FFI declaration.
   ffiImportName <- uniqueFfiImportName
   dec <- TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType

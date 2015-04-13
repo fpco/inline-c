@@ -68,7 +68,6 @@ module Language.C.Types.Parse
 
 import           Control.Applicative (Applicative, (<*>), (<*), (<|>))
 import           Control.Monad (msum, void, MonadPlus, unless, when)
-import           Control.Monad.Logic.Class ((>>-))
 import           Control.Monad.Reader (MonadReader, ask, runReaderT, ReaderT)
 import           Data.Functor ((<$>), (<$))
 import           Data.Functor.Identity (Identity)
@@ -79,8 +78,8 @@ import qualified Data.Set as Set
 import           Data.String (IsString(..))
 import           Data.Typeable (Typeable)
 import qualified Test.QuickCheck as QC
-import           Test.SmallCheck.Series ((\/), (<~>))
-import qualified Test.SmallCheck.Series as SC
+-- import           Test.SmallCheck.Series ((\/), (<~>))
+-- import qualified Test.SmallCheck.Series as SC
 import qualified Text.Parsec as Parsec
 import           Text.Parser.Char
 import           Text.Parser.Combinators
@@ -636,6 +635,7 @@ arbitraryDirectAbstractDeclarator typeNames = halveSize $ oneOfSized $
 ------------------------------------------------------------------------
 -- Serial
 
+{-
 instance Monad m => SC.Serial m Id where
   series = Id <$> idStart
     where
@@ -728,7 +728,7 @@ instance Monad m => SC.Serial m DirectAbstractDeclarator where
     SC.cons1 AbstractDeclaratorParens \/
     SC.cons1 ArrayOrProtoHere \/
     SC.cons2 ArrayOrProtoThere
-
+-}
 ------------------------------------------------------------------------
 -- Utils
 
