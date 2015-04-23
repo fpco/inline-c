@@ -1,3 +1,6 @@
+-- | Module exposing a 'Context' to inline C++ code.  We only have used
+-- this for experiments, so use with caution.  See the C++ tests to see
+-- how to build inline C++ code.
 module Language.C.Inline.Cpp
   ( module Language.C.Inline
   , cppCtx

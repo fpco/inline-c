@@ -1,17 +1,18 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 import qualified Data.Vector.Storable as V
+import           Foreign.C.Types
 import           Foreign.ForeignPtr (newForeignPtr_)
 import           Foreign.Storable (poke)
-import           Language.C.Inline.Nag
+import qualified Language.C.Inline.Nag as C
 import           System.IO.Unsafe (unsafePerformIO)
 
-setContext nagCtx
+C.context C.nagCtx
 
-include "<math.h>"
-include "<nag.h>"
-include "<nage04.h>"
-include "<nagx02.h>"
+C.include "<math.h>"
+C.include "<nag.h>"
+C.include "<nage04.h>"
+C.include "<nagx02.h>"
 
 {-# NOINLINE nelderMead #-}
 nelderMead
@@ -19,7 +20,7 @@ nelderMead
   -- ^ Starting point
   -> (V.Vector CDouble -> CDouble)
   -- ^ Function to minimize
-  -> Nag_Integer
+  -> C.Nag_Integer
   -- ^ Maximum number of iterations (must be >= 1).
   -> Either String (CDouble, V.Vector CDouble)
   -- ^ Position of the minimum.  'Left' if something went wrong, with
@@ -34,8 +35,8 @@ nelderMead xImm pureFunct maxcal = unsafePerformIO $ do
     -- Create mutable input/output vector for C code
     x <- V.thaw xImm
     -- Call the C code
-    withNagError $ \fail_ -> do
-      minCost <- [c| double {
+    C.withNagError $ \fail_ -> do
+      minCost <- [C.stmts| double {
           // The function takes an exit parameter to store the minimum
           // cost.
           double f;
@@ -71,13 +72,13 @@ oneVar
   -- ^ Interval containing a minimum
   -> (CDouble -> CDouble)
   -- ^ Function to minimize
-  -> Nag_Integer
+  -> C.Nag_Integer
   -- ^ Maximum number of iterations.
   -> Either String (CDouble, CDouble)
 oneVar (a, b) fun max_fun = unsafePerformIO $ do
     let funct xc fc _comm = poke fc $ fun xc
-    withNagError $ \fail_ -> withPtr $ \x -> withPtr_ $ \f -> do
-      [c| void {
+    C.withNagError $ \fail_ -> C.withPtr $ \x -> C.withPtr_ $ \f -> do
+      [C.stmts| void {
         double a = $(double a), b = $(double b);
         nag_opt_one_var_no_deriv(
           $fun:(void (*funct)(double, double*, Nag_Comm*)),

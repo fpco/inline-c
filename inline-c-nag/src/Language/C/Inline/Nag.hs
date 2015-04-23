@@ -21,6 +21,8 @@ module Language.C.Inline.Nag
   , checkNagError
   ) where
 
+import           Prelude hiding (exp)
+
 import           Data.Functor ((<$>))
 import           Foreign.C.String (peekCString)
 import           Foreign.Marshal.Alloc (alloca)
@@ -28,7 +30,8 @@ import           Foreign.Marshal.Alloc (alloca)
 import           Language.C.Inline.Nag.Internal
 import           Language.C.Inline
 
-setContext nagCtx
+context nagCtx
+
 include "<nag.h>"
 
 withNagError :: (Ptr NagError -> IO a) -> IO (Either String a)
@@ -36,15 +39,15 @@ withNagError f = initNagError $ \ptr -> checkNagError ptr $ f ptr
 
 initNagError :: (Ptr NagError -> IO a) -> IO a
 initNagError f = alloca $ \ptr -> do
-  [cexp| void{ INIT_FAIL(*$(NagError *ptr)) } |]
+  [exp| void{ INIT_FAIL(*$(NagError *ptr)) } |]
   f ptr
 
 checkNagError :: Ptr NagError -> IO a -> IO (Either String a)
 checkNagError ptr f = do
   x <- f
-  errCode <- [cexp| int { $(NagError *ptr)->code } |]
+  errCode <- [exp| int { $(NagError *ptr)->code } |]
   if errCode /= _NE_NOERROR
     then do
-      ch <- [cexp| char * { $(NagError *ptr)->message } |]
+      ch <- [exp| char * { $(NagError *ptr)->message } |]
       Left <$> peekCString ch
     else return $ Right x

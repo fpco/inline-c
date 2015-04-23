@@ -1,18 +1,17 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-import           Language.C.Inline.Nag
-import           Language.C.Inline.Internal
+import qualified Language.C.Inline.Nag as C
 import           Text.RawString.QQ (r)
 
-include "<nag.h>"
-include "<stdio.h>"
-include "<nag_stdlib.h>"
-include "<naga02.h>"
+C.include "<nag.h>"
+C.include "<stdio.h>"
+C.include "<nag_stdlib.h>"
+C.include "<naga02.h>"
 
 -- Code dump test
 
-emitLiteral [r|
+C.literal [r|
 int test_emitCode(void)
 {
   Integer     exit_status = 0;
@@ -181,5 +180,5 @@ int test_emitCode(void)
 
 main :: IO ()
 main = do
-  [cexp| void{ test_emitCode() } |]
+  [C.exp| void{ test_emitCode() } |]
 

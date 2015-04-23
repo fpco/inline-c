@@ -19,10 +19,6 @@ import qualified Language.C.Types as Types
 
 spec :: Hspec.SpecWith ()
 spec = do
-  -- Hspec.it "parses everything which is pretty-printable (SmallCheck)" $ do
-  --   SC.property $ \ty ->
-  --     let ty' = assertParse (const False) parameter_declaration (prettyOneLine ty)
-  --     in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
   Hspec.it "parses everything which is pretty-printable (QuickCheck)" $ do
     QC.property $ \(ParameterDeclarationWithTypeNames typeNames ty) ->
       let ty' = assertParse (`Set.member` typeNames) parameter_declaration (prettyOneLine ty)
@@ -31,7 +27,7 @@ spec = do
 ------------------------------------------------------------------------
 -- Utils
 
-assertParse :: (Id -> Bool) -> (forall m. CParser m => m a) -> String -> a
+assertParse :: IsTypeName -> (forall m. CParser m => m a) -> String -> a
 assertParse isTypeName p s =
   case runCParser isTypeName "spec" s (lift spaces *> p <* lift eof) of
     Left err -> error $ "Parse error (assertParse): " ++ show err

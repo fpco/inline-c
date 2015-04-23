@@ -15,17 +15,17 @@
 -- that defines new C types, to allow the TemplateHaskell code to
 -- interpret said types correctly.
 module Language.C.Inline.Context
-  ( -- * 'CTypesTable'
-    CTypesTable
-  , convertCType
+  ( -- * 'TypesTable'
+    TypesTable
+  , convertType
   , CArray
   , isTypeName
 
-    -- * 'CAntiQuoter'
-  , CAntiQuoter(..)
-  , CAntiQuoterId
-  , SomeCAntiQuoter(..)
-  , CAntiQuoters
+    -- * 'AntiQuoter'
+  , AntiQuoter(..)
+  , AntiQuoterId
+  , SomeAntiQuoter(..)
+  , AntiQuoters
 
     -- * 'Context'
   , Context(..)
@@ -56,7 +56,7 @@ import qualified Language.C.Types as C
 
 -- | A mapping from 'C.TypeSpecifier's to Haskell types.  Needed both to
 -- parse C types, and to convert them to Haskell types.
-type CTypesTable = Map.Map C.TypeSpecifier TH.TypeQ
+type TypesTable = Map.Map C.TypeSpecifier TH.TypeQ
 
 -- | Specifies how to parse and process an antiquotation in the C code.
 --
@@ -68,74 +68,80 @@ type CTypesTable = Map.Map C.TypeSpecifier TH.TypeQ
 --
 -- Where @XXX@ is the name of the antiquoter and @YYY@ is something
 -- parseable by the respective 'caqParser'.
-data CAntiQuoter a = CAntiQuoter
-  { caqParser :: forall m. C.CParser m => m (String, C.Type, a)
+data AntiQuoter a = AntiQuoter
+  { aqParser :: forall m. C.CParser m => m (String, C.Type, a)
     -- ^ Parses the body of the antiquotation, returning an hint for the
     -- name to assign to the variable that will replace the
     -- anti-quotation, the type of said variable, and some arbitrary
     -- data which will then be fed to 'caqMarshaller'.
-  , caqMarshaller :: CTypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
-    -- ^ Takes the type and the body returned by 'caqParser', together
-    -- with the current 'CTypesTable'.
+  , aqMarshaller :: TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
+    -- ^ Takes the type and the body returned by 'aqParser', together
+    -- with the current 'TypesTable'.
     --
     -- Returns the Haskell type for the parameter, and the Haskell
     -- expression that will be passed in as the parameter.
     --
     -- If the the type returned is @ty@, the 'TH.Exp' __must__ have type
-    -- @forall a. (ty -> IO a) -> IO a@.
+    -- @forall a. (ty -> IO a) -> IO a@.  This allows to do resource
+    -- handling when preparing C values.
   }
 
--- | An identifier for a 'CAntiQuoter'.
-type CAntiQuoterId = String
+-- | An identifier for a 'AntiQuoter'.
+type AntiQuoterId = String
 
--- | Existential wrapper around 'CAntiQuoter'.
-data SomeCAntiQuoter = forall a. (Eq a, Typeable a) => SomeCAntiQuoter (CAntiQuoter a)
+-- | Existential wrapper around 'AntiQuoter'.
+data SomeAntiQuoter = forall a. (Eq a, Typeable a) => SomeAntiQuoter (AntiQuoter a)
 
-type CAntiQuoters = Map.Map CAntiQuoterId SomeCAntiQuoter
+type AntiQuoters = Map.Map AntiQuoterId SomeAntiQuoter
 
--- | A 'Context' does two things:
---
--- * Stores the information needed to convert C types to Haskell types;
--- * Stores anti-quoters used to capture Haskell variables.
+-- | A 'Context' stores various information needed to produce the files with
+-- the C code derived from the inline C snippets.
 --
 -- 'Context's can be composed with their 'Monoid' instance, where
 -- 'mappend' is right-biased -- in @'mappend' x y@ @y@ will take
 -- precedence over @x@.
 data Context = Context
-  { ctxCTypesTable :: CTypesTable
-  , ctxCAntiQuoters :: CAntiQuoters
+  { ctxTypesTable :: TypesTable
+    -- ^ Needed to convert C types to Haskell types.
+  , ctxAntiQuoters :: AntiQuoters
+    -- ^ Needed to parse and process antiquotations.
   , ctxFileExtension :: Maybe String
+    -- ^ Will determine the extension of the file containing the inline
+    -- C snippets.
   , ctxOutput :: Maybe (String -> String)
+    -- ^ This function is used to post-process the functions generated
+    -- from the C snippets.  Currently just used to specify C linkage
+    -- when generating C++ code.
   }
 
 instance Monoid Context where
   mempty = Context
-    { ctxCTypesTable = mempty
-    , ctxCAntiQuoters = mempty
+    { ctxTypesTable = mempty
+    , ctxAntiQuoters = mempty
     , ctxFileExtension = Nothing
     , ctxOutput = Nothing
     }
 
   mappend ctx2 ctx1 = Context
-    { ctxCTypesTable = ctxCTypesTable ctx1 <> ctxCTypesTable ctx2
-    , ctxCAntiQuoters = ctxCAntiQuoters ctx1 <> ctxCAntiQuoters ctx2
+    { ctxTypesTable = ctxTypesTable ctx1 <> ctxTypesTable ctx2
+    , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
     , ctxFileExtension = ctxFileExtension ctx1 <|> ctxFileExtension ctx2
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     }
 
 -- | Context useful to work with vanilla C.  Used by default.
 --
--- 'ctxCTypesTable': converts C basic types to their counterparts
--- in "Foreign.C.Types".
+-- 'ctxTypesTable': converts C basic types to their counterparts in
+-- "Foreign.C.Types".
 --
--- No 'ctxCAntiQuoters'.
+-- No 'ctxAntiQuoters'.
 baseCtx :: Context
 baseCtx = mempty
-  { ctxCTypesTable = baseCTypesTable
+  { ctxTypesTable = baseTypesTable
   }
 
-baseCTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ
-baseCTypesTable = Map.fromList
+baseTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ
+baseTypesTable = Map.fromList
   [ (C.Void, [t| () |])
   , (C.Char Nothing, [t| CChar |])
   , (C.Char (Just C.Signed), [t| CChar |])
@@ -158,13 +164,13 @@ type CArray = Ptr
 ------------------------------------------------------------------------
 -- Type conversion
 
--- | Given a 'Context', it uses its 'ctxCTypesTable' to convert
+-- | Given a 'Context', it uses its 'ctxTypesTable' to convert
 -- arbitrary C types.
-convertCType
-  :: CTypesTable
+convertType
+  :: TypesTable
   -> C.Type
   -> TH.Q (Maybe TH.Type)
-convertCType cTypes = runMaybeT . go
+convertType cTypes = runMaybeT . go
   where
     goDecl = go . C.parameterDeclarationType
 
@@ -193,7 +199,7 @@ convertCType cTypes = runMaybeT . go
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
 
-isTypeName :: CTypesTable -> C.Id -> Bool
+isTypeName :: TypesTable -> C.Id -> Bool
 isTypeName cTypes id' = Map.member (C.TypeName id') cTypes
 
 ------------------------------------------------------------------------
@@ -207,34 +213,37 @@ getHsVariable err s = do
                        ", because it's not in scope. (" ++ err ++ ")"
     Just hsName -> TH.varE hsName
 
-convertCType_ :: String -> CTypesTable -> C.Type -> TH.Q TH.Type
-convertCType_ err cTypes cTy = do
-  mbHsType <- convertCType cTypes cTy
+convertType_ :: String -> TypesTable -> C.Type -> TH.Q TH.Type
+convertType_ err cTypes cTy = do
+  mbHsType <- convertType cTypes cTy
   case mbHsType of
     Nothing -> error $ "Cannot convert C type (" ++ err ++ ")"
     Just hsType -> return hsType
 
--- | This 'Context' includes a 'CAntiQuoter' that removes the need for
+-- | This 'Context' includes a 'AntiQuoter' that removes the need for
 -- explicitely creating 'FunPtr's, named @"fun"@.
 --
 -- For example, we can capture function @f@ of type @CInt -> CInt -> IO
 -- CInt@ in C code using @$fun:(int (*f)(int, int))@.
+--
+-- Does not include the 'baseCtx', since most of the time it's going to
+-- be included as part of larger contexts.
 funCtx :: Context
 funCtx = mempty
-  { ctxCAntiQuoters = Map.fromList [("fun", SomeCAntiQuoter funPtrCAntiQuoter)]
+  { ctxAntiQuoters = Map.fromList [("fun", SomeAntiQuoter funPtrAntiQuoter)]
   }
 
-funPtrCAntiQuoter :: CAntiQuoter String
-funPtrCAntiQuoter = CAntiQuoter
-  { caqParser = do
+funPtrAntiQuoter :: AntiQuoter String
+funPtrAntiQuoter = AntiQuoter
+  { aqParser = do
       cTy <- Parser.parens C.parseParameterDeclaration
       case C.parameterDeclarationId cTy of
         Nothing -> error "Every captured function must be named (funCtx)"
         Just id' -> do
          let s = C.unId id'
          return (s, C.parameterDeclarationType cTy, s)
-  , caqMarshaller = \cTypes cTy cId -> do
-      hsTy <- convertCType_ "funCtx" cTypes cTy
+  , aqMarshaller = \cTypes cTy cId -> do
+      hsTy <- convertType_ "funCtx" cTypes cTy
       hsExp <- getHsVariable "funCtx" cId
       case hsTy of
         TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr -> do
@@ -243,12 +252,15 @@ funPtrCAntiQuoter = CAntiQuoter
         _ -> error "The `fun' marshaller captures function pointers only"
   }
 
--- | This 'Context' includes two 'CAntiQuoter's that allow to easily use
+-- | This 'Context' includes two 'AntiQuoter's that allow to easily use
 -- Haskell vectors in C.
 --
 -- Specifically, the @vec-len@ and @vec-ptr@ will get the length and the
 -- pointer underlying mutable ('V.IOVector') and immutable ('V.Vector')
 -- storable vectors.
+--
+-- Note that if you use 'vecCtx' to manipulate immutable vectors you
+-- must make sure that the vector is not modified in the C code.
 --
 -- To use @vec-len@, simply write @$vec-len:x@, where @x@ is something
 -- of type @'V.IOVector' a@ or @'V.Vector' a@, for some @a@.  To use
@@ -257,9 +269,9 @@ funPtrCAntiQuoter = CAntiQuoter
 -- 'CInt'@.
 vecCtx :: Context
 vecCtx = mempty
-  { ctxCAntiQuoters = Map.fromList
-      [ ("vec-ptr", SomeCAntiQuoter vecPtrCAntiQuoter)
-      , ("vec-len", SomeCAntiQuoter vecLenCAntiQuoter)
+  { ctxAntiQuoters = Map.fromList
+      [ ("vec-ptr", SomeAntiQuoter vecPtrAntiQuoter)
+      , ("vec-len", SomeAntiQuoter vecLenAntiQuoter)
       ]
   }
 
@@ -282,29 +294,29 @@ instance Storable a => VecCtx (VM.IOVector a) where
   vecCtxLength = VM.length
   vecCtxUnsafeWith = VM.unsafeWith
 
-vecPtrCAntiQuoter :: CAntiQuoter String
-vecPtrCAntiQuoter = CAntiQuoter
-  { caqParser = do
+vecPtrAntiQuoter :: AntiQuoter String
+vecPtrAntiQuoter = AntiQuoter
+  { aqParser = do
       cTy <- Parser.parens C.parseParameterDeclaration
       case C.parameterDeclarationId cTy of
         Nothing -> error "Every captured vector must be named (vecCtx)"
         Just id' -> do
          let s = C.unId id'
          return (s, C.parameterDeclarationType cTy, s)
-  , caqMarshaller = \cTypes cTy cId -> do
-      hsTy <- convertCType_ "vecCtx" cTypes cTy
+  , aqMarshaller = \cTypes cTy cId -> do
+      hsTy <- convertType_ "vecCtx" cTypes cTy
       hsExp <- getHsVariable "vecCtx" cId
       hsExp' <- [| vecCtxUnsafeWith $(return hsExp) |]
       return (hsTy, hsExp')
   }
 
-vecLenCAntiQuoter :: CAntiQuoter String
-vecLenCAntiQuoter = CAntiQuoter
-  { caqParser = do
+vecLenAntiQuoter :: AntiQuoter String
+vecLenAntiQuoter = AntiQuoter
+  { aqParser = do
       cId <- C.parseIdentifier
       let s = C.unId cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
-  , caqMarshaller = \_cTypes cTy cId -> do
+  , aqMarshaller = \_cTypes cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "vecCtx" cId

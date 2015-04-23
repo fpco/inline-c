@@ -92,7 +92,7 @@ spec = do
     strictParse :: String -> IO (C.Type, [(C.Id, C.Type, ParameterType)], String)
     strictParse s = do
       let ParseTypedC retType pars body =
-            assertParse (parseTypedC (ctxCAntiQuoters ctx)) s
+            assertParse (parseTypedC (ctxAntiQuoters ctx)) s
       void $ evaluate $ length $ show (retType, pars, body)
       return (retType, pars, body)
 

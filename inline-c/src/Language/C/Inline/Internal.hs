@@ -8,10 +8,9 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Language.C.Inline.Internal
-    (
-      -- * Context handling
+    ( -- * Context handling
       setContext
-    , initialiseModuleState_
+    , getContext
 
       -- * Emitting and invoking C code
       --
@@ -115,9 +114,10 @@ initialiseModuleState mbContext = do
   where
     context = fromMaybe baseCtx mbContext
 
--- | Make sure that the current module is initialised.
-initialiseModuleState_ :: TH.Q Context
-initialiseModuleState_ = initialiseModuleState Nothing
+-- | Gets the current 'Context'.  Also makes sure that the current
+-- module is initialised.
+getContext :: TH.Q Context
+getContext = initialiseModuleState Nothing
 
 getModuleState :: TH.Q ModuleState
 getModuleState = do
@@ -138,13 +138,12 @@ getModuleState = do
 -- | Sets the 'Context' for the current module.  This function, if
 -- called, must be called before any of the other TH functions in this
 -- module.  Fails if that's not the case.
-setContext :: Context -> TH.DecsQ
+setContext :: Context -> TH.Q ()
 setContext ctx = do
   mbModuleState <- TH.runIO $ readIORef moduleStateRef
   forM_ mbModuleState $ \_moduleState -> do
     error "inline-c: The module has already been initialised (setContext)."
   void $ initialiseModuleState $ Just ctx
-  return []
 
 bumpGeneratedNames :: TH.Q Int
 bumpGeneratedNames = do
@@ -171,7 +170,7 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 -- | Simply appends some string to the module's C file.  Use with care.
 emitLiteral :: String -> TH.DecsQ
 emitLiteral s = do
-  ctx <- initialiseModuleState_         -- Make sure that things are up-to-date
+  ctx <- getContext
   cFile <- cSourceLoc ctx
   TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
   return []
@@ -197,9 +196,9 @@ emitLiteral s = do
 -- We use it as a basis to inline and call C code.
 data Code = Code
   { codeCallSafety :: TH.Safety
-    -- ^ Safety of the foreign call
+    -- ^ Safety of the foreign call.
   , codeType :: TH.TypeQ
-    -- ^ Type of the foreign call
+    -- ^ Type of the foreign call.
   , codeFunName :: String
     -- ^ Name of the function to call in the code below.
   , codeDefs :: String
@@ -227,12 +226,12 @@ data Code = Code
 --   [t| Int -> Int -> Int |]    -- Call type
 --   "francescos_add"            -- Call name
 --   -- C Code
---   [C.cunit| int francescos_add(int x, int y) { int z = x + y; return z; } |])
+--   \"int francescos_add(int x, int y) { int z = x + y; return z; }\")
 -- @
 inlineCode :: Code -> TH.ExpQ
 inlineCode Code{..} = do
   -- Write out definitions
-  ctx <- initialiseModuleState_
+  ctx <- getContext
   let out = fromMaybe id $ ctxOutput ctx
   void $ emitLiteral $ out codeDefs
   -- Create and add the FFI declaration.
@@ -247,14 +246,15 @@ uniqueCName x = do
   let unique :: CryptoHash.Digest CryptoHash.SHA1 = CryptoHash.hashlazy $ Binary.encode x
   return $ "inline_c_" ++ show c' ++ "_" ++ show unique
 
--- | Same as 'inlineItems', but with a single expression.
+-- | Same as 'inlineCItems', but with a single expression.
 --
 -- @
 -- c_cos :: Double -> Double
 -- c_cos = $(inlineExp
 --   TH.Unsafe
 --   [t| Double -> Double |]
---   [cty| double |] [cparams| double x |]
+--   (quickCParser_ \"double\" parseType)
+--   [("x", quickCParser_ \"double\") parseType]
 --   "cos(x)")
 -- @
 inlineExp
@@ -285,7 +285,8 @@ inlineExp callSafety type_ cRetType cParams cExp =
 -- c_cos = $(inlineItems
 --   TH.Unsafe
 --   [t| Double -> Double |]
---   [cty| double |] [cparams| double x |]
+--   (quickCParser_ \"double\" parseType)
+--   [("x", quickCParser_ \"double\" parseType)]
 --   "return cos(x);")
 -- @
 inlineItems
@@ -319,7 +320,7 @@ inlineItems callSafety type_ cRetType cParams cItems = do
 -- Parsing
 
 runParserInQ
-  :: String -> (C.Id -> Bool) -> (forall m. C.CParser m => m a) -> TH.Q a
+  :: String -> C.IsTypeName -> (forall m. C.CParser m => m a) -> TH.Q a
 runParserInQ s isTypeName' p = do
   loc <- TH.location
   let (line, col) = TH.loc_start loc
@@ -350,7 +351,7 @@ fromSomeEq (SomeEq x) = cast x
 
 data ParameterType
   = Plain String                -- The name of the captured variable
-  | AntiQuote CAntiQuoterId SomeEq
+  | AntiQuote AntiQuoterId SomeEq
   deriving (Show, Eq)
 
 data ParseTypedC = ParseTypedC
@@ -361,7 +362,7 @@ data ParseTypedC = ParseTypedC
 
 parseTypedC
   :: forall m. C.CParser m
-  => CAntiQuoters -> m ParseTypedC
+  => AntiQuoters -> m ParseTypedC
   -- ^ Returns the return type, the captured variables, and the body.
 parseTypedC antiQs = do
   -- Parse return type (consume spaces first)
@@ -431,10 +432,10 @@ parseTypedC antiQs = do
     parseAntiQuote :: StateT Int m ([(C.Id, C.Type, ParameterType)], String)
     parseAntiQuote = msum
       [ do void $ Parser.try (Parser.string $ antiQId ++ ":") Parser.<?> "anti quoter id"
-           (s, cTy, x) <- caqParser antiQ
+           (s, cTy, x) <- aqParser antiQ
            id' <- freshId s
            return ([(id', cTy, AntiQuote antiQId (toSomeEq x))], C.unId id')
-      | (antiQId, SomeCAntiQuoter antiQ) <- Map.toList antiQs
+      | (antiQId, SomeAntiQuoter antiQ) <- Map.toList antiQs
       ]
 
     freshId s = do

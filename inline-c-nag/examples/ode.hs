@@ -6,17 +6,19 @@ import           Data.Functor ((<$>))
 import           Data.IORef
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
+import           Foreign.C.Types
 import           Foreign.ForeignPtr (newForeignPtr_)
+import           Foreign.Ptr (Ptr)
 import           Foreign.Ptr (nullFunPtr)
 import           Foreign.Storable (Storable, peek, poke)
-import           Language.C.Inline.Nag
+import qualified Language.C.Inline.Nag as C
 import           System.IO.Unsafe (unsafePerformIO)
 
-setContext nagCtx
+C.context C.nagCtx
 
-include "<stdio.h>"
-include "<nag.h>"
-include "<nagd02.h>"
+C.include "<stdio.h>"
+C.include "<nag.h>"
+C.include "<nagd02.h>"
 
 -- Main types
 ------------------------------------------------------------------------
@@ -29,7 +31,7 @@ type Fn
   -> V.Vector CDouble
      -- ^ @f_i@ for @i = 1, 2, ..., neq@
 
-type Jac
+type Jacobian
   =  CDouble
      -- ^ The indipendent variable @x@
   -> V.Vector CDouble
@@ -67,7 +69,7 @@ data OutputIO a = OutputIO
 solveIO
   :: Options
   -> Fn
-  -> Maybe Jac
+  -> Maybe Jacobian
   -> Interval
   -> Maybe (OutputIO a)
   -> V.Vector CDouble
@@ -86,7 +88,7 @@ solveIO Options{..} fcn mbJac (x, xend) mbOutput y = do
       let jacIO neq x y pw  _comm = do
             pwImm <- jac x <$> vectorFromC neq y
             vectorToC pwImm (neq*neq) pw
-      $(mkFunPtr [t| Nag_Integer -> CDouble -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_User -> IO () |]) jacIO
+      $(C.mkFunPtr [t| C.Nag_Integer -> CDouble -> Ptr CDouble -> Ptr CDouble -> Ptr C.Nag_User -> IO () |]) jacIO
   (outputFunPtr, outputGetResult) <- case mbOutput of
     Nothing -> return (nullFunPtr, return Nothing)
     Just OutputIO{..} -> do
@@ -98,19 +100,19 @@ solveIO Options{..} fcn mbJac (x, xend) mbOutput y = do
             (outputState', x') <- outputIOStep outputState x y'
             writeIORef outputStateRef outputState'
             poke xsol x'
-      outputFunPtr <- $(mkFunPtr [t| Nag_Integer -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_User -> IO ()|]) outputIO
+      outputFunPtr <- $(C.mkFunPtr [t| C.Nag_Integer -> Ptr CDouble -> Ptr CDouble -> Ptr C.Nag_User -> IO ()|]) outputIO
       return (outputFunPtr, Just <$> readIORef outputStateRef)
   -- Error control
   err <- case optionsErrorControl of
-    Relative -> [cexp| Nag_ErrorControl{ Nag_Relative } |]
-    Absolute -> [cexp| Nag_ErrorControl{ Nag_Absolute } |]
-    Mixed -> [cexp| Nag_ErrorControl{ Nag_Mixed } |]
+    Relative -> [C.exp| Nag_ErrorControl{ Nag_Relative } |]
+    Absolute -> [C.exp| Nag_ErrorControl{ Nag_Absolute } |]
+    Mixed -> [C.exp| Nag_ErrorControl{ Nag_Mixed } |]
   -- Record the last visited x in an 'IORef' to store it in the
   -- 'Failure' if there was a problem.
   xendRef <- newIORef x
   yMut <- V.thaw y
-  res <- withNagError $ \fail_ -> do
-    xend' <- [c| double {
+  res <- C.withNagError $ \fail_ -> do
+    xend' <- [C.stmts| double {
         double x = $(double x);
         Nag_User comm;
         nag_ode_ivp_bdf_gen(
@@ -167,7 +169,7 @@ outputNothing x = Output
 solve
   :: Options
   -> Fn
-  -> Maybe Jac
+  -> Maybe Jacobian
   -> Interval
   -> Maybe (Output a)
   -> V.Vector CDouble
@@ -201,7 +203,7 @@ oregonator = do
            , w * (y1 - y3)
            ]
 
-    jac :: Jac
+    jac :: Jacobian
     jac _ y =
       let y1 = y V.! 0 ; y2 = y V.! 1 ; _y3 = y V.! 2
       in V.fromList
@@ -241,7 +243,7 @@ hires = do
         , -280 * y6 * y8 + 1.81 * y7
         ]
 
-    jac :: Jac
+    jac :: Jacobian
     jac _ y =
       let _y1 = y V.! 0 ; _y2 = y V.! 1 ; _y3 = y V.! 2 ; _y4 = y V.! 3
           _y5 = y V.! 4 ; y6 = y V.! 5 ; _y7 = y V.! 6 ; y8 = y V.! 7
@@ -303,12 +305,12 @@ main = do
 -- Utils
 ------------------------------------------------------------------------
 
-vectorFromC :: Storable a => Nag_Integer -> Ptr a -> IO (V.Vector a)
+vectorFromC :: Storable a => C.Nag_Integer -> Ptr a -> IO (V.Vector a)
 vectorFromC len ptr = do
   ptr' <- newForeignPtr_ ptr
   V.freeze $ VM.unsafeFromForeignPtr0 ptr' $ fromIntegral len
 
-vectorToC :: Storable a => V.Vector a -> Nag_Integer -> Ptr a -> IO ()
+vectorToC :: Storable a => V.Vector a -> C.Nag_Integer -> Ptr a -> IO ()
 vectorToC vec neq ptr = do
   ptr' <- newForeignPtr_ ptr
   V.copy (VM.unsafeFromForeignPtr0 ptr' $ fromIntegral neq) vec

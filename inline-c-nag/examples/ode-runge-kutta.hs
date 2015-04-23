@@ -1,24 +1,25 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-import           Control.Monad (forM)
-import           Control.Monad (when)
+import           Control.Monad (forM, when)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Control (liftBaseOp)
 import           Control.Monad.Trans.Except (runExceptT, ExceptT(..), throwE)
 import           Data.Functor ((<$>))
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
+import           Foreign.C.Types
 import           Foreign.ForeignPtr (newForeignPtr_)
-import           Language.C.Inline.Nag
+import           Foreign.Ptr (Ptr)
+import qualified Language.C.Inline.Nag as C
 import           System.IO.Unsafe (unsafePerformIO)
 
-setContext nagCtx
+C.context C.nagCtx
 
-include "<math.h>"
-include "<nag.h>"
-include "<nagd02.h>"
-include "<stdio.h>"
+C.include "<math.h>"
+C.include "<nag.h>"
+C.include "<nagd02.h>"
+C.include "<stdio.h>"
 
 data Method
   = RK_2_3
@@ -53,11 +54,11 @@ solve (SolveOptions method tol hstart) f xs y0 = unsafePerformIO $ runExceptT $ 
   rwsav <- lift $ VM.new lrwsav
   let thresh = V.replicate n 0
   methodInt <- lift $ case method of
-    RK_2_3 -> [cexp| int{ Nag_RK_2_3 } |]
-    RK_4_5 -> [cexp| int{ Nag_RK_4_5 } |]
-    RK_7_8 -> [cexp| int{ Nag_RK_7_8 } |]
-  ExceptT $ withNagError $ \fail_ ->
-    [cexp| void{ nag_ode_ivp_rkts_setup(
+    RK_2_3 -> [C.exp| int{ Nag_RK_2_3 } |]
+    RK_4_5 -> [C.exp| int{ Nag_RK_4_5 } |]
+    RK_7_8 -> [C.exp| int{ Nag_RK_7_8 } |]
+  ExceptT $ C.withNagError $ \fail_ ->
+    [C.exp| void{ nag_ode_ivp_rkts_setup(
       $(Integer n_c), $(double tstart), $(double tend), $vec-ptr:(double *y0),
       $(double tol), $vec-ptr:(double *thresh), $(int methodInt),
       Nag_ErrorAssess_off, $(double hstart), $vec-ptr:(Integer *iwsav),
@@ -66,16 +67,16 @@ solve (SolveOptions method tol hstart) f xs y0 = unsafePerformIO $ runExceptT $ 
   ygot <- lift $ VM.new n
   ypgot <- lift $ VM.new n
   ymax <- lift $ VM.new n
-  let fIO :: CDouble -> Nag_Integer -> Ptr CDouble -> Ptr CDouble -> Ptr Nag_Comm -> IO ()
+  let fIO :: CDouble -> C.Nag_Integer -> Ptr CDouble -> Ptr CDouble -> Ptr C.Nag_Comm -> IO ()
       fIO t n y _yp  _comm = do
         yFore <- newForeignPtr_ y
         let yVec = VM.unsafeFromForeignPtr0 yFore $ fromIntegral n
         ypImm <- f t <$> V.unsafeFreeze yVec
         V.copy yVec ypImm
-  liftBaseOp initNagError $ \fail_ -> do
+  liftBaseOp C.initNagError $ \fail_ -> do
     -- Tail because the first point is the start
     ys <- forM (tail xs) $ \t -> do
-      ExceptT $ checkNagError fail_ $ [c| void {
+      ExceptT $ C.checkNagError fail_ $ [C.stmts| void {
           double tgot;
           nag_ode_ivp_rkts_range(
             $fun:(void (*fIO)(double t, Integer n, const double y[], double yp[], Nag_Comm *comm)),

@@ -92,11 +92,11 @@ nagCtx :: Context
 nagCtx = baseCtx <> funCtx <> vecCtx <> ctx
   where
     ctx = mempty
-      { ctxCTypesTable = nagCTypesTable
+      { ctxTypesTable = nagTypesTable
       }
 
-nagCTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ
-nagCTypesTable = Map.fromList
+nagTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ
+nagTypesTable = Map.fromList
   [ -- TODO this might not be a long, see nag_types.h
     (C.TypeName "Integer", [t| Nag_Integer |])
   , (C.TypeName "Complex", [t| Complex |])

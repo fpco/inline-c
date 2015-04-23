@@ -1,29 +1,29 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
-import           Language.C.Inline.Nag
+import qualified Language.C.Inline.Nag as C
 import qualified Data.Vector.Storable as V
 
 -- Set the 'Context' to the one provided by "Language.C.Inline.Nag".
--- This gives us access to NAG types such as 'Complex' and 'NagError',
+-- This gives us access to NAG types such as 'C.Complex' and 'C.NagError',
 -- and also includes the vector and function pointers anti-quoters.
-setContext nagCtx
+C.context C.nagCtx
 
 -- Include the headers files we need.
-include "<nag.h>"
-include "<nagc06.h>"
+C.include "<nag.h>"
+C.include "<nagc06.h>"
 
 -- | Computes the discrete Fourier transform for the given sequence of
 -- 'Complex' numbers.  Returns 'Left' if some error occurred, together
 -- with the error message.
-forwardFFT :: V.Vector Complex -> IO (Either String (V.Vector Complex))
+forwardFFT :: V.Vector C.Complex -> IO (Either String (V.Vector C.Complex))
 forwardFFT x_orig = do
   -- "Thaw" the input vector -- the input is an immutable vector, and by
   -- "thawing" it we create a mutable copy of it.
   x <- V.thaw x_orig
-  -- Use 'withNagError' to easily check whether the NAG operation was
+  -- Use 'C.withNagError' to easily check whether the NAG operation was
   -- successful.
-  withNagError $ \fail_ -> do
-    [cexp| void {
+  C.withNagError $ \fail_ -> do
+    [C.exp| void {
        nag_sum_fft_complex_1d(
          // We're computing a forward transform
          Nag_ForwardTransform,
@@ -42,18 +42,18 @@ forwardFFT x_orig = do
 main :: IO ()
 main = do
   let vec = V.fromList
-        [ Complex 0.34907 (-0.37168)
-        , Complex 0.54890 (-0.35669)
-        , Complex 0.74776 (-0.31175)
-        , Complex 0.94459 (-0.23702)
-        , Complex 1.13850 (-0.13274)
-        , Complex 1.32850   0.00074
-        , Complex 1.51370   0.16298
+        [ C.Complex 0.34907 (-0.37168)
+        , C.Complex 0.54890 (-0.35669)
+        , C.Complex 0.74776 (-0.31175)
+        , C.Complex 0.94459 (-0.23702)
+        , C.Complex 1.13850 (-0.13274)
+        , C.Complex 1.32850   0.00074
+        , C.Complex 1.51370   0.16298
         ]
   printVec vec
   Right vec_f <- forwardFFT vec
   printVec vec_f
   where
     printVec vec = do
-      V.forM_ vec $ \(Complex re im) -> putStr $ show (re, im) ++ " "
+      V.forM_ vec $ \(C.Complex re im) -> putStr $ show (re, im) ++ " "
       putStrLn ""

@@ -6,6 +6,12 @@
 -- code in Haskell code.  If you're interested in how to use the
 -- library, skip to the "Inline C" section.  To build, read the first
 -- two sections.
+--
+-- This module is supposed to be imported qualified:
+--
+-- @
+-- import qualified "Language.C.Inline" as C
+-- @
 module Language.C.Inline
     ( -- * Build process
       -- $building
@@ -16,15 +22,16 @@ module Language.C.Inline
     , baseCtx
     , funCtx
     , vecCtx
-    , setContext
+    , context
 
       -- * Inline C
       -- $quoting
-    , cexp
-    , cexp_unsafe
-    , c
-    , c_unsafe
+    , exp
+    , exp_unsafe
+    , stmts
+    , stmts_unsafe
     , include
+    , literal
 
       -- * 'Ptr' utils
     , withPtr
@@ -39,12 +46,9 @@ module Language.C.Inline
     , mkFunPtr
     , mkFunPtrFromName
     , peekFunPtr
-
-      -- * Re-exports
-    , module Foreign.C.Types
-    , Ptr
-    , FunPtr
     ) where
+
+import           Prelude hiding (exp)
 
 import           Control.Monad (forM)
 import qualified Data.Map as Map
@@ -131,9 +135,9 @@ import           Language.C.Inline.FunPtr
 --   omitted.
 --
 -- * The syntax of the @\<C code\>@ depends on on the quasi-quoter used,
---   and the anti-quoters available.  @cexp@ functions accept a C
---   expression.  @c@ functions accept a list of statemens, like the body
---   of a function.
+--   and the anti-quoters available.  @exp@ functions accept a C
+--   expression.  @stmts@ functions accept a list of statemens, like the
+--   body of a function.
 --
 -- See also the @tutorial.md@ file for more documentation.
 --
@@ -161,7 +165,7 @@ import           Language.C.Inline.FunPtr
 -- Haskell variables on the fly, for example we might say
 --
 -- @
--- ['cexp'| double { cos($(double x)) } |]
+-- ['C.exp'| double { cos($(double x)) } |]
 -- @
 --
 -- Which would capture the Haskell variable @x@ of type @'CDouble'@.
@@ -189,12 +193,13 @@ import           Language.C.Inline.FunPtr
 -- @
 -- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
--- import           "Language.C.Inline"
+-- import qualified "Language.C.Inline" as C
+-- import           "Foreign.C.Types"
 --
--- 'include' "\<math.h\>"
+-- C.'include' "\<math.h\>"
 --
 -- c_cos :: 'CDouble' -> IO 'CDouble'
--- c_cos x = ['cexp_unsafe'| double { cos($(double x)) } |]
+-- c_cos x = [C.'exp_unsafe'| double { cos($(double x)) } |]
 -- @
 --
 -- === Inline C statements
@@ -203,14 +208,15 @@ import           Language.C.Inline.FunPtr
 -- {-\# LANGUAGE TemplateHaskell \#-}
 -- {-\# LANGUAGE QuasiQuotes \#-}
 -- import qualified Data.Vector.Storable.Mutable as V
--- import           "Language.C.Inline"
+-- import qualified "Language.C.Inline" as C
+-- import           "Foreign.C.Types"
 --
--- 'include' "\<stdio.h\>"
+-- C.'include' "\<stdio.h\>"
 --
 -- parseVector :: 'CInt' -> 'IO' (V.IOVector 'CDouble')
 -- parseVector len = do
 --   vec <- V.new $ 'fromIntegral' len0
---   V.unsafeWith vec $ \\ptr -> ['c'| void(double *ptr) {
+--   V.unsafeWith vec $ \\ptr -> [C.'stmts'| void(double *ptr) {
 --     int i;
 --     for (i = 0; i < $(int len); i++) {
 --       scanf("%lf ", &ptr[i]);
@@ -219,17 +225,17 @@ import           Language.C.Inline.FunPtr
 --   'return' vec
 -- @
 
-cexp :: TH.QuasiQuoter
-cexp = genericQuote $ inlineExp TH.Safe
+exp :: TH.QuasiQuoter
+exp = genericQuote $ inlineExp TH.Safe
 
-cexp_unsafe :: TH.QuasiQuoter
-cexp_unsafe = genericQuote $ inlineExp TH.Unsafe
+exp_unsafe :: TH.QuasiQuoter
+exp_unsafe = genericQuote $ inlineExp TH.Unsafe
 
-c :: TH.QuasiQuoter
-c = genericQuote $ inlineItems TH.Safe
+stmts :: TH.QuasiQuoter
+stmts = genericQuote $ inlineItems TH.Safe
 
-c_unsafe :: TH.QuasiQuoter
-c_unsafe = genericQuote $ inlineItems TH.Unsafe
+stmts_unsafe :: TH.QuasiQuoter
+stmts_unsafe = genericQuote $ inlineItems TH.Unsafe
 
 quoteCode
   :: (String -> TH.ExpQ)
@@ -248,9 +254,9 @@ genericQuote
   -- 'inlineExp' for other args.
   -> TH.QuasiQuoter
 genericQuote build = quoteCode $ \s -> do
-  ctx <- initialiseModuleState_
+  ctx <- getContext
   ParseTypedC cType cParams cExp <-
-    runParserInQ s (isTypeName (ctxCTypesTable ctx)) $ parseTypedC $ ctxCAntiQuoters ctx
+    runParserInQ s (isTypeName (ctxTypesTable ctx)) $ parseTypedC $ ctxAntiQuoters ctx
   hsType <- cToHs ctx cType
   hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
     case parTy of
@@ -266,23 +272,23 @@ genericQuote build = quoteCode $ \s -> do
             [| \cont -> cont $(return hsExp) |]
         return (hsTy, hsExp)
       AntiQuote antiId dyn -> do
-        case Map.lookup antiId (ctxCAntiQuoters ctx) of
+        case Map.lookup antiId (ctxAntiQuoters ctx) of
           Nothing ->
             error $ "IMPOSSIBLE: could not find anti-quoter " ++ show antiId ++
                     ". (genericQuote)"
-          Just (SomeCAntiQuoter antiQ) -> case fromSomeEq dyn of
+          Just (SomeAntiQuoter antiQ) -> case fromSomeEq dyn of
             Nothing ->
               error  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
                        show antiId ++ ". (genericQuote)"
             Just x ->
-              caqMarshaller antiQ (ctxCTypesTable ctx) cTy x
+              aqMarshaller antiQ (ctxTypesTable ctx) cTy x
   let hsFunType = convertCFunSig hsType $ map fst hsParams
   let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
   buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
   where
     cToHs :: Context -> C.Type -> TH.TypeQ
     cToHs ctx cTy = do
-      mbHsTy <- convertCType (ctxCTypesTable ctx) cTy
+      mbHsTy <- convertType (ctxTypesTable ctx) cTy
       case mbHsTy of
         Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
         Just hsTy -> return hsTy
@@ -323,6 +329,11 @@ include s
   | head s == '<' = emitLiteral $ "#include " ++ s
   | otherwise = emitLiteral $ "#include \"" ++ s ++ "\""
 
+-- | Emits an arbitrary C string to the C code associated with the
+-- current module.  Use with care.
+literal :: String -> TH.DecsQ
+literal = emitLiteral
+
 ------------------------------------------------------------------------
 -- 'Ptr' utils
 
@@ -339,6 +350,17 @@ withPtr_ :: (Storable a) => (Ptr a -> IO ()) -> IO a
 withPtr_ f = do
   (x, ()) <- withPtr f
   return x
+
+------------------------------------------------------------------------
+-- setContext alias
+
+-- | Sets the 'Context' for the current module.  This function, if
+-- called, must be called before any of the other TH functions in this
+-- module.  Fails if that's not the case.
+context :: Context -> TH.DecsQ
+context ctx = do
+  setContext ctx
+  return []
 
 ------------------------------------------------------------------------
 -- Utils

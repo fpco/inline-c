@@ -100,12 +100,13 @@ executable nelder-mead
                      , inline-c
                      , inline-c-nag
                      , vector
+                     , async
   default-language:    Haskell2010
   cc-options:          -O2 -m64
   extra-libraries:     nagc_nag imf svml irng intlc
   extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
   include-dirs:        /opt/NAG/cll6i24dcl/include
-  ghc-options:         -Wall -O -fPIC
+  ghc-options:         -Wall -O2 -fPIC
 
   if flag(examples)
     buildable: True
@@ -125,7 +126,7 @@ executable ode
   extra-libraries:     nagc_nag imf svml irng intlc
   extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
   include-dirs:        /opt/NAG/cll6i24dcl/include
-  ghc-options:         -Wall -O -fPIC -fno-warn-name-shadowing -debug -dcore-lint
+  ghc-options:         -Wall -O -fPIC -fno-warn-name-shadowing
 
   if flag(examples)
     buildable: True
@@ -147,7 +148,7 @@ executable ode-runge-kutta
   extra-libraries:     nagc_nag imf svml irng intlc
   extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
   include-dirs:        /opt/NAG/cll6i24dcl/include
-  ghc-options:         -Wall -O -fPIC -fno-warn-name-shadowing -debug -dcore-lint
+  ghc-options:         -Wall -O -fPIC -fno-warn-name-shadowing
 
   if flag(examples)
     buildable: True
@@ -163,17 +164,14 @@ executable interpolation
                      , vector
                      , Chart
                      , Chart-cairo
-                     , statistics
-                     , mwc-random
   default-language:    Haskell2010
   cc-options:          -O2 -m64
   extra-libraries:     nagc_nag imf svml irng intlc
   extra-lib-dirs:      /opt/NAG/cll6i24dcl/lib /opt/NAG/cll6i24dcl/rtl/intel64
   include-dirs:        /opt/NAG/cll6i24dcl/include
-  ghc-options:         -Wall -O -fPIC -fno-warn-name-shadowing -debug -dcore-lint
+  ghc-options:         -Wall -O -fPIC -fno-warn-name-shadowing
 
   if flag(examples)
     buildable: True
   else
     buildable: False
-

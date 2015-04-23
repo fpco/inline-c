@@ -1,4 +1,5 @@
 /*/dist/
 *.c
+*.cpp
 *.d
 *.tix
