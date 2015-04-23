@@ -16,16 +16,18 @@
 --
 -- * Untyped parameter lists (pre-K&R C) are not allowed.
 --
--- The parser is incremental and generic (see 'CParser').  'PP.Pretty',
--- 'QC.Arbitrary', and 'SC.Serial' instances are provided for all the
--- data types.
+-- The parser is incremental and generic (see 'CParser').  'PP.Pretty'
+-- and 'QC.Arbitrary' instances are provided for all the data types.
 --
 -- The entry point if you want to parse C declarations is
 -- @'parameter_declaration'@.
 module Language.C.Types.Parse
   ( -- * Parser type
     CParser
+  , IsTypeName
   , runCParser
+  , quickCParser
+  , quickCParser_
 
     -- * Types and parsing
   , Id(..)
@@ -78,8 +80,6 @@ import qualified Data.Set as Set
 import           Data.String (IsString(..))
 import           Data.Typeable (Typeable)
 import qualified Test.QuickCheck as QC
--- import           Test.SmallCheck.Series ((\/), (<~>))
--- import qualified Test.SmallCheck.Series as SC
 import qualified Text.Parsec as Parsec
 import           Text.Parser.Char
 import           Text.Parser.Combinators
@@ -92,32 +92,56 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 ------------------------------------------------------------------------
 -- Parser
 
+-- | Function used to determine whether an 'C.Id' is a type name.
+type IsTypeName = Id -> Bool
+
 -- | All the parsing is done using the type-classes provided by the
 -- @parsers@ package.  You can use the parsing routines with any of the
 -- parsers that implement the classes, such as @parsec@ or @trifecta@.
 --
--- The function in the @'MonadReader' ('Id' -> 'Bool')@ constraint is
--- used to determine what is a type name and what not (if the function
--- returns @'True'@ the given @'Id'@ will be assumed to be a type name).
---
 -- This knowledge is required for parsing C, see
 -- <http://en.wikipedia.org/wiki/The_lexer_hack>.
-type CParser m = (Monad m, Functor m, Applicative m, MonadPlus m, Parsing m, CharParsing m, TokenParsing m, LookAheadParsing m, MonadReader (Id -> Bool) m)
+type CParser m = (Monad m, Functor m, Applicative m, MonadPlus m, Parsing m, CharParsing m, TokenParsing m, LookAheadParsing m, MonadReader IsTypeName m)
 
 -- | Runs a @'CParser'@ using @parsec@.
 runCParser
   :: Parsec.Stream s Identity Char
-  => (Id -> Bool)
+  => IsTypeName
   -- ^ Function determining if an identifier is a type name.
   -> String
   -- ^ Source name.
   -> s
   -- ^ String to parse.
-  -> (ReaderT (Id -> Bool) (Parsec.Parsec s ()) a)
+  -> (ReaderT IsTypeName (Parsec.Parsec s ()) a)
   -- ^ Parser.  Anything with type @forall m. CParser m => m a@ is a
   -- valid argument.
   -> Either Parsec.ParseError a
 runCParser isTypeName fn s p = Parsec.parse (runReaderT p isTypeName) fn s
+
+-- | Useful for quick testing.  Uses @\"quickCParser\"@ as source name, and throws
+-- an 'error' if parsing fails.
+quickCParser
+  :: IsTypeName
+  -- ^ Function determining if an identifier is a type name.
+  -> String
+  -- ^ String to parse.
+  -> (ReaderT IsTypeName (Parsec.Parsec String ()) a)
+  -- ^ Parser.  Anything with type @forall m. CParser m => m a@ is a
+  -- valid argument.
+  -> a
+quickCParser isTypeName s p = case runCParser isTypeName "quickCParser" s p of
+  Left err -> error $ "quickCParser: " ++ show err
+  Right x -> x
+
+-- | Like 'quickCParser', but uses @'const' 'False'@ as 'IsTypeName'.
+quickCParser_
+  :: String
+  -- ^ String to parse.
+  -> (ReaderT IsTypeName (Parsec.Parsec String ()) a)
+  -- ^ Parser.  Anything with type @forall m. CParser m => m a@ is a
+  -- valid argument.
+  -> a
+quickCParser_ = quickCParser (const False)
 
 newtype Id = Id {unId :: String}
   deriving (Typeable, Eq, Ord, Show)
@@ -633,103 +657,6 @@ arbitraryDirectAbstractDeclarator typeNames = halveSize $ oneOfSized $
   ]
 
 ------------------------------------------------------------------------
--- Serial
-
-{-
-instance Monad m => SC.Serial m Id where
-  series = Id <$> idStart
-    where
-      idLetter =
-        foldr1 (\/) $ map SC.cons0 $ ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
-      idAlphaNum =
-        foldr1 (\/) $ map SC.cons0 $ ['a'..'z'] ++ ['A'..'Z'] ++ ['_'] ++ ['0'..'9']
-
-      idStart = SC.decDepth ((:) <$> idLetter <~> idRest)
-
-      idRest =
-        SC.cons0 [] \/
-        SC.decDepth ((:) <$> idAlphaNum <~> idRest)
-
-instance Monad m => SC.Serial m DeclarationSpecifier where
-  series =
-    SC.cons1 StorageClassSpecifier \/
-    SC.cons1 TypeSpecifier \/
-    SC.cons1 TypeQualifier \/
-    SC.cons1 FunctionSpecifier
-
-instance Monad m => SC.Serial m StorageClassSpecifier where
-  series =
-    SC.cons0 TYPEDEF \/
-    SC.cons0 EXTERN \/
-    SC.cons0 STATIC \/
-    SC.cons0 AUTO \/
-    SC.cons0 REGISTER
-
-instance Monad m => SC.Serial m TypeSpecifier where
-  series =
-    SC.cons0 VOID \/
-    SC.cons0 CHAR \/
-    SC.cons0 SHORT \/
-    SC.cons0 INT \/
-    SC.cons0 LONG \/
-    SC.cons0 FLOAT \/
-    SC.cons0 DOUBLE \/
-    SC.cons0 SIGNED \/
-    SC.cons0 UNSIGNED \/
-    SC.cons1 Struct \/
-    SC.cons1 Enum
-
-instance Monad m => SC.Serial m TypeQualifier where
-  series =
-    SC.cons0 CONST \/
-    SC.cons0 RESTRICT \/
-    SC.cons0 VOLATILE
-
-instance Monad m => SC.Serial m FunctionSpecifier where
-  series =
-    SC.cons0 INLINE
-
-instance Monad m => SC.Serial m Declarator where
-  series =
-    SC.cons2 Declarator
-
-instance Monad m => SC.Serial m DirectDeclarator where
-  series =
-    SC.cons1 DeclaratorRoot \/
-    SC.cons1 DeclaratorParens \/
-    SC.cons2 ArrayOrProto
-
-instance Monad m => SC.Serial m ArrayOrProto where
-  series =
-    SC.cons1 Array \/
-    SC.cons1 Proto
-
-instance Monad m => SC.Serial m ArrayType where
-  series =
-    SC.cons0 VariablySized \/
-    SC.cons0 Unsized \/
-    SC.decDepth (SizedByInteger . SC.getNonNegative <$> SC.series) \/
-    SC.cons1 SizedByIdentifier
-
-instance Monad m => SC.Serial m Pointer where
-  series =
-    SC.cons1 Pointer
-
-instance Monad m => SC.Serial m ParameterDeclaration where
-  series = SC.decDepth $ do
-    SC.series >>- \(SC.NonEmpty specs) -> do
-      ParameterDeclaration specs <$> SC.series
-
-instance Monad m => SC.Serial m AbstractDeclarator where
-  series = SC.cons2 AbstractDeclarator
-
-instance Monad m => SC.Serial m DirectAbstractDeclarator where
-  series =
-    SC.cons1 AbstractDeclaratorParens \/
-    SC.cons1 ArrayOrProtoHere \/
-    SC.cons2 ArrayOrProtoThere
--}
-------------------------------------------------------------------------
 -- Utils
 
 many1 :: CParser m => m a -> m [a]
@@ -878,4 +805,3 @@ many1 p = (:) <$> p <*> many p
 -- 	printf("\n%*s\n%*s\n", column, "^", column, s);
 -- }
 -- @
-

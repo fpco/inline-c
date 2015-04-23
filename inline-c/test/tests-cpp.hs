@@ -2,12 +2,12 @@
 {-# LANGUAGE QuasiQuotes #-}
 import           Language.C.Inline.Cpp
 
-setContext cppCtx
+context cppCtx
 
 include "<iostream>"
 
 main :: IO ()
 main = do
-  [c| void {
+  [stmts| void {
       std::cout << "Hello, world!\n";
     } |]

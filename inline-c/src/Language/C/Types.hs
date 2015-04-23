@@ -37,11 +37,15 @@ module Language.C.Types
   , ParameterDeclaration(..)
 
     -- * Parsing
+  , P.IsTypeName
   , P.CParser
   , P.runCParser
+  , P.quickCParser
+  , P.quickCParser_
   , parseParameterDeclaration
   , parseParameterList
   , parseIdentifier
+  , parseType
 
     -- * Back and forth
   , UntangleErr(..)
@@ -53,16 +57,16 @@ module Language.C.Types
   , readType
   ) where
 
-import           Control.Lens (_1, _2, _3, _4, (%=), over)
+import           Control.Arrow (second)
 import           Control.Monad (when, unless, forM_)
+import           Control.Monad.State (execState, modify)
 import           Data.Functor ((<$>))
 import           Data.List (partition)
 import           Data.Maybe (fromMaybe)
-import           Control.Monad.State (execState)
-import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Data.Monoid ((<>), Monoid(..))
 import           Data.Typeable (Typeable)
+import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
+import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import qualified Language.C.Types.Parse as P
 
@@ -141,10 +145,10 @@ untangleDeclarationSpecifiers
 untangleDeclarationSpecifiers declSpecs = do
   let (pStorage, pTySpecs, pTyQuals, pFunSpecs) = flip execState ([], [], [], []) $ do
         forM_ (reverse declSpecs) $ \declSpec -> case declSpec of
-          P.StorageClassSpecifier x -> _1 %= (x :)
-          P.TypeSpecifier x -> _2 %= (x :)
-          P.TypeQualifier x -> _3 %= (x :)
-          P.FunctionSpecifier x -> _4 %= (x :)
+          P.StorageClassSpecifier x -> modify $ \(a, b, c, d) -> (x:a, b, c, d)
+          P.TypeSpecifier x -> modify $ \(a, b, c, d) -> (a, x:b, c, d)
+          P.TypeQualifier x -> modify $ \(a, b, c, d) -> (a, b, x:c, d)
+          P.FunctionSpecifier x -> modify $ \(a, b, c, d) -> (a, b, c, x:d)
   -- Split data type and specifiers
   let (dataTypes, specs) =
         partition (\x -> not (x `elem` [P.SIGNED, P.UNSIGNED, P.LONG, P.SHORT])) pTySpecs
@@ -264,8 +268,8 @@ untangleAbstractDeclarator ty0 (P.AbstractDeclarator ptrs0 mbDirectDecltor) =
 tangleParameterDeclaration :: ParameterDeclaration -> P.ParameterDeclaration
 tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
     uncurry P.ParameterDeclaration $ case mbId of
-      Nothing -> over _2 Right $ goAbstractDirect ty00 Nothing
-      Just id' -> over _2 Left $ goConcreteDirect ty00 $ P.DeclaratorRoot id'
+      Nothing -> second Right $ goAbstractDirect ty00 Nothing
+      Just id' -> second Left $ goConcreteDirect ty00 $ P.DeclaratorRoot id'
   where
     goAbstractDirect
       :: Type -> Maybe P.DirectAbstractDeclarator
@@ -423,6 +427,9 @@ parseParameterList =
 
 parseIdentifier :: P.CParser m => m P.Id
 parseIdentifier = P.identifier_no_lex
+
+parseType :: P.CParser m => m Type
+parseType = parameterDeclarationType <$> parseParameterDeclaration
 
 ------------------------------------------------------------------------
 -- Pretty

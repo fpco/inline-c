@@ -2,6 +2,8 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
+import           Prelude hiding (exp)
+
 import           Data.Monoid ((<>), mempty)
 import qualified Data.Vector.Storable.Mutable as V
 import           Foreign.C.Types
@@ -18,7 +20,7 @@ import qualified Language.C.Types.ParseSpec
 
 import           Dummy
 
-setContext (baseCtx <> funCtx <> vecCtx)
+context (baseCtx <> funCtx <> vecCtx)
 
 include "<math.h>"
 include "<stdio.h>"
@@ -49,37 +51,37 @@ main = Hspec.hspec $ do
       let c_add3 = $(inlineItems
             TH.Unsafe
             [t| CInt -> CInt |]
-            (C.TypeSpecifier mempty (C.Int C.Signed))
-            [("x", C.TypeSpecifier mempty (C.Int C.Signed))]
+            (C.quickCParser_ "int" C.parseType)
+            [("x", C.quickCParser_ "int" C.parseType)]
             [r| return x + 3; |])
       c_add3 1 `Hspec.shouldBe` 1 + 3
     Hspec.it "inlineExp" $ do
       let x = $(inlineExp
             TH.Safe
             [t| CInt |]
-            (C.TypeSpecifier mempty (C.Int C.Signed))
+            (C.quickCParser_ "int" C.parseType)
             []
             [r| 1 + 4 |])
       x `Hspec.shouldBe` 1 + 4
     Hspec.it "inlineCode" $ do
       francescos_mul 3 4 `Hspec.shouldBe` 12
-    Hspec.it "cexp" $ do
+    Hspec.it "exp" $ do
       let x = 3
       let y = 4
-      z <- [cexp| int(int x, int y){ x + y + 5 } |]
+      z <- [exp| int(int x, int y){ x + y + 5 } |]
       z `Hspec.shouldBe` x + y + 5
-    Hspec.it "cexp_unsafe" $ do
+    Hspec.it "exp_unsafe" $ do
       let x = 2
       let y = 10
-      z <- [cexp_unsafe| int(int x, int y){ 7 + x + y } |]
+      z <- [exp_unsafe| int(int x, int y){ 7 + x + y } |]
       z `Hspec.shouldBe` x + y + 7
     Hspec.it "suffix type" $ do
       let x = 3
       let y = 4
-      z <- [cexp| int { $(int x) + $(int y) } |]
+      z <- [exp| int { $(int x) + $(int y) } |]
       z `Hspec.shouldBe` 7
     Hspec.it "void exp" $ do
-      [cexp| void { printf("Hello\n") } |]
+      [exp| void { printf("Hello\n") } |]
     Hspec.it "function pointer argument" $ do
       let ackermann m n
             | m == 0 = n + 1
@@ -89,10 +91,10 @@ main = Hspec.hspec $ do
       ackermannPtr <- $(mkFunPtr [t| CInt -> CInt -> IO CInt |]) $ \m n -> return $ ackermann m n
       let x = 3
       let y = 4
-      z <- [cexp| int { $(int (*ackermannPtr)(int, int))($(int x), $(int y)) } |]
+      z <- [exp| int { $(int (*ackermannPtr)(int, int))($(int x), $(int y)) } |]
       z `Hspec.shouldBe` ackermann x y
     Hspec.it "function pointer result" $ do
-      c_add <- [cexp| int (*)(int, int) { &francescos_add } |]
+      c_add <- [exp| int (*)(int, int) { &francescos_add } |]
       x <- $(peekFunPtr [t| CInt -> CInt -> IO CInt |]) c_add 1 2
       x `Hspec.shouldBe` 1 + 2
     Hspec.it "quick function pointer argument" $ do
@@ -104,17 +106,17 @@ main = Hspec.hspec $ do
       let ackermann_ m n = return $ ackermann m n
       let x = 3
       let y = 4
-      z <- [cexp| int { $fun:(int (*ackermann_)(int, int))($(int x), $(int y)) } |]
+      z <- [exp| int { $fun:(int (*ackermann_)(int, int))($(int x), $(int y)) } |]
       z `Hspec.shouldBe` ackermann x y
     Hspec.it "test mkFunPtrFromName" $ do
       fun <- $(mkFunPtrFromName 'dummyFun)
-      z <- [cexp| double { $(double (*fun)(double))(3.0) } |]
+      z <- [exp| double { $(double (*fun)(double))(3.0) } |]
       z' <- dummyFun 3.0
       z `Hspec.shouldBe` z'
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3
-      sum <- V.unsafeWith vec $ \ptr -> [c| int {
+      sum <- V.unsafeWith vec $ \ptr -> [stmts| int {
         int i;
         int x = 0;
         for (i = 0; i < $(int n); i++) {
@@ -125,7 +127,7 @@ main = Hspec.hspec $ do
       sum `Hspec.shouldBe` 3 * 10
     Hspec.it "quick vectors" $ do
       vec <- V.replicate 10 3
-      sum <- [c| int {
+      sum <- [stmts| int {
         int i;
         int x = 0;
         for (i = 0; i < $vec-len:vec; i++) {
