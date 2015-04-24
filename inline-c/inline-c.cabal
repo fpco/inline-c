@@ -28,6 +28,7 @@ library
                      , QuickCheck
                      , ansi-wl-pprint
                      , binary
+                     , bytestring
                      , containers
                      , cryptohash
                      , directory

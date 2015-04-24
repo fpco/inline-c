@@ -33,12 +33,15 @@ module Language.C.Inline.Context
   , funCtx
   , vecCtx
   , VecCtx(..)
+  , bsCtx
   ) where
 
 import           Control.Applicative ((<|>))
 import           Control.Monad (mzero)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Unsafe as BS
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
 import           Data.Monoid (Monoid(..))
@@ -46,7 +49,7 @@ import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
 import           Foreign.C.Types
-import           Foreign.Ptr (Ptr, FunPtr)
+import           Foreign.Ptr (Ptr, FunPtr, castPtr)
 import           Foreign.Storable (Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Token as Parser
@@ -326,4 +329,52 @@ vecLenAntiQuoter = AntiQuoter
           return (hsTy, hsExp'')
         _ -> do
           error "impossible: got type different from `long' (vecCtx)"
+  }
+
+
+-- | 'bsCtx' serves exactly the same purpose as 'vecCtx', but only for
+-- 'BS.ByteString'.  @vec-ptr@ becomes @bs-ptr@, and @vec-len@ becomes
+-- @bs-len@.  You don't need to specify the type of the pointer in
+-- @bs-ptr@, it will always be @unsigned char*@.
+bsCtx :: Context
+bsCtx = mempty
+  { ctxAntiQuoters = Map.fromList
+      [ ("bs-ptr", SomeAntiQuoter bsPtrAntiQuoter)
+      , ("bs-len", SomeAntiQuoter bsLenAntiQuoter)
+      ]
+  }
+
+bsPtrAntiQuoter :: AntiQuoter String
+bsPtrAntiQuoter = AntiQuoter
+  { aqParser = do
+      cId <- C.parseIdentifier
+      let s = C.unId cId
+      return (s, C.Ptr [] (C.TypeSpecifier mempty (C.Char (Just C.Unsigned))), s)
+  , aqMarshaller = \_cTypes cTy cId -> do
+      case cTy of
+        C.Ptr _ (C.TypeSpecifier _ (C.Char (Just C.Unsigned))) -> do
+          hsTy <- [t| Ptr CUChar |]
+          hsExp <- getHsVariable "bsCtx" cId
+          hsExp' <- [| \cont -> BS.unsafeUseAsCString $(return hsExp) $ \ptr -> cont (castPtr ptr)  |]
+          return (hsTy, hsExp')
+        _ ->
+          error "impossible: got type different from `unsigned char' (bsCtx)"
+  }
+
+bsLenAntiQuoter :: AntiQuoter String
+bsLenAntiQuoter = AntiQuoter
+  { aqParser = do
+      cId <- C.parseIdentifier
+      let s = C.unId cId
+      return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
+  , aqMarshaller = \_cTypes cTy cId -> do
+      case cTy of
+        C.TypeSpecifier _ (C.Long C.Signed) -> do
+          hsExp <- getHsVariable "bsCtx" cId
+          hsExp' <- [| fromIntegral (BS.length $(return hsExp)) |]
+          hsTy <- [t| CLong |]
+          hsExp'' <- [| \cont -> cont $(return hsExp') |]
+          return (hsTy, hsExp'')
+        _ -> do
+          error "impossible: got type different from `long' (bsCtx)"
   }
