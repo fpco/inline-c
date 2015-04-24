@@ -22,6 +22,7 @@ module Language.C.Inline
     , baseCtx
     , funCtx
     , vecCtx
+    , bsCtx
     , context
 
       -- * Inline C
@@ -52,9 +53,8 @@ import           Prelude hiding (exp)
 
 import           Control.Monad (forM)
 import qualified Data.Map as Map
-import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
-import           Foreign.Ptr (Ptr, FunPtr)
+import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek, Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
