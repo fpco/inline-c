@@ -17,13 +17,14 @@ module Language.C.Inline.Nag.Internal
   , nagCtx
   ) where
 
+import           Control.Applicative ((<*>))
+import           Data.Functor ((<$>))
 import qualified Data.Map as Map
 import           Data.Monoid ((<>), mempty)
 import           Foreign.C.Types
+import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (Storable(..))
 import qualified Language.Haskell.TH as TH
-import           Control.Applicative ((<*>))
-import           Data.Functor ((<$>))
 
 import           Language.C.Inline
 import           Language.C.Inline.Context

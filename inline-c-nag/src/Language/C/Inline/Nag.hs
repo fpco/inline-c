@@ -25,7 +25,9 @@ import           Prelude hiding (exp)
 
 import           Data.Functor ((<$>))
 import           Foreign.C.String (peekCString)
+import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
+import           Foreign.Ptr (Ptr)
 
 import           Language.C.Inline.Nag.Internal
 import           Language.C.Inline
