@@ -21,6 +21,7 @@ module Language.C.Inline.Internal
 
       -- ** Emitting C code
     , emitLiteral
+    , Code(..)
 
       -- ** Inlining C code
       -- $embedding
@@ -28,6 +29,9 @@ module Language.C.Inline.Internal
     , inlineCode
     , inlineExp
     , inlineItems
+      -- *** Generating names
+    , uniqueCName
+    , uniqueFfiImportName
 
       -- * Parsing
       --
@@ -168,12 +172,11 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
     handleExists e = unless (isDoesNotExistError e) $ throwIO e
 
 -- | Simply appends some string to the module's C file.  Use with care.
-emitLiteral :: String -> TH.DecsQ
+emitLiteral :: String -> TH.Q ()
 emitLiteral s = do
   ctx <- getContext
   cFile <- cSourceLoc ctx
   TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
-  return []
 
 ------------------------------------------------------------------------
 -- Inlining

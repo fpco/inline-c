@@ -22,6 +22,7 @@ library
                      , Language.C.Types
                      , Language.C.Types.Parse
   other-modules:       Language.C.Inline.FunPtr
+                     , Language.C.Inline.Cpp.Internal
   ghc-options:         -Wall -O
   ghc-prof-options:    -auto-all
   build-depends:       base >=4 && <5
