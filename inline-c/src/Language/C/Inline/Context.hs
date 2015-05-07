@@ -77,7 +77,8 @@ data AntiQuoter a = AntiQuoter
     -- name to assign to the variable that will replace the
     -- anti-quotation, the type of said variable, and some arbitrary
     -- data which will then be fed to 'caqMarshaller'.
-  , aqMarshaller :: TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
+  , aqCMarshaller :: C.Type -> a -> (String -> String)
+  , aqHaskellMarshaller :: TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
     -- ^ Takes the type and the body returned by 'aqParser', together
     -- with the current 'TypesTable'.
     --
@@ -245,7 +246,8 @@ funPtrAntiQuoter = AntiQuoter
         Just id' -> do
          let s = C.unId id'
          return (s, C.parameterDeclarationType cTy, s)
-  , aqMarshaller = \cTypes cTy cId -> do
+  , aqCMarshaller = \_ _ -> id
+  , aqHaskellMarshaller = \cTypes cTy cId -> do
       hsTy <- convertType_ "funCtx" cTypes cTy
       hsExp <- getHsVariable "funCtx" cId
       case hsTy of
@@ -306,7 +308,8 @@ vecPtrAntiQuoter = AntiQuoter
         Just id' -> do
          let s = C.unId id'
          return (s, C.parameterDeclarationType cTy, s)
-  , aqMarshaller = \cTypes cTy cId -> do
+  , aqCMarshaller = \_ _ -> id
+  , aqHaskellMarshaller = \cTypes cTy cId -> do
       hsTy <- convertType_ "vecCtx" cTypes cTy
       hsExp <- getHsVariable "vecCtx" cId
       hsExp' <- [| vecCtxUnsafeWith $(return hsExp) |]
@@ -319,7 +322,8 @@ vecLenAntiQuoter = AntiQuoter
       cId <- C.parseIdentifier
       let s = C.unId cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
-  , aqMarshaller = \_cTypes cTy cId -> do
+  , aqCMarshaller = \_ _ -> id
+  , aqHaskellMarshaller = \_cTypes cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "vecCtx" cId
@@ -350,7 +354,8 @@ bsPtrAntiQuoter = AntiQuoter
       cId <- C.parseIdentifier
       let s = C.unId cId
       return (s, C.Ptr [] (C.TypeSpecifier mempty (C.Char (Just C.Unsigned))), s)
-  , aqMarshaller = \_cTypes cTy cId -> do
+  , aqCMarshaller = \_ _ -> id
+  , aqHaskellMarshaller = \_cTypes cTy cId -> do
       case cTy of
         C.Ptr _ (C.TypeSpecifier _ (C.Char (Just C.Unsigned))) -> do
           hsTy <- [t| Ptr CUChar |]
@@ -367,7 +372,8 @@ bsLenAntiQuoter = AntiQuoter
       cId <- C.parseIdentifier
       let s = C.unId cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
-  , aqMarshaller = \_cTypes cTy cId -> do
+  , aqCMarshaller = \_ _ -> id
+  , aqHaskellMarshaller = \_cTypes cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "bsCtx" cId

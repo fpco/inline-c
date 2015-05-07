@@ -281,7 +281,7 @@ genericQuote build = quoteCode $ \s -> do
               error  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
                        show antiId ++ ". (genericQuote)"
             Just x ->
-              aqMarshaller antiQ (ctxTypesTable ctx) cTy x
+              aqHaskellMarshaller antiQ (ctxTypesTable ctx) cTy x
   let hsFunType = convertCFunSig hsType $ map fst hsParams
   let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
   buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []

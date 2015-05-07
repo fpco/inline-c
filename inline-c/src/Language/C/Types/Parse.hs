@@ -115,8 +115,11 @@ runCParser
   -> (ReaderT IsTypeName (Parsec.Parsec s ()) a)
   -- ^ Parser.  Anything with type @forall m. CParser m => m a@ is a
   -- valid argument.
-  -> Either Parsec.ParseError a
-runCParser isTypeName fn s p = Parsec.parse (runReaderT p isTypeName) fn s
+  -> Either String a
+runCParser isTypeName fn s p =
+  case Parsec.parse (runReaderT p isTypeName) fn s of
+    Left err -> Left $ show err
+    Right x -> Right x
 
 -- | Useful for quick testing.  Uses @\"quickCParser\"@ as source name, and throws
 -- an 'error' if parsing fails.

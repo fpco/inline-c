@@ -21,7 +21,6 @@ module Language.C.Inline.Internal
 
       -- ** Emitting C code
     , emitLiteral
-    , Code(..)
 
       -- ** Inlining C code
       -- $embedding
@@ -437,7 +436,8 @@ parseTypedC antiQs = do
       [ do void $ Parser.try (Parser.string $ antiQId ++ ":") Parser.<?> "anti quoter id"
            (s, cTy, x) <- aqParser antiQ
            id' <- freshId s
-           return ([(id', cTy, AntiQuote antiQId (toSomeEq x))], C.unId id')
+           let body = aqCMarshaller antiQ cTy x (C.unId id')
+           return ([(id', cTy, AntiQuote antiQId (toSomeEq x))], body)
       | (antiQId, SomeAntiQuoter antiQ) <- Map.toList antiQs
       ]
 
