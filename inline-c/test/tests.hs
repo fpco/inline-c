@@ -25,7 +25,7 @@ context (baseCtx <> funCtx <> vecCtx)
 include "<math.h>"
 include "<stdio.h>"
 
-emitLiteral [r|
+literal [r|
 int francescos_mul(int x, int y) {
   return x * y;
 }
