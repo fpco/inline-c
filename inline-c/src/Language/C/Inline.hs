@@ -51,7 +51,7 @@ module Language.C.Inline
 
 import           Prelude hiding (exp)
 
-import           Control.Monad (forM)
+import           Control.Monad (forM, void)
 import qualified Data.Map as Map
 import           Foreign.Marshal.Alloc (alloca)
 import           Foreign.Ptr (Ptr)
@@ -326,13 +326,15 @@ genericQuote build = quoteCode $ \s -> do
 include :: String -> TH.DecsQ
 include s
   | null s = error "inline-c: empty string (include)"
-  | head s == '<' = emitLiteral $ "#include " ++ s
-  | otherwise = emitLiteral $ "#include \"" ++ s ++ "\""
+  | head s == '<' = literal $ "#include " ++ s
+  | otherwise = literal $ "#include \"" ++ s ++ "\""
 
 -- | Emits an arbitrary C string to the C code associated with the
 -- current module.  Use with care.
 literal :: String -> TH.DecsQ
-literal = emitLiteral
+literal s = do
+  void $ emitLiteral s
+  return []
 
 ------------------------------------------------------------------------
 -- 'Ptr' utils
