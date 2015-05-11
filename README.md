@@ -18,13 +18,13 @@ any need for a binding to the foreign function:
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-import           Language.C.Inline
+import qualified Language.C.Inline as C
 
-include "<math.h>"
+C.include "<math.h>"
 
 main :: IO ()
 main = do
-  x <- [cexp| double{ cos(1) } |]
+  x <- [C.exp| double{ cos(1) } |]
   print x
 ```
 
@@ -32,19 +32,20 @@ main = do
 language extension implemented in GHC.
 [Template Haskell][ghc-manual-template-haskell] is also required.
 Importing the `Language.C.Inline` module brings in scope most required
-Haskell definitions. `include "<math.h>"` brings into scope the
+Haskell definitions. `C.include "<math.h>"` brings into scope the
 foreign function `cos()` that we wish to call. Finally, in the `main`
-function, `[cexp| double { cos(1) } |]` denotes an inline C expression
+function, `[C.exp| double { cos(1) } |]` denotes an inline C expression
 of type `double`. `cexp` stands for "C expression". It is a custom
 quasiquoter provided by `inline-c`.
 
-A `cexp` quasiquotation always includes a type annotation for the
-inline C expression. This annotation determins the type of the
+A `C.exp` quasiquotation always includes a type annotation for the
+inline C expression. This annotation determines the type of the
 quasiquotation in Haskell. Out of the box, `inline-c` knows how to map
-many common C types to Haskell type. In this case, 
+many common C types to Haskell type. In this case,
 
 ```
-[cexp| double { cos(1) } |] :: IO CDouble
+[C.exp| double { cos(1) } |] :: IO CDouble
+```
 
 ## Multiple statements
 
@@ -55,13 +56,13 @@ the form of a sequence of statements, using the `c` quasiquoter:
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-import           Language.C.Inline
+import qualified Language.C.Inline as C
 
-include "<stdio.h>"
+C.include "<stdio.h>"
 
 main :: IO ()
 main = do
-  x <- [c| int {
+  x <- [C.stmts| int {
       // Read and sum 5 integers
       int i, sum = 0, tmp;
       for (i = 0; i < 5; i++) {
@@ -73,7 +74,7 @@ main = do
   print x
 ```
 
-Just as with `cexp`, we need a type annotation on the entire C block.
+Just as with `C.exp`, we need a type annotation on the entire C block.
 The annotation specifies the return type. That is, the type of the
 expression in any return statement.
 
@@ -90,14 +91,15 @@ function whose parameter we can refer to from within C:
 ```
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
-import           Language.C.Inline
+import qualified Language.C.Inline as C
+import           Foreign.C.Types
 
-include "<stdio.h>"
+C.include "<stdio.h>"
 
 -- | @readAndSum n@ reads @n@ numbers from standard input and returns
 -- their sum.
 readAndSum :: CInt -> IO CInt
-readAndSum n  = [c| int (int n) {
+readAndSum n  = [C.stmts| int (int n) {
     // Read and sum n integers
     int i, sum = 0, tmp;
     for (i = 0; i < n; i++) {
@@ -130,7 +132,7 @@ The second way to capture Haskell variables is by "anti-quoting" them.
 
 ```
 readAndSum :: CInt -> IO CInt
-readAndSum n  = [c| int {
+readAndSum n  = [C.stmts| int {
     // Read and sum n integers
     int i, sum = 0, tmp;
     for (i = 0; i < $(int n); i++) {
@@ -165,23 +167,23 @@ using [contexts](#contexts).
 Everything beyond the base functionality provided by `inline-c` is
 specified in a structure that we call "`Context`".  From a user
 perspective, if we want to use anything but the default context
-(`baseCtx`), we must set the `Context` explicitly using the
-`setContext` function.  The next two sections include several examples.
+(`C.baseCtx`), we must set the `C.Context` explicitly using the
+`C.context` function.  The next two sections include several examples.
 
-The `Context` allows to extend `inline-c` to support
+The `C.Context` allows to extend `inline-c` to support
 
 * Custom C types beyond the basic ones;
 * And [additional anti-quoters](#more-anti-quoters).
 
-`Context`s can be composed using their `Monoid` instance.
+`C.Context`s can be composed using their `Monoid` instance.
 
-Ideally a `Context` will be provided for each C library that should be
+Ideally a `C.Context` will be provided for each C library that should be
 used with `inline-c`. The user can then combine multiple contexts
 together if multiple libraries are to be used in the same program. See
-the [section about NAG](#using-inline-c-with-nag) for examples using
-a `Context` tailored for a library.
+the [section about NAG](#using-inline-c-with-nag) for examples using a
+`C.Context` tailored for a library.
 
-For information regarding how to define `Context`s, see the
+For information regarding how to define `C.Context`s, see the
 Haddock-generated API documentation for `Language.C.Inline.Context`.
 
 ## More anti-quoters
@@ -193,7 +195,7 @@ by the user, using [contexts](#contexts).
 
 ### Vectors
 
-The `vec-len` and `vec-ptr` anti-quoters in the `vecCtx` context let us
+The `vec-len` and `vec-ptr` anti-quoters in the `C.vecCtx` context let us
 easily use [Haskell vectors](http://hackage.haskell.org/package/vector)
 in C.  Continuing along the "summing" theme, we can write code that sums
 Haskell vectors in C:
@@ -201,16 +203,17 @@ Haskell vectors in C:
 ```
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
-import           Language.C.Inline
+import qualified Language.C.Inline as C
 import qualified Data.Vector.Storable.Mutable as V
 import           Data.Monoid ((<>))
+import           Foreign.C.Types
 
--- To use the vector anti-quoters, we need the 'vecCtx' along with the
--- 'baseCtx'.
-setContext (baseCtx <> vecCtx)
+-- To use the vector anti-quoters, we need the 'C.vecCtx' along with the
+-- 'C.baseCtx'.
+C.context (C.baseCtx <> C.vecCtx)
 
 sumVec :: V.IOVector CDouble -> IO CDouble
-sumVec vec = [c| double {
+sumVec vec = [C.stmts| double {
     double sum = 0;
     int i;
     for (i = 0; i < $vec-len:vec; i++) {
@@ -232,17 +235,17 @@ Since `vec` is a vector of `CDouble`s, we want a pointer to `double`s.
 
 ### Function pointers
 
-Using the `fun` anti-quoter, present in the `funCtx` context, we can
+Using the `fun` anti-quoter, present in the `C.funCtx` context, we can
 easily turn Haskell function into function pointers.
 
 ```
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
-import           Language.C.Inline
+import qualified Language.C.Inline as C
 
--- To use the function pointer anti-quoter, we need the 'funCtx along with
--- the 'baseCtx'.
-setContext (baseCtx <> funCtx)
+-- To use the function pointer anti-quoter, we need the 'C.funCtx along with
+-- the 'C.baseCtx'.
+C.context (C.baseCtx <> C.funCtx)
 
 ackermann :: CLong -> CLong -> CLong
 ackermann m n
@@ -255,7 +258,7 @@ main = do
   let ackermannIO m n = return $ ackermann m n
   let x = 3
   let y = 4
-  z <- [cexp| long{
+  z <- [C.exp| long{
       $fun:(int (*ackermannIO)(int, int))($(long x), $(long y))
     } |]
   print z
@@ -275,7 +278,7 @@ declaration syntax.
 
 ## Using `inline-c` with NAG
 
-The `inline-c-nag` package provides a `Context` and various utilities
+The `inline-c-nag` package provides a `C.Context` and various utilities
 which make it easy to use the NAG library from Haskell.  We present two
 examples which not only demonstrate that but also show a nice mix of the
 features available in `inline-c`.
@@ -296,30 +299,31 @@ error handling using the `withNagError` function, defined in the
 ```
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
-import           Language.C.Inline.Nag
+import qualified Language.C.Inline.Nag as C
 import qualified Data.Vector.Storable as V
+import           Foreign.C.Types
 
 -- Set the 'Context' to the one provided by "Language.C.Inline.Nag".
 -- This gives us access to NAG types such as 'Complex' and 'NagError',
 -- and also includes the vector and function pointers anti-quoters.
-setContext nagCtx
+C.context C.nagCtx
 
 -- Include the headers files we need.
-include "<nag.h>"
-include "<nagc06.h>"
+C.include "<nag.h>"
+C.include "<nagc06.h>"
 
 -- | Computes the discrete Fourier transform for the given sequence of
 -- 'Complex' numbers.  Returns 'Left' if some error occurred, together
 -- with the error message.
-forwardFFT :: V.Vector Complex -> IO (Either String (V.Vector Complex))
+forwardFFT :: V.Vector C.Complex -> IO (Either String (V.Vector C.Complex))
 forwardFFT x_orig = do
   -- "Thaw" the input vector -- the input is an immutable vector, and by
   -- "thawing" it we create a mutable copy of it.
   x <- V.thaw x_orig
   -- Use 'withNagError' to easily check whether the NAG operation was
   -- successful.
-  withNagError $ \fail_ -> do
-    [cexp| void {
+  C.withNagError $ \fail_ -> do
+    [C.exp| void {
        nag_sum_fft_complex_1d(
          // We're computing a forward transform
          Nag_ForwardTransform,
@@ -375,21 +379,22 @@ function provided by NAG.
 import qualified Data.Vector.Storable as V
 import           Foreign.ForeignPtr (newForeignPtr_)
 import           Foreign.Storable (poke)
-import           Language.C.Inline.Nag
+import qualified Language.C.Inline.Nag as C
+import           Foreign.C.Types
 
-setContext nagCtx
+C.context C.nagCtx
 
-include "<math.h>"
-include "<nag.h>"
-include "<nage04.h>"
-include "<nagx02.h>"
+C.include "<math.h>"
+C.include "<nag.h>"
+C.include "<nage04.h>"
+C.include "<nagx02.h>"
 
 nelderMead
   :: V.Vector CDouble
   -- ^ Starting point
   -> (V.Vector CDouble -> CDouble)
   -- ^ Function to minimize
-  -> Nag_Integer
+  -> C.Nag_Integer
   -- ^ Maximum number of iterations (must be >= 1).
   -> IO (Either String (CDouble, V.Vector CDouble))
   -- ^ Position of the minimum.  'Left' if something went wrong, with
@@ -404,8 +409,8 @@ nelderMead xImm pureFunct maxcal = do
     -- Create mutable input/output vector for C code
     x <- V.thaw xImm
     -- Call the C code
-    withNagError $ \fail_ -> do
-      minCost <- [c| double {
+    C.withNagError $ \fail_ -> do
+      minCost <- [C.stmts| double {
           // The function takes an exit parameter to store the minimum
           // cost.
           double f;

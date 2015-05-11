@@ -121,10 +121,10 @@ import           Language.C.Inline.FunPtr
 -- In general, they are used like so:
 --
 -- @
--- [cXXX| int(double x, float y) { \<C code\> } |]
+-- [C.XXX| int(double x, float y) { \<C code\> } |]
 -- @
 --
--- Where @cXXX@ is one of the quasi-quoters defined in this section.
+-- Where @C.XXX@ is one of the quasi-quoters defined in this section.
 --
 -- The syntax is essentially representing an anonymous C function:
 --
@@ -173,6 +173,8 @@ import           Language.C.Inline.FunPtr
 -- Which would capture the Haskell variable @x@ of type @'CDouble'@.
 --
 -- Parameter list capturing and anti-quoting can be freely mixed.
+--
+-- The @$@ character can be used in C expressions using @$$@.
 --
 -- == Function purity
 --
