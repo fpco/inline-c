@@ -123,9 +123,6 @@ main :: IO ()
 main = Chart.toFile Chart.def "lorenz.png" $ do
     Chart.layout_title Chart..= "Lorenz"
     Chart.plot $ Chart.line "curve" [pts]
-    Chart.plot $ do
-      Chart.setColors [Chart.opaque Chart.blue]
-      Chart.points "points" (every 5 pts)
   where
     pts = [(f V.! 0, f V.! 2) | (_x, f) <- go 0 (V.fromList [10.0 , 1.0 , 1.0])]
 
