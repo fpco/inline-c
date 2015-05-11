@@ -141,8 +141,10 @@ getModuleState = do
 setContext :: Context -> TH.Q ()
 setContext ctx = do
   mbModuleState <- TH.runIO $ readIORef moduleStateRef
-  forM_ mbModuleState $ \_moduleState -> do
-    error "inline-c: The module has already been initialised (setContext)."
+  forM_ mbModuleState $ \ms -> do
+    thisModule <- TH.loc_module <$> TH.location
+    when (msModuleName ms == thisModule) $
+      error "inline-c: The module has already been initialised (setContext)."
   void $ initialiseModuleState $ Just ctx
 
 bumpGeneratedNames :: TH.Q Int

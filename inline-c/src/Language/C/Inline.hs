@@ -2,6 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 -- | The main goal of this module is to allow painless embedding of C
 -- code in Haskell code.  If you're interested in how to use the
 -- library, skip to the "Inline C" section.  To build, read the first
@@ -37,6 +38,7 @@ module Language.C.Inline
       -- * 'Ptr' utils
     , withPtr
     , withPtr_
+    , WithPtrs(..)
 
       -- * 'FunPtr' utils
       --
@@ -352,6 +354,51 @@ withPtr_ :: (Storable a) => (Ptr a -> IO ()) -> IO a
 withPtr_ f = do
   (x, ()) <- withPtr f
   return x
+
+class WithPtrs a where
+  type WithPtrsPtrs a :: *
+  withPtrs :: (WithPtrsPtrs a -> IO b) -> IO (a, b)
+
+  withPtrs_ :: (WithPtrsPtrs a -> IO ()) -> IO a
+  withPtrs_ f = do
+    (x, _) <- withPtrs f
+    return x
+
+instance (Storable a, Storable b) => WithPtrs (a, b) where
+  type WithPtrsPtrs (a, b) = (Ptr a, Ptr b)
+  withPtrs f = do
+    (a, (b, x)) <- withPtr $ \a -> withPtr $ \b -> f (a, b)
+    return ((a, b), x)
+
+instance (Storable a, Storable b, Storable c) => WithPtrs (a, b, c) where
+  type WithPtrsPtrs (a, b, c) = (Ptr a, Ptr b, Ptr c)
+  withPtrs f = do
+    (a, ((b, c), x)) <- withPtr $ \a -> withPtrs $ \(b, c) -> f (a, b, c)
+    return ((a, b, c), x)
+
+instance (Storable a, Storable b, Storable c, Storable d) => WithPtrs (a, b, c, d) where
+  type WithPtrsPtrs (a, b, c, d) = (Ptr a, Ptr b, Ptr c, Ptr d)
+  withPtrs f = do
+    (a, ((b, c, d), x)) <- withPtr $ \a -> withPtrs $ \(b, c, d) -> f (a, b, c, d)
+    return ((a, b, c, d), x)
+
+instance (Storable a, Storable b, Storable c, Storable d, Storable e) => WithPtrs (a, b, c, d, e) where
+  type WithPtrsPtrs (a, b, c, d, e) = (Ptr a, Ptr b, Ptr c, Ptr d, Ptr e)
+  withPtrs f = do
+    (a, ((b, c, d, e), x)) <- withPtr $ \a -> withPtrs $ \(b, c, d, e) -> f (a, b, c, d, e)
+    return ((a, b, c, d, e), x)
+
+instance (Storable a, Storable b, Storable c, Storable d, Storable e, Storable f) => WithPtrs (a, b, c, d, e, f) where
+  type WithPtrsPtrs (a, b, c, d, e, f) = (Ptr a, Ptr b, Ptr c, Ptr d, Ptr e, Ptr f)
+  withPtrs fun = do
+    (a, ((b, c, d, e, f), x)) <- withPtr $ \a -> withPtrs $ \(b, c, d, e, f) -> fun (a, b, c, d, e, f)
+    return ((a, b, c, d, e, f), x)
+
+instance (Storable a, Storable b, Storable c, Storable d, Storable e, Storable f, Storable g) => WithPtrs (a, b, c, d, e, f, g) where
+  type WithPtrsPtrs (a, b, c, d, e, f, g) = (Ptr a, Ptr b, Ptr c, Ptr d, Ptr e, Ptr f, Ptr g)
+  withPtrs fun = do
+    (a, ((b, c, d, e, f, g), x)) <- withPtr $ \a -> withPtrs $ \(b, c, d, e, f, g) -> fun (a, b, c, d, e, f, g)
+    return ((a, b, c, d, e, f, g), x)
 
 ------------------------------------------------------------------------
 -- setContext alias
