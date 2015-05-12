@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/fpco/inline-c.svg)](https://travis-ci.org/fpco/inline-c)
+
 # inline-c
 
 `inline-c` is a library for seamlessly mixing Haskell and C source
