@@ -144,7 +144,7 @@ import           Language.C.Inline.FunPtr
 --   expression.  @stmts@ functions accept a list of statemens, like the
 --   body of a function.
 --
--- See also the @tutorial.md@ file for more documentation.
+-- See also the @README.md@ file for more documentation.
 --
 -- === Anti-quoters
 --
