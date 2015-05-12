@@ -99,7 +99,7 @@ type IsTypeName = Id -> Bool
 -- @parsers@ package.  You can use the parsing routines with any of the
 -- parsers that implement the classes, such as @parsec@ or @trifecta@.
 --
--- This knowledge is required for parsing C, see
+-- The 'MonadReader' with 'IsTypeName' is required for parsing C, see
 -- <http://en.wikipedia.org/wiki/The_lexer_hack>.
 type CParser m = (Monad m, Functor m, Applicative m, MonadPlus m, Parsing m, CharParsing m, TokenParsing m, LookAheadParsing m, MonadReader IsTypeName m)
 
