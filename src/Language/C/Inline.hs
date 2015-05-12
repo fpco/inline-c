@@ -129,20 +129,15 @@ import           Language.C.Inline.FunPtr
 -- In general, they are used like so:
 --
 -- @
--- [C.XXX| int(double x, float y) { \<C code\> } |]
+-- [C.XXX| int { \<C code\> } |]
 -- @
 --
 -- Where @C.XXX@ is one of the quasi-quoters defined in this section.
 --
--- The syntax is essentially representing an anonymous C function:
+-- The syntax is essentially representing a piece of typed C:
 --
--- * The first type to appear (@int@ in the example) is the return type
---   of said function.
---
--- * The arguments list (@(double x, float y)@ in the example) captures
---   Haskell variables currently in scope, and makes them available from
---   the C code.  If no parameters are present, the parentheses can be
---   omitted.
+-- * The first type to appear (@int@ in the example) is the type of said
+--   C code.
 --
 -- * The syntax of the @\<C code\>@ depends on on the quasi-quoter used,
 --   and the anti-quoters available.  @exp@ functions accept a C
@@ -150,6 +145,22 @@ import           Language.C.Inline.FunPtr
 --   body of a function.
 --
 -- See also the @tutorial.md@ file for more documentation.
+--
+-- === Anti-quoters
+--
+-- Haskell variables can be captured using anti-quoters.  @inline-c@
+-- provides a basic anti-quoting mechanism extensible with user-defined
+-- anti-quoters (see "Language.C.Inline.Context").  The basic
+-- anti-quoter lets you capture Haskell variables on the fly, for
+-- example we might say
+--
+-- @
+-- ['C.exp'| double { cos($(double x)) } |]
+-- @
+--
+-- Which would capture the Haskell variable @x@ of type @'CDouble'@.
+--
+-- The @$@ character can be used in C expressions using @$$@.
 --
 -- === Variable capture and the typing relation
 --
@@ -159,29 +170,11 @@ import           Language.C.Inline.FunPtr
 -- arrays are both converted to Haskell @'Ptr'@s, and function pointers are
 -- converted to @'FunPtr'@s. Sized arrays are not supported.
 --
--- Similarly, when capturing Haskell variables in the parameter list, their type
--- is assumed to be of the Haskell type corresponding to the C type provided.
--- For example, if we capture variable @x@ using @double x@ in the parameter
--- list, the code will expect a variable @x@ of type @CDouble@ in Haskell (when
--- using 'baseCtx').
---
--- === Anti-quoters
---
--- Apart from using parameter lists, Haskell variables can be captured
--- using anti-quoters.  @inline-c@ provides a basic anti-quoting
--- mechanism extensible with user-defined anti-quoters (see
--- "Language.C.Inline.Context").  The basic anti-quoter lets you capture
--- Haskell variables on the fly, for example we might say
---
--- @
--- ['C.exp'| double { cos($(double x)) } |]
--- @
---
--- Which would capture the Haskell variable @x@ of type @'CDouble'@.
---
--- Parameter list capturing and anti-quoting can be freely mixed.
---
--- The @$@ character can be expressed in C expressions using @$$@.
+-- Similarly, when capturing Haskell variables using anti-quoting, their
+-- type is assumed to be of the Haskell type corresponding to the C type
+-- provided.  For example, if we capture variable @x@ using @double x@
+-- in the parameter list, the code will expect a variable @x@ of type
+-- @CDouble@ in Haskell (when using 'baseCtx').
 --
 -- == Function purity
 --
@@ -226,10 +219,10 @@ import           Language.C.Inline.FunPtr
 -- parseVector :: 'CInt' -> 'IO' (V.IOVector 'CDouble')
 -- parseVector len = do
 --   vec <- V.new $ 'fromIntegral' len0
---   V.unsafeWith vec $ \\ptr -> [C.'stmts'| void(double *ptr) {
+--   V.unsafeWith vec $ \\ptr -> [C.'stmts'| void {
 --     int i;
 --     for (i = 0; i < $(int len); i++) {
---       scanf("%lf ", &ptr[i]);
+--       scanf("%lf ", &$(double *ptr)[i]);
 --     }
 --   } |]
 --   'return' vec

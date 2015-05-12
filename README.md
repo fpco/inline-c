@@ -81,8 +81,7 @@ expression in any return statement.
 ## Capturing Haskell variables -- parameter declaration
 
 `inline-c` allows referring to Haskell variables inside C expressions
-and code blocks. We can do so in two ways: declaring a parameter and
-using an antiquotation. We'll talk about the former first.
+and code blocks. We do so by "anti-quoting" them.
 
 Let's say that we wanted to parameterize the function we wrote above
 by how many numbers we should read. We can do so by defining a Haskell
@@ -99,10 +98,10 @@ C.include "<stdio.h>"
 -- | @readAndSum n@ reads @n@ numbers from standard input and returns
 -- their sum.
 readAndSum :: CInt -> IO CInt
-readAndSum n  = [C.stmts| int (int n) {
+readAndSum n  = [C.stmts| int {
     // Read and sum n integers
     int i, sum = 0, tmp;
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < $(int n); i++) {
       scanf("%d ", &tmp);
       sum += tmp;
     }
@@ -115,41 +114,13 @@ main = do
   print x
 ```
 
-The interesting bit in the code above is right next to the type
-declaration for the C block, `int (int n) { ... }`. Following the
-return type, `int`, we have a parameter list, in this case composed of
-just one parameter, `int n`. The parameters specified in this way are
-then available in the C code, as shown here, `n` being used throughout
-the C snippet.
+Here, the Haskell variable `n` is captured right where we need it using
+`$(int n)`.  Standard anti-quotation (we'll talk about additional ones
+later) consists of a `$` followed by a C declaration in parenthesis.
 
-For each specified parameter, a variable with a matching type is
-expected in the Haskell environment.  In this case `inline-c` expects a
-variable named `n` of type `CInt`, which is the case.
-
-## Capturing Haskell variables -- anti-quotation
-
-The second way to capture Haskell variables is by "anti-quoting" them.
-
-```
-readAndSum :: CInt -> IO CInt
-readAndSum n  = [C.stmts| int {
-    // Read and sum n integers
-    int i, sum = 0, tmp;
-    for (i = 0; i < $(int n); i++) {
-      scanf("%d ", &tmp);
-      sum += tmp;
-    }
-    return sum;
-  } |]
-```
-
-Here, the Haskell variable `n` is not captured via a parameter
-declaration, but right where we need it using `$(int n)`. When the
-captured variable is used once, anti-quotation provides a cheaper
-notation.
-
-Note that parameter declarations and anti-quotations can be mixed
-freely.
+For each anti-quotation, a variable with a matching type is expected in
+the Haskell environment.  In this case `inline-c` expects a variable
+named `n` of type `CInt`, which is the case.
 
 ## What can be captured and returned?
 

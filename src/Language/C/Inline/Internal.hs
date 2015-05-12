@@ -45,7 +45,7 @@ module Language.C.Inline.Internal
 
 import           Control.Applicative ((<*), (*>), (<|>))
 import           Control.Exception (catch, throwIO)
-import           Control.Monad (void, msum, when, forM, unless)
+import           Control.Monad (void, msum, when, unless)
 import           Control.Monad.State (evalStateT, StateT, get, put)
 import           Control.Monad.Trans.Class (lift)
 import qualified Crypto.Hash as CryptoHash
@@ -55,7 +55,6 @@ import           Data.Functor ((<$>))
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
-import qualified Data.Set as Set
 import           Data.Typeable (Typeable, cast)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -370,31 +369,12 @@ parseTypedC
 parseTypedC antiQs = do
   -- Parse return type (consume spaces first)
   Parser.spaces
-  cType <- C.parseParameterDeclaration
-  (cRetType, cParams1) <- processReturnType cType
+  cRetType <- C.parseType
   -- Parse the body
   void $ Parser.char '{'
-  (cParams2, cBody) <- evalStateT parseBody 0
-  let cParams = map (\(cId, cTy) -> (cId, cTy, Plain (C.unId cId))) cParams1 ++ cParams2
+  (cParams, cBody) <- evalStateT parseBody 0
   return $ ParseTypedC cRetType cParams cBody
   where
-    processReturnType
-      :: C.ParameterDeclaration -> m (C.Type, [(C.Id, C.Type)])
-    processReturnType (C.ParameterDeclaration _ cTy) = case cTy of
-      C.Proto cRetType cParams -> do
-        cParams' <- forM cParams $ \param -> do
-          id' <- case C.parameterDeclarationId param of
-            Nothing -> fail $ pretty80 $
-              "Unnamed parameter" <+> PP.pretty param
-            Just id' -> return id'
-          return (id', C.parameterDeclarationType param)
-        let dups = Set.size (Set.fromList (map fst cParams')) /= length cParams'
-        when dups $
-          fail "Duplicates in parameter list"
-        return (cRetType, cParams')
-      _ -> do
-        return (cTy, [])
-
     parseBody :: StateT Int m ([(C.Id, C.Type, ParameterType)], String)
     parseBody = do
       -- Note that this code does not use "lexing" combinators (apart

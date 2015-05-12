@@ -28,57 +28,25 @@ spec = do
   Hspec.describe "parsing" $ do
     Hspec.it "parses simple C expression" $ do
       (retType, params, cExp) <- goodParse [r|
-          int(double x) { (int) ceil(x + ((double) $(float y))) }
+          int { (int) ceil($(double x) + ((double) $(float y))) }
         |]
       retType `Hspec.shouldBe` (cty "int")
       params `shouldMatchParameters` [(cty "double", Plain "x"), (cty "float", Plain "y")]
-      cExp `shouldMatchBody` " (int) ceil(x \\+ ((double) y[a-z0-9_]+)) "
-    Hspec.it "empty argument list (1)" $ do
-      void $ goodParse [r| int{ 4 } |]
-    Hspec.it "empty argument list (2)" $ do
-      void $ goodParse [r| int(){ 4 } |]
-    Hspec.it "does not accept duplicates in parameter list" $ do
-      badParse [r| int(int x, double x) { x } |]
-    Hspec.it "accepts conflicting declarations (1)" $ do
-      void $ goodParse [r| int(int x) { $(double x) } |]
-    Hspec.it "accepts conflicting declarations (2)" $ do
-      void $ goodParse [r| int { $(double x) + $(int x) } |]
-    Hspec.it "accepts agreeing declarations, if with suffix (1)" $ do
-      void $ goodParse [r| int(int x) { $(int x) } |]
-    Hspec.it "accepts agreeing declarations, if with suffix (2)" $ do
-      void $ goodParse [r| int { $(int x) + $(int y) } |]
-    Hspec.it "rejects duplicate agreeing declarations, in params list" $ do
-      badParse [r| int(int x, int x) { x } |]
-    Hspec.it "accepts suffix types" $ do
+      cExp `shouldMatchBody` " (int) ceil(x[a-z0-9_]+ \\+ ((double) y[a-z0-9_]+)) "
+    Hspec.it "accepts anti quotes" $ do
       void $ goodParse [r| int { $(int x) } |]
     Hspec.it "rejects if bad braces (1)" $ do
-      badParse [r| int(int x) x |]
+      badParse [r| int x |]
     Hspec.it "rejects if bad braces (2)" $ do
-      badParse [r| int(int x) { x |]
-    Hspec.it "rejects void params list" $ do
-      badParse [r| int(void) { 4 } |]
-    Hspec.it "rejects unnamed parameters" $ do
-      badParse [r| int(int, double) { 4 } |]
+      badParse [r| int { x |]
     Hspec.it "parses function pointers" $ do
       void $ goodParse [r| int(int (*add)(int, int)) { add(3, 4) } |]
-    Hspec.it "parses returning function pointers without parameters" $ do
+    Hspec.it "parses returning function pointers" $ do
       (retType, params, cExp) <-
         goodParse [r| double (*)(double) { &cos } |]
       retType `Hspec.shouldBe` (cty "double (*)(double)")
       params `shouldMatchParameters` []
       cExp `shouldMatchBody` " &cos "
-    Hspec.it "parses returning function pointers with parameters" $ do
-      (retType, params, cExp) <-
-        goodParse [r| double (*f(int dummy))(double) { &cos } |]
-      retType `Hspec.shouldBe` (cty "double (*)(double)")
-      params `shouldMatchParameters` [(cty "int", Plain "dummy")]
-      cExp `shouldMatchBody` " &cos "
-    Hspec.it "parses named function type" $ do
-      (retType, params, cExp) <-
-        goodParse [r| double c_cos(double x) { cos(x) } |]
-      retType `Hspec.shouldBe` (cty "double")
-      params `shouldMatchParameters` [(cty "double", Plain "x")]
-      cExp `shouldMatchBody` " cos(x) "
   where
     ctx = baseCtx <> funCtx
 

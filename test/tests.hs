@@ -2,9 +2,9 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
-import           Prelude hiding (exp)
+import           Prelude hiding (exp, sum)
 
-import           Data.Monoid ((<>), mempty)
+import           Data.Monoid ((<>))
 import qualified Data.Vector.Storable.Mutable as V
 import           Foreign.C.Types
 import qualified Language.Haskell.TH as TH
@@ -68,18 +68,13 @@ main = Hspec.hspec $ do
     Hspec.it "exp" $ do
       let x = 3
       let y = 4
-      z <- [exp| int(int x, int y){ x + y + 5 } |]
+      z <- [exp| int{ $(int x) + $(int y) + 5 } |]
       z `Hspec.shouldBe` x + y + 5
     Hspec.it "exp_unsafe" $ do
       let x = 2
       let y = 10
-      z <- [exp_unsafe| int(int x, int y){ 7 + x + y } |]
+      z <- [exp_unsafe| int{ 7 + $(int x) + $(int y) } |]
       z `Hspec.shouldBe` x + y + 7
-    Hspec.it "suffix type" $ do
-      let x = 3
-      let y = 4
-      z <- [exp| int { $(int x) + $(int y) } |]
-      z `Hspec.shouldBe` 7
     Hspec.it "void exp" $ do
       [exp| void { printf("Hello\n") } |]
     Hspec.it "function pointer argument" $ do
