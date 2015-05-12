@@ -123,10 +123,10 @@ import           Language.C.Inline.FunPtr
 
 -- $quoting
 --
--- The functions below are the main interface to this library, and let
--- you easily inline C code in Haskell.
+-- The quasiquoters below are the main interface to this library, for inlining
+-- C code into Haskell source files.
 --
--- In general, they are used like so:
+-- In general, quasiquoters are used like so:
 --
 -- @
 -- [C.XXX| int { \<C code\> } |]
@@ -134,10 +134,9 @@ import           Language.C.Inline.FunPtr
 --
 -- Where @C.XXX@ is one of the quasi-quoters defined in this section.
 --
--- The syntax is essentially representing a piece of typed C:
+-- This syntax stands for a piece of typed C, decorated with a type:
 --
--- * The first type to appear (@int@ in the example) is the type of said
---   C code.
+-- * The first type to appear (@int@ in the example) is the type of said C code.
 --
 -- * The syntax of the @\<C code\>@ depends on on the quasi-quoter used,
 --   and the anti-quoters available.  @exp@ functions accept a C
@@ -151,16 +150,16 @@ import           Language.C.Inline.FunPtr
 -- Haskell variables can be captured using anti-quoters.  @inline-c@
 -- provides a basic anti-quoting mechanism extensible with user-defined
 -- anti-quoters (see "Language.C.Inline.Context").  The basic
--- anti-quoter lets you capture Haskell variables on the fly, for
+-- anti-quoter lets you capture Haskell variables, for
 -- example we might say
 --
 -- @
--- ['C.exp'| double { cos($(double x)) } |]
+-- let x = pi / 3 in ['C.exp'| double { cos($(double x)) } |]
 -- @
 --
 -- Which would capture the Haskell variable @x@ of type @'CDouble'@.
 --
--- The @$@ character can be used in C expressions using @$$@.
+-- In C expressions the @$@ character is denoted using @$$@.
 --
 -- === Variable capture and the typing relation
 --
@@ -187,8 +186,7 @@ import           Language.C.Inline.FunPtr
 -- @unsafe@ variants of the quasi-quoters are provided to call the C code
 -- unsafely, in the sense that the C code will block the RTS, with the advantage
 -- of a faster call to the foreign code. See
--- <https://www.haskell.org/onlinereport/haskell2010/haskellch8.html#x15-1590008.4.3>
--- for more info.
+-- <https://www.haskell.org/onlinereport/haskell2010/haskellch8.html#x15-1590008.4.3>.
 --
 -- == Examples
 --
@@ -248,7 +246,7 @@ quoteCode p = TH.QuasiQuoter
   { TH.quoteExp = p
   , TH.quotePat = error "inline-c: quotePat not implemented (quoteCode)"
   , TH.quoteType = error "inline-c: quoteType not implemented (quoteCode)"
-  , TH.quoteDec = error "inline-c: quoteDec not implemeted (quoteCode)"
+  , TH.quoteDec = error "inline-c: quoteDec not implemented (quoteCode)"
   }
 
 genericQuote
@@ -313,9 +311,9 @@ genericQuote build = quoteCode $ \s -> do
         go (paramType : params) = do
           [t| $(return paramType) -> $(go params) |]
 
--- | Emits an include CPP statement for C code associated with the current
--- module.  To avoid having to escape quotes, the function itself adds
--- them when appropriate, so that
+-- | Emits a CPP include directive for C code associated with the current
+-- module. To avoid having to escape quotes, the function itself adds them when
+-- appropriate, so that
 --
 -- @
 -- include "foo.h" ==> #include "foo.h"
@@ -356,7 +354,7 @@ withPtr_ f = do
   (x, ()) <- withPtr f
   return x
 
--- | Type-class with methods useful to allocate and peek multiple
+-- | Type class with methods useful to allocate and peek multiple
 -- pointers at once:
 --
 -- @
