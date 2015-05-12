@@ -278,10 +278,11 @@ declaration syntax.
 
 ## Using `inline-c` with NAG
 
-The `inline-c-nag` package provides a `C.Context` and various utilities
-which make it easy to use the NAG library from Haskell.  We present two
-examples which not only demonstrate that but also show a nice mix of the
-features available in `inline-c`.
+The [`inline-c-nag` package](https://github.com/fpco/inline-c-nag)
+provides a `C.Context` and various utilities which make it easy to use
+the NAG library from Haskell.  We present two examples which not only
+demonstrate that but also show a nice mix of the features available in
+`inline-c`.
 
 ### One dimensional FFT
 
