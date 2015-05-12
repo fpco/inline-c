@@ -18,7 +18,6 @@ module Language.C.Inline
       -- $building
 
       -- * Contexts
-      -- $context
       Context
     , baseCtx
     , funCtx
@@ -366,6 +365,14 @@ withPtr_ f = do
   (x, ()) <- withPtr f
   return x
 
+-- | Type-class with methods useful to allocate and peek multiple
+-- pointers at once:
+--
+-- @
+-- withPtrs_ :: (Storable a, Storable b) => ((Ptr a, Ptr b) -> IO ()) -> IO (a, b)
+-- withPtrs_ :: (Storable a, Storable b, Storable c) => ((Ptr a, Ptr b, Ptr c) -> IO ()) -> IO (a, b, c)
+-- ...
+-- @
 class WithPtrs a where
   type WithPtrsPtrs a :: *
   withPtrs :: (WithPtrsPtrs a -> IO b) -> IO (a, b)
