@@ -78,3 +78,9 @@ executable gsl-ode
   default-language:    Haskell2010
   extra-libraries:     gsl gslcblas m
   ghc-options:         -Wall
+
+  if flag(gsl-example)
+    buildable: True
+  else
+    buildable: False
+
