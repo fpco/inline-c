@@ -20,7 +20,7 @@ install:
   - cabal install --only-dependencies --enable-tests --enable-benchmarks
 
 script:
-  - cabal configure -flib-Werror -v2 --enable-tests --enable-benchmarks -fexamples
+  - cabal configure -flib-Werror -v2 --enable-tests --enable-benchmarks -fgsl-example
   - cabal build
   - cabal check
   - cabal test
