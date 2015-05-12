@@ -49,12 +49,21 @@ module Language.C.Inline
     , mkFunPtr
     , mkFunPtrFromName
     , peekFunPtr
+
+      -- * C types re-exports
+      --
+      -- | We re-export these since when `inline-c` generates FFI calls GHC
+      -- needs the constructors for those types.  So if we don't
+      -- re-export them you get really confusing errors about @CInt@ not
+      -- being an acceptable argument when you never even mentioned @CInt@.
+    , module Foreign.C.Types
     ) where
 
 import           Prelude hiding (exp)
 
 import           Control.Monad (forM, void)
 import qualified Data.Map as Map
+import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
 import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek, Storable)
