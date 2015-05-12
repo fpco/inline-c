@@ -70,13 +70,13 @@ type TypesTable = Map.Map C.TypeSpecifier TH.TypeQ
 -- @
 --
 -- Where @XXX@ is the name of the antiquoter and @YYY@ is something
--- parseable by the respective 'caqParser'.
+-- parseable by the respective 'aqParser'.
 data AntiQuoter a = AntiQuoter
   { aqParser :: forall m. C.CParser m => m (String, C.Type, a)
     -- ^ Parses the body of the antiquotation, returning an hint for the
     -- name to assign to the variable that will replace the
     -- anti-quotation, the type of said variable, and some arbitrary
-    -- data which will then be fed to 'caqMarshaller'.
+    -- data which will then be fed to 'aqMarshaller'.
   , aqMarshaller :: TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
     -- ^ Takes the type and the body returned by 'aqParser', together
     -- with the current 'TypesTable'.
