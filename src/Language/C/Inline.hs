@@ -107,7 +107,7 @@ import           Language.C.Inline.FunPtr
 -- Note that currently @cabal repl@ is not supported, because the C code is not
 -- compiled and linked appropriately.
 --
--- If we were to compile the above manaully, we could:
+-- If we were to compile the above manually, we could:
 --
 -- @
 -- $ ghc -c Main.hs
