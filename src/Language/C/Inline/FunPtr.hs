@@ -1,5 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+
 module Language.C.Inline.FunPtr
   ( mkFunPtr
   , mkFunPtrFromName
