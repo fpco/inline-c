@@ -13,6 +13,10 @@ import qualified Language.Haskell.TH as TH
 import           Language.C.Inline
 import           Language.C.Inline.Context
 
+-- | The equivalent of 'C.baseCtx' for C++.  It specifies the @.cpp@
+-- file extension for the C file, so that g++ will decide to build C++
+-- instead of C.  See the @.cabal@ test target for an example on how to
+-- build.
 cppCtx :: Context
 cppCtx = baseCtx <> mempty
   { ctxFileExtension = Just "cpp"
