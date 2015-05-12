@@ -9,6 +9,8 @@ before_install:
   - travis_retry sudo apt-get update
   - travis_retry sudo apt-get install cabal-install-$CABALVER ghc-$GHCVER
   - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
+  - sudo apt-get install libgsl0-dev libcairo2-dev
+  - cabal install gtk2hs-buildtools
 
 install:
   - cabal --version
@@ -17,7 +19,7 @@ install:
   - cabal install --only-dependencies --enable-tests --enable-benchmarks
 
 script:
-  - cabal configure -flib-Werror -v2 --enable-tests --enable-benchmarks
+  - cabal configure -flib-Werror -v2 --enable-tests --enable-benchmarks -fexamples
   - cabal build
   - cabal check
   - cabal test
