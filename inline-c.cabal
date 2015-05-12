@@ -22,7 +22,6 @@ library
                      , Language.C.Types.Parse
   other-modules:       Language.C.Inline.FunPtr
   ghc-options:         -Wall
-  ghc-prof-options:    -auto-all
   build-depends:       base >=4 && <5
                      , QuickCheck
                      , ansi-wl-pprint
