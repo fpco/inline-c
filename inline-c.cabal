@@ -72,4 +72,4 @@ executable gsl-ode
   default-language:    Haskell2010
   cc-options:          -O2
   extra-libraries:     gsl gslcblas m
-  ghc-options:         -Wall -O
+  ghc-options:         -Wall
