@@ -1,7 +1,7 @@
 name:                inline-c
 version:             0.1.0.0
 synopsis:            Lets you embed C code into Haskell.
-license:             AllRightsReserved
+license:             MIT
 license-file:        LICENSE
 author:              Francesco Mazzoli
 maintainer:          francesco@fpcomplete.com
