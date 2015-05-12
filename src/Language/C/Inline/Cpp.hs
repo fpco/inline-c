@@ -19,5 +19,10 @@ cppCtx = baseCtx <> mempty
   , ctxOutput = Just $ \s -> "extern \"C\" {\n" ++ s ++ "\n}"
   }
 
+-- | Emits an @using@ directive, e.g.
+--
+-- @
+-- C.using "namespace std" ==> using namespace std
+-- @
 using :: String -> TH.DecsQ
 using s = literal $ "using " ++ s ++ ";"
