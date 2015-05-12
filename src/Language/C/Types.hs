@@ -121,7 +121,8 @@ data ParameterDeclaration = ParameterDeclaration
 -- Conversion
 
 data UntangleErr
-  = MultipleDataTypes [P.TypeSpecifier]
+  = MultipleDataTypes [P.DeclarationSpecifier]
+  | NoDataTypes [P.DeclarationSpecifier]
   | IllegalSpecifiers String [P.TypeSpecifier]
   deriving (Typeable, Show, Eq)
 
@@ -172,7 +173,8 @@ untangleDeclarationSpecifiers declSpecs = do
   dataType <- case dataTypes of
     [x] -> return x
     [] | longs > 0 || shorts > 0 -> return P.INT
-    _ -> failConversion $ MultipleDataTypes dataTypes
+    [] -> failConversion $ NoDataTypes declSpecs
+    _:_ -> failConversion $ MultipleDataTypes declSpecs
   -- Check if things are compatible with one another
   let checkNoSpecs =
         unless (null specs) $ illegalSpecifiers "expecting no specifiers"
@@ -461,6 +463,8 @@ instance PP.Pretty UntangleErr where
       "Multiple data types in" </> PP.prettyList specs
     IllegalSpecifiers s specs ->
       "Illegal specifiers, " <+> PP.text s <+> ", in" </> PP.prettyList specs
+    NoDataTypes specs ->
+      "No data types in " </> PP.prettyList specs
 
 instance PP.Pretty ParameterDeclaration where
   pretty = PP.pretty . tangleParameterDeclaration

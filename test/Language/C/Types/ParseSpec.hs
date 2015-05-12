@@ -21,8 +21,9 @@ spec :: Hspec.SpecWith ()
 spec = do
   Hspec.it "parses everything which is pretty-printable (QuickCheck)" $ do
     QC.property $ \(ParameterDeclarationWithTypeNames typeNames ty) ->
-      let ty' = assertParse (`Set.member` typeNames) parameter_declaration (prettyOneLine ty)
-      in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
+      isGoodType ty QC.==>
+        let ty' = assertParse (`Set.member` typeNames) parameter_declaration (prettyOneLine ty)
+        in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
 
 ------------------------------------------------------------------------
 -- Utils
@@ -35,3 +36,8 @@ assertParse isTypeName p s =
 
 prettyOneLine :: PP.Pretty a => a -> String
 prettyOneLine x = PP.displayS (PP.renderCompact (PP.pretty x)) ""
+
+isGoodType :: ParameterDeclaration -> Bool
+isGoodType ty = case Types.untangleParameterDeclaration ty of
+  Left _ -> False
+  Right _ -> True
