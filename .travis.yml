@@ -22,6 +22,7 @@ install:
 script:
   - cabal configure -flib-Werror -v2 --enable-tests --enable-benchmarks -fgsl-example
   - cabal build
+  - ./dist/build/gsl-ode/gsl-ode
   - cabal check
   - cabal test
   - cabal sdist
