@@ -133,10 +133,6 @@ main = Chart.toFile Chart.def "lorenz.png" $ do
           Right f' = lorenz x f x'
       in (x, f) : go x' f'
 
-    every n xs = case drop (n-1) xs of
-      (y:ys) -> y : every n ys
-      [] -> []
-
 -- Utils
 
 vectorFromC :: Storable a => Int -> Ptr a -> IO (V.Vector a)

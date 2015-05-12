@@ -10,6 +10,10 @@ category:            FFI
 build-type:          Simple
 cabal-version:       >=1.10
 
+flag gsl-example
+  description:         Build GSL example
+  default:             False
+
 library
   exposed-modules:     Language.C.Inline
                      , Language.C.Inline.Internal
@@ -57,3 +61,17 @@ test-suite tests
                      , transformers
                      , vector
   default-language:    Haskell2010
+
+executable gsl-ode
+  hs-source-dirs:      examples
+  main-is:             gsl-ode.hs
+  c-sources:           examples/gsl-ode.c
+  build-depends:       base >=4 && <5
+                     , inline-c
+                     , vector
+                     , Chart
+                     , Chart-cairo
+  default-language:    Haskell2010
+  cc-options:          -O2
+  extra-libraries:     gsl gslcblas m
+  ghc-options:         -Wall -O
