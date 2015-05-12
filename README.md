@@ -233,6 +233,38 @@ want to get the length of (in our case, `vec`).  To use the `vec-ptr`
 anti-quoter it is also required to specify the pointer type we want.
 Since `vec` is a vector of `CDouble`s, we want a pointer to `double`s.
 
+## ByteStrings
+
+The `bs-len` and `bs-ptr` ant-quoters in the `C.bsCtx` context work
+exactly the same as the `vec-len` and `vec-ptr` counterparts, but with
+strict `ByteString`s.  The only difference is that it is no necessary to
+specify the type of the pointer from C -- it is always going to be
+`unsigned char *`:
+
+```
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE QuasiQuotes #-}
+import qualified Data.ByteString as BS
+import           Data.Monoid ((<>))
+import           Foreign.C.Types
+import qualified Language.C.Inline as C
+
+C.context (C.baseCtx <> C.bsCtx)
+
+-- | Count the number of set bits in a 'BS.ByteString'.
+countSetBits :: BS.ByteString -> IO CInt
+countSetBits bs = [C.stmts|
+    int {
+      int i, bits = 0;
+      for (i = 0; i < $bs-len:bs; i++) {
+        unsigned char ch = $bs-ptr:bs[i];
+        bits += (ch * 01001001001ULL & 042104210421ULL) % 017;
+      }
+      return bits;
+    }
+  |]
+```
+
 ### Function pointers
 
 Using the `fun` anti-quoter, present in the `C.funCtx` context, we can
