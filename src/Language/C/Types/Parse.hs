@@ -1,11 +1,12 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- | A parser for C99 declarations, with some caveats:
 --
 -- * Array sizes can only be @*@, @n@ (where n is a positive integer),
@@ -21,6 +22,7 @@
 --
 -- The entry point if you want to parse C declarations is
 -- @'parameter_declaration'@.
+
 module Language.C.Types.Parse
   ( -- * Parser type
     CParser

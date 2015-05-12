@@ -1,12 +1,13 @@
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TupleSections #-}
+
 -- | While "Language.C.Types.Parse" provides access to routines that
 -- parse C declarations and present them as they are, this module gives
 -- a much friendlier view to C types, by turning them in a data type
@@ -23,6 +24,7 @@
 --
 -- As a bonus, routines are provided "reading" the types in english --
 -- see 'readParameterDeclaration' and 'readType'.
+
 module Language.C.Types
   ( -- * Types
     P.Id(..)
