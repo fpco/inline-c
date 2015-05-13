@@ -15,8 +15,8 @@
 -- appreciate the difference, look at the difference between
 -- 'P.ParameterDeclaration' and 'ParameterDeclaration'.
 --
--- As a bonus, routines are provided for "reading" the types in english -- see
--- 'readParameterDeclaration' and 'readType'.
+-- As a bonus, routines are provided for describing types in natural language
+-- (English) -- see 'describeParameterDeclaration' and 'describeType'.
 
 module Language.C.Types
   ( -- * Types
@@ -48,8 +48,8 @@ module Language.C.Types
   , tangleParameterDeclaration
 
     -- * To english
-  , readParameterDeclaration
-  , readType
+  , describeParameterDeclaration
+  , describeType
   ) where
 
 import           Control.Arrow (second)
@@ -366,20 +366,20 @@ tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
 ------------------------------------------------------------------------
 -- To english
 
-readParameterDeclaration :: ParameterDeclaration -> PP.Doc
-readParameterDeclaration (ParameterDeclaration mbId ty) =
+describeParameterDeclaration :: ParameterDeclaration -> PP.Doc
+describeParameterDeclaration (ParameterDeclaration mbId ty) =
   let idDoc = case mbId of
         Nothing -> ""
         Just id' -> PP.pretty id' <+> "is a "
-  in idDoc <> readType ty
+  in idDoc <> describeType ty
 
-readType :: Type -> PP.Doc
-readType ty0 = case ty0 of
+describeType :: Type -> PP.Doc
+describeType ty0 = case ty0 of
   TypeSpecifier specs tySpec -> engSpecs specs <> PP.pretty tySpec
-  Ptr quals ty -> engQuals quals <> "ptr to" <+> readType ty
-  Array arrTy ty -> engArrTy arrTy <> "of" <+> readType ty
+  Ptr quals ty -> engQuals quals <> "ptr to" <+> describeType ty
+  Array arrTy ty -> engArrTy arrTy <> "of" <+> describeType ty
   Proto retTy params ->
-     "function from" <+> engParams params <> "returning" <+> readType retTy
+     "function from" <+> engParams params <> "returning" <+> describeType retTy
   where
     engSpecs (Specifiers [] [] []) = ""
     engSpecs (Specifiers x y z) =
@@ -400,8 +400,8 @@ readType ty0 = case ty0 of
       where
         go xs = case xs of
           [] -> ""
-          [x] -> readParameterDeclaration x
-          (x:xs') -> readParameterDeclaration x <> "," <+> go xs'
+          [x] -> describeParameterDeclaration x
+          (x:xs') -> describeParameterDeclaration x <> "," <+> go xs'
 
 ------------------------------------------------------------------------
 -- Convenient parsing
