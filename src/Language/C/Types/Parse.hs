@@ -7,11 +7,11 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
--- | A parser for C99 declarations, with some caveats:
+-- | A parser for C99 declarations. Currently, the parser has the following limitations:
 --
--- * Array sizes can only be @*@, @n@ (where n is a positive integer),
---   @x@ (where @x@ is a C identifier), while in C99 they can be
---   arbitrary expressions.  See the @'ArrayType'@ data type.
+-- * Array sizes can only be @*@, @n@ (where n is a positive integer), @x@
+-- (where @x@ is a C identifier). In C99 they can be arbitrary expressions. See
+-- the @'ArrayType'@ data type.
 --
 -- * @_Bool@, @_Complex@, and @_Imaginary@ are not present.
 --
@@ -97,9 +97,9 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 -- | Function used to determine whether an 'C.Id' is a type name.
 type IsTypeName = Id -> Bool
 
--- | All the parsing is done using the type-classes provided by the
--- @parsers@ package.  You can use the parsing routines with any of the
--- parsers that implement the classes, such as @parsec@ or @trifecta@.
+-- | All the parsing is done using the type classes provided by the
+-- @parsers@ package. You can use the parsing routines with any of the parsers
+-- that implement the classes, such as @parsec@ or @trifecta@.
 --
 -- The 'MonadReader' with 'IsTypeName' is required for parsing C, see
 -- <http://en.wikipedia.org/wiki/The_lexer_hack>.
@@ -671,7 +671,7 @@ many1 p = (:) <$> p <*> many p
 --
 -- The parser above is derived from a modification of the YACC grammar
 -- for C99 found at <http://www.quut.com/c/ANSI-C-grammar-y-1999.html>,
--- which you can find below.
+-- reproduced below.
 --
 -- @
 -- %token IDENTIFIER TYPE_NAME INTEGER

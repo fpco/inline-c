@@ -8,22 +8,15 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 
--- | While "Language.C.Types.Parse" provides access to routines that
--- parse C declarations and present them as they are, this module gives
--- a much friendlier view to C types, by turning them in a data type
--- matching more closely to how we read and think about types, both in
--- Haskell and in C.  To appreciate the difference, look at the
--- difference between 'P.ParameterDeclaration' and
--- 'ParameterDeclaration'.
+-- | Views of C datatypes. While "Language.C.Types.Parse" defines datatypes for
+-- representing the concrete syntax tree of C types, this module provides
+-- friendlier views of C types, by turning them into a data type matching more
+-- closely how we read and think about types, both in Haskell and in C. To
+-- appreciate the difference, look at the difference between
+-- 'P.ParameterDeclaration' and 'ParameterDeclaration'.
 --
--- Routines are provided to convert back and forth between the parsed
--- output and the friendly output -- see 'untangleParameterDeclaration'
--- and 'tangleParameterDeclaration'.  We also provide convenient parsers
--- returning directly friendly output -- see 'parseParameterDeclaration'
--- and 'parseParameterList'.
---
--- As a bonus, routines are provided "reading" the types in english --
--- see 'readParameterDeclaration' and 'readType'.
+-- As a bonus, routines are provided for "reading" the types in english -- see
+-- 'readParameterDeclaration' and 'readType'.
 
 module Language.C.Types
   ( -- * Types
@@ -49,7 +42,7 @@ module Language.C.Types
   , parseIdentifier
   , parseType
 
-    -- * Back and forth
+    -- * Convert to and from high-level views
   , UntangleErr(..)
   , untangleParameterDeclaration
   , tangleParameterDeclaration
@@ -267,7 +260,7 @@ untangleAbstractDeclarator ty0 (P.AbstractDeclarator ptrs0 mbDirectDecltor) =
         untangleAbstractDeclarator ty decltor
 
 ------------------------------------------------------------------------
--- Tangleing
+-- Tangling
 
 tangleParameterDeclaration :: ParameterDeclaration -> P.ParameterDeclaration
 tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
