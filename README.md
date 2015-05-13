@@ -1,14 +1,20 @@
-[![Build Status](https://travis-ci.org/fpco/inline-c.svg)](https://travis-ci.org/fpco/inline-c)
-
 # inline-c
 
-`inline-c` is a library for seamlessly mixing Haskell and C source
-code in the same source file. Mixing code is . In this tutorial we'll
-work through some of the features of `inline-c` by way of examples,
-starting with simple use cases.
+[![Build Status](https://travis-ci.org/fpco/inline-c.svg)](https://travis-ci.org/fpco/inline-c)
 
-Build details are reserved to the [last section](#how-to-build).
-You'll need those if you want to get the examples working.
+`inline-c` lets you seamlessly call C libraries and embed
+high-performance inline C code in Haskell modules. Haskell and C can
+be freely intermixed in the same source file, and data passed to and
+from code in either language with minimal overhead. No FFI required.
+
+`inline-c` is Haskell's escape hatch to the wild world of legacy code
+and high-performance numerical and system libraries. It has other uses
+too: you can also think of `inline-c` as to Haskell what inline
+Assembly is to C — a convenient means to eke out a little bit of extra
+performance in those rare cases where C still beats Haskell.
+
+Build instructions are reserved for the [last section](#how-to-build).
+You'll need to compile the examples below and try them out.
 
 ## Getting started
 
