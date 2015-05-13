@@ -46,7 +46,6 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BS
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
-import           Data.Monoid (Monoid(..))
 import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM

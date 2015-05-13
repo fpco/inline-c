@@ -43,7 +43,7 @@ module Language.C.Inline.Internal
     , runParserInQ
     ) where
 
-import           Control.Applicative ((<*), (*>), (<|>))
+import           Control.Applicative ((<|>))
 import           Control.Exception (catch, throwIO)
 import           Control.Monad (void, msum, when, unless)
 import           Control.Monad.State (evalStateT, StateT, get, put)
@@ -51,7 +51,6 @@ import           Control.Monad.Trans.Class (lift)
 import qualified Crypto.Hash as CryptoHash
 import qualified Data.Binary as Binary
 import           Data.Foldable (forM_)
-import           Data.Functor ((<$>))
 import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
