@@ -3,7 +3,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE MultiWayIf #-}
 import           Data.Coerce (coerce)
-import           Data.Functor ((<$>))
 import           Data.Monoid ((<>))
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -15,6 +14,10 @@ import qualified Graphics.Rendering.Chart.Backend.Cairo as Chart
 import qualified Graphics.Rendering.Chart.Easy as Chart
 import qualified Language.C.Inline as C
 import           System.IO.Unsafe (unsafePerformIO)
+
+#if __GLASGOW_HASKELL__ < 710
+import           Data.Functor ((<$>))
+#endif
 
 C.context (C.baseCtx <> C.vecCtx <> C.funCtx)
 

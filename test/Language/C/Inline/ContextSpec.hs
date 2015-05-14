@@ -7,7 +7,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Language.C.Inline.ContextSpec (spec) where
 
-import           Control.Applicative ((<*), (*>))
 import           Control.Monad.Trans.Class (lift)
 import qualified Test.Hspec as Hspec
 import           Text.Parser.Char
@@ -15,6 +14,10 @@ import           Text.Parser.Combinators
 import qualified Language.Haskell.TH as TH
 import           Foreign.C.Types
 import           Foreign.Ptr (Ptr, FunPtr)
+
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Applicative ((<*), (*>))
+#endif
 
 import qualified Language.C.Types as C
 import           Language.C.Inline.Context
