@@ -71,7 +71,7 @@ module Language.C.Types.Parse
   , ParameterDeclarationWithTypeNames(..)
   ) where
 
-import           Control.Applicative (Applicative, (<*>), (<*), (<|>))
+import           Control.Applicative ((<|>))
 import           Control.Monad (msum, void, MonadPlus, unless, when)
 import           Control.Monad.Reader (MonadReader, ask, runReaderT, ReaderT)
 import           Data.Functor.Identity (Identity)
@@ -92,7 +92,7 @@ import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 #if __GLASGOW_HASKELL__ < 710
-import           Control.Applicative ((<|>))
+import           Control.Applicative (Applicative, (<*>), (<*))
 import           Data.Functor ((<$>), (<$))
 #endif
 
