@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -46,7 +47,6 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BS
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
-import           Data.Monoid (Monoid(..))
 import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -55,6 +55,10 @@ import           Foreign.Ptr (Ptr, FunPtr, castPtr)
 import           Foreign.Storable (Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Token as Parser
+
+#if __GLASGOW_HASKELL__ < 710
+import           Data.Monoid (Monoid(..))
+#endif
 
 import           Language.C.Inline.FunPtr
 import qualified Language.C.Types as C

@@ -73,7 +73,6 @@ module Language.C.Types.Parse
 import           Control.Applicative (Applicative, (<*>), (<*), (<|>))
 import           Control.Monad (msum, void, MonadPlus, unless, when)
 import           Control.Monad.Reader (MonadReader, ask, runReaderT, ReaderT)
-import           Data.Functor ((<$>), (<$))
 import           Data.Functor.Identity (Identity)
 import qualified Data.HashSet as HashSet
 import           Data.Maybe (mapMaybe)
@@ -90,6 +89,11 @@ import           Text.Parser.Token
 import           Text.Parser.Token.Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Applicative ((<|>))
+import           Data.Functor ((<$>), (<$))
+#endif
 
 ------------------------------------------------------------------------
 -- Parser
