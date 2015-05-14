@@ -7,11 +7,12 @@ high-performance inline C code in Haskell modules. Haskell and C can
 be freely intermixed in the same source file, and data passed to and
 from code in either language with minimal overhead. No FFI required.
 
-`inline-c` is Haskell's escape hatch to the wild world of legacy code
-and high-performance numerical and system libraries. It has other uses
-too: you can also think of `inline-c` as to Haskell what inline
-Assembly is to C — a convenient means to eke out a little bit of extra
-performance in those rare cases where C still beats Haskell.
+`inline-c` is Haskell's escape hatch (or one of) to the wild world of
+legacy code and high-performance numerical and system libraries. It
+has other uses too: you can also think of `inline-c` as to Haskell
+what inline Assembly is to C — a convenient means to eke out a little
+bit of extra performance in those rare cases where C still beats
+Haskell.
 
 Build instructions are reserved for the [last section](#how-to-build).
 You'll need to compile the examples below and try them out.
