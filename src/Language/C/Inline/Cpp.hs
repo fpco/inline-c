@@ -29,4 +29,4 @@ cppCtx = baseCtx <> mempty
 -- C.using "namespace std" ==> using namespace std
 -- @
 using :: String -> TH.DecsQ
-using s = literal $ "using " ++ s ++ ";"
+using s = verbatim $ "using " ++ s ++ ";"

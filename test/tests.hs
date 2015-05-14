@@ -10,6 +10,6 @@ C.include "<iostream>"
 main :: IO ()
 main = do
   let x = 3
-  [C.stmts| void {
+  [C.blocks| void {
       std::cout << "Hello, world!" << $(int x) << std::endl;
     } |]
