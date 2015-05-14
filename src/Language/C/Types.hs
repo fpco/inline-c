@@ -55,9 +55,10 @@ module Language.C.Types
 import           Control.Arrow (second)
 import           Control.Monad (when, unless, forM_)
 import           Control.Monad.State (execState, modify)
+import           Data.Functor ((<$>))
 import           Data.List (partition)
 import           Data.Maybe (fromMaybe)
-import           Data.Monoid ((<>))
+import           Data.Monoid ((<>), Monoid(..))
 import           Data.Typeable (Typeable)
 import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP

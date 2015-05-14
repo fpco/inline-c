@@ -70,9 +70,10 @@ module Language.C.Types.Parse
   , ParameterDeclarationWithTypeNames(..)
   ) where
 
-import           Control.Applicative ((<|>))
+import           Control.Applicative (Applicative, (<*>), (<*), (<|>))
 import           Control.Monad (msum, void, MonadPlus, unless, when)
 import           Control.Monad.Reader (MonadReader, ask, runReaderT, ReaderT)
+import           Data.Functor ((<$>), (<$))
 import           Data.Functor.Identity (Identity)
 import qualified Data.HashSet as HashSet
 import           Data.Maybe (mapMaybe)
