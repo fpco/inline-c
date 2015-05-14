@@ -25,7 +25,7 @@ context (baseCtx <> funCtx <> vecCtx)
 include "<math.h>"
 include "<stdio.h>"
 
-literal [r|
+verbatim [r|
 int francescos_mul(int x, int y) {
   return x * y;
 }
@@ -111,7 +111,7 @@ main = Hspec.hspec $ do
     Hspec.it "vectors" $ do
       let n = 10
       vec <- V.replicate (fromIntegral n) 3
-      sum <- V.unsafeWith vec $ \ptr -> [stmts| int {
+      sum <- V.unsafeWith vec $ \ptr -> [block| int {
         int i;
         int x = 0;
         for (i = 0; i < $(int n); i++) {
@@ -122,7 +122,7 @@ main = Hspec.hspec $ do
       sum `Hspec.shouldBe` 3 * 10
     Hspec.it "quick vectors" $ do
       vec <- V.replicate 10 3
-      sum <- [stmts| int {
+      sum <- [block| int {
         int i;
         int x = 0;
         for (i = 0; i < $vec-len:vec; i++) {

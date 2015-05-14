@@ -35,10 +35,10 @@ module Language.C.Inline
     -- $quoting
   , exp
   , exp_unsafe
-  , stmts
-  , stmts_unsafe
+  , block
+  , block_unsafe
   , include
-  , literal
+  , verbatim
 
     -- * 'Ptr' utils
   , withPtr
@@ -140,7 +140,7 @@ import           Language.C.Inline.FunPtr
 --
 -- * The syntax of the @\<C code\>@ depends on on the quasi-quoter used,
 --   and the anti-quoters available.  @exp@ functions accept a C
---   expression.  @stmts@ functions accept a list of statemens, like the
+--   expression.  @block@ functions accept a list of statemens, like the
 --   body of a function.
 --
 -- See also the @README.md@ file for more documentation.
@@ -217,7 +217,7 @@ import           Language.C.Inline.FunPtr
 -- parseVector :: 'CInt' -> 'IO' (V.IOVector 'CDouble')
 -- parseVector len = do
 --   vec <- V.new $ 'fromIntegral' len0
---   V.unsafeWith vec $ \\ptr -> [C.'stmts'| void {
+--   V.unsafeWith vec $ \\ptr -> [C.'block'| void {
 --     int i;
 --     for (i = 0; i < $(int len); i++) {
 --       scanf("%lf ", &$(double *ptr)[i]);
@@ -232,11 +232,11 @@ exp = genericQuote $ inlineExp TH.Safe
 exp_unsafe :: TH.QuasiQuoter
 exp_unsafe = genericQuote $ inlineExp TH.Unsafe
 
-stmts :: TH.QuasiQuoter
-stmts = genericQuote $ inlineItems TH.Safe
+block :: TH.QuasiQuoter
+block = genericQuote $ inlineItems TH.Safe
 
-stmts_unsafe :: TH.QuasiQuoter
-stmts_unsafe = genericQuote $ inlineItems TH.Unsafe
+block_unsafe :: TH.QuasiQuoter
+block_unsafe = genericQuote $ inlineItems TH.Unsafe
 
 quoteCode
   :: (String -> TH.ExpQ)
@@ -327,14 +327,14 @@ genericQuote build = quoteCode $ \s -> do
 include :: String -> TH.DecsQ
 include s
   | null s = error "inline-c: empty string (include)"
-  | head s == '<' = literal $ "#include " ++ s
-  | otherwise = literal $ "#include \"" ++ s ++ "\""
+  | head s == '<' = verbatim $ "#include " ++ s
+  | otherwise = verbatim $ "#include \"" ++ s ++ "\""
 
 -- | Emits an arbitrary C string to the C code associated with the
 -- current module.  Use with care.
-literal :: String -> TH.DecsQ
-literal s = do
-  void $ emitLiteral s
+verbatim :: String -> TH.DecsQ
+verbatim s = do
+  void $ emitVerbatim s
   return []
 
 ------------------------------------------------------------------------

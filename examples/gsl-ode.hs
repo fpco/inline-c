@@ -52,7 +52,7 @@ solveOdeC fun x0 f0 xend = unsafePerformIO $ do
   -- passed to the ODE solving function provided by GSL, and will
   -- contain the final solution.
   fMut <- V.thaw f0
-  res <- [C.stmts| int {
+  res <- [C.block| int {
       gsl_odeiv2_system sys = {
         $fun:(int (* funIO) (double t, const double y[], double dydt[], void * params)),
         // The ODE to solve, converted to function pointer using the `fun`

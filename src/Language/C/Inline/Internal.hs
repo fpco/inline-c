@@ -21,7 +21,7 @@ module Language.C.Inline.Internal
       -- @inline-c@ is based upon the functions defined here.
 
       -- ** Emitting C code
-    , emitLiteral
+    , emitVerbatim
 
       -- ** Inlining C code
       -- $embedding
@@ -170,8 +170,8 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
     handleExists e = unless (isDoesNotExistError e) $ throwIO e
 
 -- | Simply appends some string to the module's C file.  Use with care.
-emitLiteral :: String -> TH.DecsQ
-emitLiteral s = do
+emitVerbatim :: String -> TH.DecsQ
+emitVerbatim s = do
   ctx <- getContext
   cFile <- cSourceLoc ctx
   TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
@@ -235,7 +235,7 @@ inlineCode Code{..} = do
   -- Write out definitions
   ctx <- getContext
   let out = fromMaybe id $ ctxOutput ctx
-  void $ emitLiteral $ out codeDefs
+  void $ emitVerbatim $ out codeDefs
   -- Create and add the FFI declaration.
   ffiImportName <- uniqueFfiImportName
   dec <- TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType

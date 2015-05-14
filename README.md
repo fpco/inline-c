@@ -71,7 +71,7 @@ C.include "<stdio.h>"
 
 main :: IO ()
 main = do
-  x <- [C.stmts| int {
+  x <- [C.block| int {
       // Read and sum 5 integers
       int i, sum = 0, tmp;
       for (i = 0; i < 5; i++) {
@@ -107,7 +107,7 @@ C.include "<stdio.h>"
 -- | @readAndSum n@ reads @n@ numbers from standard input and returns
 -- their sum.
 readAndSum :: CInt -> IO CInt
-readAndSum n  = [C.stmts| int {
+readAndSum n  = [C.block| int {
     // Read and sum n integers
     int i, sum = 0, tmp;
     for (i = 0; i < $(int n); i++) {
@@ -193,7 +193,7 @@ import           Foreign.C.Types
 C.context (C.baseCtx <> C.vecCtx)
 
 sumVec :: V.IOVector CDouble -> IO CDouble
-sumVec vec = [C.stmts| double {
+sumVec vec = [C.block| double {
     double sum = 0;
     int i;
     for (i = 0; i < $vec-len:vec; i++) {
@@ -233,7 +233,7 @@ C.context (C.baseCtx <> C.bsCtx)
 
 -- | Count the number of set bits in a 'BS.ByteString'.
 countSetBits :: BS.ByteString -> IO CInt
-countSetBits bs = [C.stmts|
+countSetBits bs = [C.block|
     int {
       int i, bits = 0;
       for (i = 0; i < $bs-len:bs; i++) {
