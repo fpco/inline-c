@@ -6,6 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -42,11 +43,14 @@ module Language.C.Inline.Internal
     , ParseTypedC(..)
     , parseTypedC
     , runParserInQ
+
+      -- * Utility functions for writing quasiquoters
+    , genericQuote
     ) where
 
 import           Control.Applicative ((<|>))
 import           Control.Exception (catch, throwIO)
-import           Control.Monad (void, msum, when, unless)
+import           Control.Monad (forM, void, msum, when, unless)
 import           Control.Monad.State (evalStateT, StateT, get, put)
 import           Control.Monad.Trans.Class (lift)
 import qualified Crypto.Hash as CryptoHash
@@ -57,6 +61,7 @@ import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
 import           Data.Typeable (Typeable, cast)
 import qualified Language.Haskell.TH as TH
+import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
 import           System.Directory (removeFile)
 import           System.FilePath (addExtension, dropExtension)
@@ -430,6 +435,79 @@ parseTypedC antiQs = do
       c <- get
       put $ c + 1
       return $ C.Identifier $ s ++ "_inline_c_" ++ show c
+
+quoteCode
+  :: (String -> TH.ExpQ)
+  -- ^ The parser
+  -> TH.QuasiQuoter
+quoteCode p = TH.QuasiQuoter
+  { TH.quoteExp = p
+  , TH.quotePat = error "inline-c: quotePat not implemented (quoteCode)"
+  , TH.quoteType = error "inline-c: quoteType not implemented (quoteCode)"
+  , TH.quoteDec = error "inline-c: quoteDec not implemented (quoteCode)"
+  }
+
+genericQuote
+  :: (TH.TypeQ -> C.Type -> [(C.Identifier, C.Type)] -> String -> TH.ExpQ)
+  -- ^ Function taking that something and building an expression, see
+  -- 'inlineExp' for other args.
+  -> TH.QuasiQuoter
+genericQuote build = quoteCode $ \s -> do
+    ctx <- getContext
+    ParseTypedC cType cParams cExp <-
+      runParserInQ s (isTypeName (ctxTypesTable ctx)) $ parseTypedC $ ctxAntiQuoters ctx
+    hsType <- cToHs ctx cType
+    hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
+      case parTy of
+        Plain s' -> do
+          hsTy <- cToHs ctx cTy
+          mbHsName <- TH.lookupValueName s'
+          hsExp <- case mbHsName of
+            Nothing -> do
+              error $ "Cannot capture Haskell variable " ++ s' ++
+                      ", because it's not in scope. (genericQuote)"
+            Just hsName -> do
+              hsExp <- TH.varE hsName
+              [| \cont -> cont $(return hsExp) |]
+          return (hsTy, hsExp)
+        AntiQuote antiId dyn -> do
+          case Map.lookup antiId (ctxAntiQuoters ctx) of
+            Nothing ->
+              error $ "IMPOSSIBLE: could not find anti-quoter " ++ show antiId ++
+                      ". (genericQuote)"
+            Just (SomeAntiQuoter antiQ) -> case fromSomeEq dyn of
+              Nothing ->
+                error  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
+                         show antiId ++ ". (genericQuote)"
+              Just x ->
+                aqMarshaller antiQ (ctxTypesTable ctx) cTy x
+    let hsFunType = convertCFunSig hsType $ map fst hsParams
+    let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
+    buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
+  where
+    cToHs :: Context -> C.Type -> TH.TypeQ
+    cToHs ctx cTy = do
+      mbHsTy <- convertType (ctxTypesTable ctx) cTy
+      case mbHsTy of
+        Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
+        Just hsTy -> return hsTy
+
+    buildFunCall :: Context -> TH.ExpQ -> [TH.Exp] -> [TH.Name] -> TH.ExpQ
+    buildFunCall _ctx f [] args =
+      foldl (\f' arg -> [| $f' $(TH.varE arg) |]) f args
+    buildFunCall ctx f (hsExp : params) args =
+       [| $(return hsExp) $ \arg ->
+            $(buildFunCall ctx f params (args ++ ['arg]))
+       |]
+
+    convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
+    convertCFunSig retType params0 = do
+      go params0
+      where
+        go [] =
+          [t| IO $(return retType) |]
+        go (paramType : params) = do
+          [t| $(return paramType) -> $(go params) |]
 
 ------------------------------------------------------------------------
 -- Utils

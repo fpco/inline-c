@@ -12,6 +12,7 @@ import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
 
 import           Language.C.Inline
+import qualified Language.C.Inline as CU
 import           Language.C.Inline.Internal
 import qualified Language.C.Inline.ContextSpec
 import qualified Language.C.Inline.ParseSpec
@@ -70,10 +71,10 @@ main = Hspec.hspec $ do
       let y = 4
       z <- [exp| int{ $(int x) + $(int y) + 5 } |]
       z `Hspec.shouldBe` x + y + 5
-    Hspec.it "exp_unsafe" $ do
+    Hspec.it "unsafe exp" $ do
       let x = 2
       let y = 10
-      z <- [exp_unsafe| int{ 7 + $(int x) + $(int y) } |]
+      z <- [CU.exp| int{ 7 + $(int x) + $(int y) } |]
       z `Hspec.shouldBe` x + y + 7
     Hspec.it "void exp" $ do
       [exp| void { printf("Hello\n") } |]

@@ -22,8 +22,9 @@ flag gsl-example
 
 library
   exposed-modules:     Language.C.Inline
-                     , Language.C.Inline.Internal
                      , Language.C.Inline.Context
+                     , Language.C.Inline.Internal
+                     , Language.C.Inline.Unsafe
                      , Language.C.Types
                      , Language.C.Types.Parse
   other-modules:       Language.C.Inline.FunPtr
@@ -84,4 +85,3 @@ executable gsl-ode
                      , Chart-cairo
   else
     buildable: False
-

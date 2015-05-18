@@ -34,9 +34,7 @@ module Language.C.Inline
     -- * Inline C
     -- $quoting
   , exp
-  , exp_unsafe
   , block
-  , block_unsafe
   , include
   , verbatim
 
@@ -64,17 +62,14 @@ module Language.C.Inline
 
 import           Prelude hiding (exp)
 
-import           Control.Monad (forM, void)
-import qualified Data.Map as Map
+import           Control.Monad (void)
 import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
 import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek, Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
-import qualified Language.C.Types as C
 import           Language.C.Inline.Context
 import           Language.C.Inline.Internal
 import           Language.C.Inline.FunPtr
@@ -184,9 +179,10 @@ import           Language.C.Inline.FunPtr
 --
 -- === Safe and @unsafe@ calls
 --
--- @unsafe@ variants of the quasi-quoters are provided to call the C code
--- unsafely, in the sense that the C code will block the RTS, with the advantage
--- of a faster call to the foreign code. See
+-- @unsafe@ variants of the quasi-quoters are provided in
+-- "Language.C.Inline.Unsafe" to call the C code unsafely, in the sense that the
+-- C code will block the RTS, but with the advantage of a faster call to the
+-- foreign code. See
 -- <https://www.haskell.org/onlinereport/haskell2010/haskellch8.html#x15-1590008.4.3>.
 --
 -- == Examples
@@ -196,12 +192,16 @@ import           Language.C.Inline.FunPtr
 -- @
 -- {-\# LANGUAGE QuasiQuotes \#-}
 -- import qualified "Language.C.Inline" as C
+-- import qualified "Language.C.Inline.Unsafe" as CU
 -- import           "Foreign.C.Types"
 --
 -- C.'include' "\<math.h\>"
 --
 -- c_cos :: 'CDouble' -> IO 'CDouble'
--- c_cos x = [C.'exp_unsafe'| double { cos($(double x)) } |]
+-- c_cos x = [C.exp| double { cos($(double x)) } |]
+--
+-- faster_c_cos :: 'CDouble' -> IO 'CDouble'
+-- faster_c_cos x = [CU.exp| double { cos($(double x)) } |]
 -- @
 --
 -- === Inline C statements
@@ -230,87 +230,8 @@ import           Language.C.Inline.FunPtr
 exp :: TH.QuasiQuoter
 exp = genericQuote $ inlineExp TH.Safe
 
-exp_unsafe :: TH.QuasiQuoter
-exp_unsafe = genericQuote $ inlineExp TH.Unsafe
-
 block :: TH.QuasiQuoter
 block = genericQuote $ inlineItems TH.Safe
-
-block_unsafe :: TH.QuasiQuoter
-block_unsafe = genericQuote $ inlineItems TH.Unsafe
-
-quoteCode
-  :: (String -> TH.ExpQ)
-  -- ^ The parser
-  -> TH.QuasiQuoter
-quoteCode p = TH.QuasiQuoter
-  { TH.quoteExp = p
-  , TH.quotePat = error "inline-c: quotePat not implemented (quoteCode)"
-  , TH.quoteType = error "inline-c: quoteType not implemented (quoteCode)"
-  , TH.quoteDec = error "inline-c: quoteDec not implemented (quoteCode)"
-  }
-
-genericQuote
-  :: (TH.TypeQ -> C.Type -> [(C.Identifier, C.Type)] -> String -> TH.ExpQ)
-  -- ^ Function taking that something and building an expression, see
-  -- 'inlineExp' for other args.
-  -> TH.QuasiQuoter
-genericQuote build = quoteCode $ \s -> do
-  ctx <- getContext
-  ParseTypedC cType cParams cExp <-
-    runParserInQ s (isTypeName (ctxTypesTable ctx)) $ parseTypedC $ ctxAntiQuoters ctx
-  hsType <- cToHs ctx cType
-  hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
-    case parTy of
-      Plain s' -> do
-        hsTy <- cToHs ctx cTy
-        mbHsName <- TH.lookupValueName s'
-        hsExp <- case mbHsName of
-          Nothing -> do
-            error $ "Cannot capture Haskell variable " ++ s' ++
-                    ", because it's not in scope. (genericQuote)"
-          Just hsName -> do
-            hsExp <- TH.varE hsName
-            [| \cont -> cont $(return hsExp) |]
-        return (hsTy, hsExp)
-      AntiQuote antiId dyn -> do
-        case Map.lookup antiId (ctxAntiQuoters ctx) of
-          Nothing ->
-            error $ "IMPOSSIBLE: could not find anti-quoter " ++ show antiId ++
-                    ". (genericQuote)"
-          Just (SomeAntiQuoter antiQ) -> case fromSomeEq dyn of
-            Nothing ->
-              error  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
-                       show antiId ++ ". (genericQuote)"
-            Just x ->
-              aqMarshaller antiQ (ctxTypesTable ctx) cTy x
-  let hsFunType = convertCFunSig hsType $ map fst hsParams
-  let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
-  buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
-  where
-    cToHs :: Context -> C.Type -> TH.TypeQ
-    cToHs ctx cTy = do
-      mbHsTy <- convertType (ctxTypesTable ctx) cTy
-      case mbHsTy of
-        Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
-        Just hsTy -> return hsTy
-
-    buildFunCall :: Context -> TH.ExpQ -> [TH.Exp] -> [TH.Name] -> TH.ExpQ
-    buildFunCall _ctx f [] args =
-      foldl (\f' arg -> [| $f' $(TH.varE arg) |]) f args
-    buildFunCall ctx f (hsExp : params) args =
-       [| $(return hsExp) $ \arg ->
-            $(buildFunCall ctx f params (args ++ ['arg]))
-       |]
-
-    convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
-    convertCFunSig retType params0 = do
-      go params0
-      where
-        go [] =
-          [t| IO $(return retType) |]
-        go (paramType : params) = do
-          [t| $(return paramType) -> $(go params) |]
 
 -- | Emits a CPP include directive for C code associated with the current
 -- module. To avoid having to escape quotes, the function itself adds them when
@@ -418,9 +339,3 @@ context :: Context -> TH.DecsQ
 context ctx = do
   setContext ctx
   return []
-
-------------------------------------------------------------------------
--- Utils
-
-pretty80 :: PP.Pretty a => a -> String
-pretty80 x = PP.displayS (PP.renderPretty 0.8 80 (PP.pretty x)) ""

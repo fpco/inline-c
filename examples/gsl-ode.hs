@@ -14,6 +14,7 @@ import           Foreign.Storable (Storable)
 import qualified Graphics.Rendering.Chart.Backend.Cairo as Chart
 import qualified Graphics.Rendering.Chart.Easy as Chart
 import qualified Language.C.Inline as C
+import qualified Language.C.Inline.Unsafe as CU
 import           System.IO.Unsafe (unsafePerformIO)
 
 #if __GLASGOW_HASKELL__ < 710
@@ -51,7 +52,7 @@ solveOdeC fun x0 f0 xend = unsafePerformIO $ do
         -- Fill in the provided pointer with the resulting vector.
         vectorToC fImm dim f
         -- Unsafe since the function will be called many times.
-        [C.exp_unsafe| int{ GSL_SUCCESS } |]
+        [CU.exp| int{ GSL_SUCCESS } |]
   -- Create a mutable vector from the initial solution.  This will be
   -- passed to the ODE solving function provided by GSL, and will
   -- contain the final solution.
