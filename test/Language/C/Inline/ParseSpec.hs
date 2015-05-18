@@ -61,7 +61,7 @@ spec = do
 
     -- We use show + length to fully evaluate the result -- there
     -- might be exceptions hiding.  TODO get rid of exceptions.
-    strictParse :: String -> IO (C.Type, [(C.Id, C.Type, ParameterType)], String)
+    strictParse :: String -> IO (C.Type, [(C.Identifier, C.Type, ParameterType)], String)
     strictParse s = do
       let ParseTypedC retType pars body =
             assertParse (parseTypedC (ctxAntiQuoters ctx)) s
@@ -75,7 +75,7 @@ spec = do
     cty s = C.parameterDeclarationType $ assertParse C.parseParameterDeclaration s
 
     shouldMatchParameters
-      :: [(C.Id, C.Type, ParameterType)] -> [(C.Type, ParameterType)] -> Hspec.Expectation
+      :: [(C.Identifier, C.Type, ParameterType)] -> [(C.Type, ParameterType)] -> Hspec.Expectation
     shouldMatchParameters pars pars' =
       [(x, y) | (_, x, y) <- pars] `Hspec.shouldMatchList` pars'
 

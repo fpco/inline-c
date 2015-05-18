@@ -207,7 +207,7 @@ convertType cTypes = runMaybeT . go
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
 
-isTypeName :: TypesTable -> C.Id -> Bool
+isTypeName :: TypesTable -> C.Identifier -> Bool
 isTypeName cTypes id' = Map.member (C.TypeName id') cTypes
 
 ------------------------------------------------------------------------
@@ -248,7 +248,7 @@ funPtrAntiQuoter = AntiQuoter
       case C.parameterDeclarationId cTy of
         Nothing -> error "Every captured function must be named (funCtx)"
         Just id' -> do
-         let s = C.unId id'
+         let s = C.unIdentifier id'
          return (s, C.parameterDeclarationType cTy, s)
   , aqMarshaller = \cTypes cTy cId -> do
       hsTy <- convertType_ "funCtx" cTypes cTy
@@ -309,7 +309,7 @@ vecPtrAntiQuoter = AntiQuoter
       case C.parameterDeclarationId cTy of
         Nothing -> error "Every captured vector must be named (vecCtx)"
         Just id' -> do
-         let s = C.unId id'
+         let s = C.unIdentifier id'
          return (s, C.parameterDeclarationType cTy, s)
   , aqMarshaller = \cTypes cTy cId -> do
       hsTy <- convertType_ "vecCtx" cTypes cTy
@@ -322,7 +322,7 @@ vecLenAntiQuoter :: AntiQuoter String
 vecLenAntiQuoter = AntiQuoter
   { aqParser = do
       cId <- C.parseIdentifier
-      let s = C.unId cId
+      let s = C.unIdentifier cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
   , aqMarshaller = \_cTypes cTy cId -> do
       case cTy of
@@ -353,7 +353,7 @@ bsPtrAntiQuoter :: AntiQuoter String
 bsPtrAntiQuoter = AntiQuoter
   { aqParser = do
       cId <- C.parseIdentifier
-      let s = C.unId cId
+      let s = C.unIdentifier cId
       return (s, C.Ptr [] (C.TypeSpecifier mempty (C.Char (Just C.Unsigned))), s)
   , aqMarshaller = \_cTypes cTy cId -> do
       case cTy of
@@ -370,7 +370,7 @@ bsLenAntiQuoter :: AntiQuoter String
 bsLenAntiQuoter = AntiQuoter
   { aqParser = do
       cId <- C.parseIdentifier
-      let s = C.unId cId
+      let s = C.unIdentifier cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
   , aqMarshaller = \_cTypes cTy cId -> do
       case cTy of

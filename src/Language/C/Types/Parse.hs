@@ -33,7 +33,7 @@ module Language.C.Types.Parse
   , quickCParser_
 
     -- * Types and parsing
-  , Id(..)
+  , Identifier(..)
   , identifier
   , identifier_no_lex
   , DeclarationSpecifier(..)
@@ -87,7 +87,7 @@ import           Text.Parser.Char
 import           Text.Parser.Combinators
 import           Text.Parser.LookAhead
 import           Text.Parser.Token
-import           Text.Parser.Token.Highlight
+import qualified Text.Parser.Token.Highlight as Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
@@ -100,7 +100,7 @@ import           Data.Functor ((<$>), (<$))
 -- Parser
 
 -- | Function used to determine whether an 'C.Id' is a type name.
-type IsTypeName = Id -> Bool
+type IsTypeName = Identifier -> Bool
 
 -- | All the parsing is done using the type classes provided by the
 -- @parsers@ package. You can use the parsing routines with any of the parsers
@@ -150,13 +150,13 @@ quickCParser_
   -> a
 quickCParser_ = quickCParser (const False)
 
-newtype Id = Id {unId :: String}
+newtype Identifier = Identifier {unIdentifier :: String}
   deriving (Typeable, Eq, Ord, Show)
 
-instance IsString Id where
+instance IsString Identifier where
   fromString s =
     case runCParser (const False) "fromString" s (identifier_no_lex <* eof) of
-      Left _err -> error $ "Id fromString: invalid string " ++ show s
+      Left _err -> error $ "Identifier fromString: invalid string " ++ show s
       Right x -> x
 
 identLetter :: CParser m => m Char
@@ -180,8 +180,8 @@ identStyle = IdentifierStyle
   , _styleStart = identLetter
   , _styleLetter = identLetter <|> digit
   , _styleReserved = reservedWords
-  , _styleHighlight = Identifier
-  , _styleReservedHighlight = ReservedIdentifier
+  , _styleHighlight = Highlight.Identifier
+  , _styleReservedHighlight = Highlight.ReservedIdentifier
   }
 
 data DeclarationSpecifier
@@ -226,9 +226,9 @@ data TypeSpecifier
   | DOUBLE
   | SIGNED
   | UNSIGNED
-  | Struct Id
-  | Enum Id
-  | TypeName Id
+  | Struct Identifier
+  | Enum Identifier
+  | TypeName Identifier
   deriving (Typeable, Eq, Show)
 
 type_specifier :: CParser m => m TypeSpecifier
@@ -247,7 +247,7 @@ type_specifier = msum
   , TypeName <$> type_name
   ]
 
-identifier :: CParser m => m Id
+identifier :: CParser m => m Identifier
 identifier =
   try (do s <- ident identStyle
           isTypeName <- ask
@@ -256,7 +256,7 @@ identifier =
           return s)
   <?> "identifier"
 
-type_name :: CParser m => m Id
+type_name :: CParser m => m Identifier
 type_name =
   try (do s <- ident identStyle
           isTypeName <- ask
@@ -296,7 +296,7 @@ declarator :: CParser m => m Declarator
 declarator = (Declarator <$> many pointer <*> direct_declarator) <?> "declarator"
 
 data DirectDeclarator
-  = DeclaratorRoot Id
+  = DeclaratorRoot Identifier
   | ArrayOrProto DirectDeclarator ArrayOrProto
   | DeclaratorParens Declarator
   deriving (Typeable, Eq, Show)
@@ -317,7 +317,7 @@ data ArrayType
   = VariablySized
   | Unsized
   | SizedByInteger Integer
-  | SizedByIdentifier Id
+  | SizedByIdentifier Identifier
   deriving (Typeable, Eq, Show)
 
 array_type :: CParser m => m ArrayType
@@ -397,9 +397,9 @@ direct_abstract_declarator =
 
 -- | This parser parses an 'Id' and nothing else -- it does not consume
 -- trailing spaces and the like.
-identifier_no_lex :: CParser m => m Id
+identifier_no_lex :: CParser m => m Identifier
 identifier_no_lex =
-  try (do s <- Id <$> ((:) <$> identLetter <*> many (identLetter <|> digit))
+  try (do s <- Identifier <$> ((:) <$> identLetter <*> many (identLetter <|> digit))
           isTypeName <- ask
           when (isTypeName s) $
             fail "expecting identifier, got type name"
@@ -409,8 +409,8 @@ identifier_no_lex =
 ------------------------------------------------------------------------
 -- Pretty printing
 
-instance Pretty Id where
-  pretty = PP.text . unId
+instance Pretty Identifier where
+  pretty = PP.text . unIdentifier
 
 instance Pretty DeclarationSpecifier where
   pretty dspec = case dspec of
@@ -528,12 +528,12 @@ oneOfSized xs = QC.sized $ \n -> do
 halveSize :: QC.Gen a -> QC.Gen a
 halveSize m = QC.sized $ \n -> QC.resize (n `div` 2) m
 
-arbitraryId :: QC.Gen Id
-arbitraryId = do
+arbitraryIdentifier :: QC.Gen Identifier
+arbitraryIdentifier = do
     s <- ((:) <$> QC.elements letters <*> QC.listOf (QC.elements (letters ++ digits)))
     if HashSet.member s reservedWords
-      then arbitraryId
-      else return $ Id s
+      then arbitraryIdentifier
+      else return $ Identifier s
   where
     letters = ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
     digits = ['0'..'9']
@@ -541,22 +541,22 @@ arbitraryId = do
 -- | Type used to generate an 'QC.Arbitrary' 'ParameterDeclaration' with
 -- arbitrary allowed type names.
 data ParameterDeclarationWithTypeNames = ParameterDeclarationWithTypeNames
-  { pdwtnTypeNames :: Set.Set Id
+  { pdwtnTypeNames :: Set.Set Identifier
   , pdwtnParameterDeclaration :: ParameterDeclaration
   } deriving (Typeable, Eq, Show)
 
 instance QC.Arbitrary ParameterDeclarationWithTypeNames where
   arbitrary = do
-    names <- Set.fromList <$> QC.listOf arbitraryId
-    decl <- arbitraryParameterDeclaration names
+    names <- Set.fromList <$> QC.listOf arbitraryIdentifier
+    decl <- arbitraryParameterDeclarationFrom names
     return $ ParameterDeclarationWithTypeNames names decl
 
-arbitraryDeclarationSpecifier :: Set.Set Id -> QC.Gen DeclarationSpecifier
-arbitraryDeclarationSpecifier typeNames = QC.oneof $
+arbitraryDeclarationSpecifierFrom :: Set.Set Identifier -> QC.Gen DeclarationSpecifier
+arbitraryDeclarationSpecifierFrom typeNames = QC.oneof $
   [ StorageClassSpecifier <$> QC.arbitrary
   , TypeQualifier <$> QC.arbitrary
   , FunctionSpecifier <$> QC.arbitrary
-  , TypeSpecifier <$> arbitraryTypeSpecifier typeNames
+  , TypeSpecifier <$> arbitraryTypeSpecifierFrom typeNames
   ]
 
 instance QC.Arbitrary StorageClassSpecifier where
@@ -568,8 +568,8 @@ instance QC.Arbitrary StorageClassSpecifier where
     , return REGISTER
     ]
 
-arbitraryTypeSpecifier :: Set.Set Id -> QC.Gen TypeSpecifier
-arbitraryTypeSpecifier typeNames = QC.oneof $
+arbitraryTypeSpecifierFrom :: Set.Set Identifier -> QC.Gen TypeSpecifier
+arbitraryTypeSpecifierFrom typeNames = QC.oneof $
   [ return VOID
   , return CHAR
   , return SHORT
@@ -579,8 +579,8 @@ arbitraryTypeSpecifier typeNames = QC.oneof $
   , return DOUBLE
   , return SIGNED
   , return UNSIGNED
-  , Struct <$> arbitraryIdentifier typeNames
-  , Enum <$> arbitraryIdentifier typeNames
+  , Struct <$> arbitraryIdentifierFrom typeNames
+  , Enum <$> arbitraryIdentifierFrom typeNames
   ] ++ if Set.null typeNames then []
        else [TypeName <$> QC.elements (Set.toList typeNames)]
 
@@ -596,71 +596,71 @@ instance QC.Arbitrary FunctionSpecifier where
     [ return INLINE
     ]
 
-arbitraryDeclarator :: Set.Set Id -> QC.Gen Declarator
-arbitraryDeclarator typeNames = halveSize $
-  Declarator <$> QC.arbitrary <*> arbitraryDirectDeclarator typeNames
+arbitraryDeclaratorFrom :: Set.Set Identifier -> QC.Gen Declarator
+arbitraryDeclaratorFrom typeNames = halveSize $
+  Declarator <$> QC.arbitrary <*> arbitraryDirectDeclaratorFrom typeNames
 
-arbitraryIdentifier :: Set.Set Id -> QC.Gen Id
-arbitraryIdentifier typeNames = do
-  id' <- arbitraryId
+arbitraryIdentifierFrom :: Set.Set Identifier -> QC.Gen Identifier
+arbitraryIdentifierFrom typeNames = do
+  id' <- arbitraryIdentifier
   if Set.member id' typeNames
-    then arbitraryIdentifier typeNames
+    then arbitraryIdentifierFrom typeNames
     else return id'
 
-arbitraryDirectDeclarator :: Set.Set Id -> QC.Gen DirectDeclarator
-arbitraryDirectDeclarator typeNames = halveSize $ oneOfSized $
-  [ Anyhow $ DeclaratorRoot <$> arbitraryIdentifier typeNames
-  , IfPositive $ DeclaratorParens <$> arbitraryDeclarator typeNames
+arbitraryDirectDeclaratorFrom :: Set.Set Identifier -> QC.Gen DirectDeclarator
+arbitraryDirectDeclaratorFrom typeNames = halveSize $ oneOfSized $
+  [ Anyhow $ DeclaratorRoot <$> arbitraryIdentifierFrom typeNames
+  , IfPositive $ DeclaratorParens <$> arbitraryDeclaratorFrom typeNames
   , IfPositive $ ArrayOrProto
-      <$> arbitraryDirectDeclarator typeNames
-      <*> arbitraryArrayOrProto typeNames
+      <$> arbitraryDirectDeclaratorFrom typeNames
+      <*> arbitraryArrayOrProtoFrom typeNames
   ]
 
-arbitraryArrayOrProto :: Set.Set Id -> QC.Gen ArrayOrProto
-arbitraryArrayOrProto typeNames = halveSize $ oneOfSized $
-  [ Anyhow $ Array <$> arbitraryArrayType typeNames
-  , IfPositive $ Proto <$> QC.listOf (arbitraryParameterDeclaration typeNames)
+arbitraryArrayOrProtoFrom :: Set.Set Identifier -> QC.Gen ArrayOrProto
+arbitraryArrayOrProtoFrom typeNames = halveSize $ oneOfSized $
+  [ Anyhow $ Array <$> arbitraryArrayTypeFrom typeNames
+  , IfPositive $ Proto <$> QC.listOf (arbitraryParameterDeclarationFrom typeNames)
   ]
 
-arbitraryArrayType :: Set.Set Id -> QC.Gen ArrayType
-arbitraryArrayType typeNames = QC.oneof
+arbitraryArrayTypeFrom :: Set.Set Identifier -> QC.Gen ArrayType
+arbitraryArrayTypeFrom typeNames = QC.oneof
   [ return VariablySized
   , SizedByInteger . QC.getNonNegative <$> QC.arbitrary
-  , SizedByIdentifier <$> arbitraryIdentifier typeNames
+  , SizedByIdentifier <$> arbitraryIdentifierFrom typeNames
   , return Unsized
   ]
 
 instance QC.Arbitrary Pointer where
   arbitrary = Pointer <$> QC.arbitrary
 
-arbitraryParameterDeclaration :: Set.Set Id -> QC.Gen ParameterDeclaration
-arbitraryParameterDeclaration typeNames = halveSize $
+arbitraryParameterDeclarationFrom :: Set.Set Identifier -> QC.Gen ParameterDeclaration
+arbitraryParameterDeclarationFrom typeNames = halveSize $
   ParameterDeclaration
-    <$> QC.listOf1 (arbitraryDeclarationSpecifier typeNames)
+    <$> QC.listOf1 (arbitraryDeclarationSpecifierFrom typeNames)
     <*> QC.oneof
-          [ Left <$> arbitraryDeclarator typeNames
-          , Right <$> arbitraryAbstractDeclarator typeNames
+          [ Left <$> arbitraryDeclaratorFrom typeNames
+          , Right <$> arbitraryAbstractDeclaratorFrom typeNames
           ]
 
-arbitraryAbstractDeclarator :: Set.Set Id -> QC.Gen AbstractDeclarator
-arbitraryAbstractDeclarator typeNames = halveSize $ do
+arbitraryAbstractDeclaratorFrom :: Set.Set Identifier -> QC.Gen AbstractDeclarator
+arbitraryAbstractDeclaratorFrom typeNames = halveSize $ do
   ptrs <- QC.arbitrary
   decl <- if null ptrs
-    then Just <$> arbitraryDirectAbstractDeclarator typeNames
+    then Just <$> arbitraryDirectAbstractDeclaratorFrom typeNames
     else oneOfSized
       [ Anyhow $ return Nothing
-      , IfPositive $ Just <$> arbitraryDirectAbstractDeclarator typeNames
+      , IfPositive $ Just <$> arbitraryDirectAbstractDeclaratorFrom typeNames
       ]
   return $ AbstractDeclarator ptrs decl
 
-arbitraryDirectAbstractDeclarator
-  :: Set.Set Id -> QC.Gen DirectAbstractDeclarator
-arbitraryDirectAbstractDeclarator typeNames = halveSize $ oneOfSized $
-  [ Anyhow $ ArrayOrProtoHere <$> arbitraryArrayOrProto typeNames
-  , IfPositive $ AbstractDeclaratorParens <$> arbitraryAbstractDeclarator typeNames
+arbitraryDirectAbstractDeclaratorFrom
+  :: Set.Set Identifier -> QC.Gen DirectAbstractDeclarator
+arbitraryDirectAbstractDeclaratorFrom typeNames = halveSize $ oneOfSized $
+  [ Anyhow $ ArrayOrProtoHere <$> arbitraryArrayOrProtoFrom typeNames
+  , IfPositive $ AbstractDeclaratorParens <$> arbitraryAbstractDeclaratorFrom typeNames
   , IfPositive $ ArrayOrProtoThere
-      <$> arbitraryDirectAbstractDeclarator typeNames
-      <*> arbitraryArrayOrProto typeNames
+      <$> arbitraryDirectAbstractDeclaratorFrom typeNames
+      <*> arbitraryArrayOrProtoFrom typeNames
   ]
 
 ------------------------------------------------------------------------

@@ -271,7 +271,7 @@ inlineExp
   -- ^ Type of the foreign call
   -> C.Type
   -- ^ Return type of the C expr
-  -> [(C.Id, C.Type)]
+  -> [(C.Identifier, C.Type)]
   -- ^ Parameters of the C expr
   -> String
   -- ^ The C expression
@@ -303,7 +303,7 @@ inlineItems
   -- ^ Type of the foreign call
   -> C.Type
   -- ^ Return type of the C expr
-  -> [(C.Id, C.Type)]
+  -> [(C.Identifier, C.Type)]
   -- ^ Parameters of the C expr
   -> String
   -- ^ The C items
@@ -312,7 +312,7 @@ inlineItems callSafety type_ cRetType cParams cItems = do
   let mkParam (id', paramTy) = C.ParameterDeclaration (Just id') paramTy
   let proto = C.Proto cRetType (map mkParam cParams)
   funName <- uniqueCName $ show proto ++ cItems
-  let decl = C.ParameterDeclaration (Just (C.Id funName)) proto
+  let decl = C.ParameterDeclaration (Just (C.Identifier funName)) proto
   let defs =
         prettyOneLine decl ++ " {\n" ++
         cItems ++ "\n}\n"
@@ -363,7 +363,7 @@ data ParameterType
 
 data ParseTypedC = ParseTypedC
   { ptcReturnType :: C.Type
-  , ptcParameters :: [(C.Id, C.Type, ParameterType)]
+  , ptcParameters :: [(C.Identifier, C.Type, ParameterType)]
   , ptcBody :: String
   }
 
@@ -380,7 +380,7 @@ parseTypedC antiQs = do
   (cParams, cBody) <- evalStateT parseBody 0
   return $ ParseTypedC cRetType cParams cBody
   where
-    parseBody :: StateT Int m ([(C.Id, C.Type, ParameterType)], String)
+    parseBody :: StateT Int m ([(C.Identifier, C.Type, ParameterType)], String)
     parseBody = do
       -- Note that this code does not use "lexing" combinators (apart
       -- when appropriate) because we want to make sure to preserve
@@ -396,10 +396,10 @@ parseTypedC antiQs = do
             s' <- case C.parameterDeclarationId decl of
               Nothing -> fail $ pretty80 $
                 "Un-named captured variable in decl" <+> PP.pretty decl
-              Just id' -> return $ C.unId id'
+              Just id' -> return $ C.unIdentifier id'
             id' <- freshId s'
             void $ Parser.char ')'
-            return ([(id', C.parameterDeclarationType decl, Plain s')], C.unId id')
+            return ([(id', C.parameterDeclarationType decl, Plain s')], C.unIdentifier id')
       (decls, s') <- msum
         [ do Parser.try $ do -- Try because we might fail to parse the 'eof'
                 -- 'symbolic' because we want to consume whitespace
@@ -417,19 +417,19 @@ parseTypedC antiQs = do
       return (decls, s ++ s')
       where
 
-    parseAntiQuote :: StateT Int m ([(C.Id, C.Type, ParameterType)], String)
+    parseAntiQuote :: StateT Int m ([(C.Identifier, C.Type, ParameterType)], String)
     parseAntiQuote = msum
       [ do void $ Parser.try (Parser.string $ antiQId ++ ":") Parser.<?> "anti quoter id"
            (s, cTy, x) <- aqParser antiQ
            id' <- freshId s
-           return ([(id', cTy, AntiQuote antiQId (toSomeEq x))], C.unId id')
+           return ([(id', cTy, AntiQuote antiQId (toSomeEq x))], C.unIdentifier id')
       | (antiQId, SomeAntiQuoter antiQ) <- Map.toList antiQs
       ]
 
     freshId s = do
       c <- get
       put $ c + 1
-      return $ C.Id $ s ++ "_inline_c_" ++ show c
+      return $ C.Identifier $ s ++ "_inline_c_" ++ show c
 
 ------------------------------------------------------------------------
 -- Utils

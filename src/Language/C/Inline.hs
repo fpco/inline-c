@@ -250,7 +250,7 @@ quoteCode p = TH.QuasiQuoter
   }
 
 genericQuote
-  :: (TH.TypeQ -> C.Type -> [(C.Id, C.Type)] -> String -> TH.ExpQ)
+  :: (TH.TypeQ -> C.Type -> [(C.Identifier, C.Type)] -> String -> TH.ExpQ)
   -- ^ Function taking that something and building an expression, see
   -- 'inlineExp' for other args.
   -> TH.QuasiQuoter

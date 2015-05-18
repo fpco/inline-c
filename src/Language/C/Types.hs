@@ -21,7 +21,7 @@
 
 module Language.C.Types
   ( -- * Types
-    P.Id(..)
+    P.Identifier(..)
   , P.StorageClassSpecifier(..)
   , P.TypeQualifier(..)
   , P.FunctionSpecifier(..)
@@ -83,9 +83,9 @@ data TypeSpecifier
   | Float
   | Double
   | LDouble
-  | TypeName P.Id
-  | Struct P.Id
-  | Enum P.Id
+  | TypeName P.Identifier
+  | Struct P.Identifier
+  | Enum P.Identifier
   deriving (Typeable, Show, Eq, Ord)
 
 data Specifiers = Specifiers
@@ -113,7 +113,7 @@ data Sign
   deriving (Typeable, Show, Eq, Ord)
 
 data ParameterDeclaration = ParameterDeclaration
-  { parameterDeclarationId :: Maybe P.Id
+  { parameterDeclarationId :: Maybe P.Identifier
   , parameterDeclarationType :: Type
   } deriving (Typeable, Show, Eq)
 
@@ -220,14 +220,14 @@ untangleDeclarationSpecifiers declSpecs = do
   return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
 
 untangleDeclarator
-  :: Type -> P.Declarator -> Either UntangleErr (P.Id, Type)
+  :: Type -> P.Declarator -> Either UntangleErr (P.Identifier, Type)
 untangleDeclarator ty0 (P.Declarator ptrs0 directDecltor) = go ty0 ptrs0
   where
-    go :: Type -> [P.Pointer] -> Either UntangleErr (P.Id, Type)
+    go :: Type -> [P.Pointer] -> Either UntangleErr (P.Identifier, Type)
     go ty [] = goDirect ty directDecltor
     go ty (P.Pointer quals : ptrs) = go (Ptr quals ty) ptrs
 
-    goDirect :: Type -> P.DirectDeclarator -> Either UntangleErr (P.Id, Type)
+    goDirect :: Type -> P.DirectDeclarator -> Either UntangleErr (P.Identifier, Type)
     goDirect ty direct0 = case direct0 of
       P.DeclaratorRoot s -> return (s, ty)
       P.ArrayOrProto direct (P.Array arrayType) ->
@@ -427,7 +427,7 @@ parseParameterList :: P.CParser m => m [ParameterDeclaration]
 parseParameterList =
   mapM untangleParameterDeclaration' =<< P.parameter_list
 
-parseIdentifier :: P.CParser m => m P.Id
+parseIdentifier :: P.CParser m => m P.Identifier
 parseIdentifier = P.identifier_no_lex
 
 parseType :: P.CParser m => m Type
