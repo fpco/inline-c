@@ -34,6 +34,7 @@ module Language.C.Inline
     -- * Inline C
     -- $quoting
   , exp
+  , pure
   , block
   , include
   , verbatim
@@ -60,7 +61,7 @@ module Language.C.Inline
   , module Foreign.C.Types
   ) where
 
-import           Prelude hiding (exp)
+import           Prelude hiding (exp, pure)
 
 import           Control.Monad (void)
 import           Foreign.C.Types
@@ -69,6 +70,7 @@ import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek, Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
+import           System.IO.Unsafe (unsafePerformIO)  -- for 'pure'
 
 import           Language.C.Inline.Context
 import           Language.C.Inline.Internal
@@ -227,9 +229,20 @@ import           Language.C.Inline.FunPtr
 --   'return' vec
 -- @
 
+-- | C expressions.
 exp :: TH.QuasiQuoter
 exp = genericQuote $ inlineExp TH.Safe
 
+-- | Variant of 'exp', for use with expressions known to have no side effects.
+--
+-- BEWARE: use this function with caution, only when you know what you are
+-- doing. If an expression does in fact have side-effects, then indiscriminate
+-- use of 'pure' may endanger referential transparency, and in principle even
+-- type safety.
+pure :: TH.QuasiQuoter
+pure = genericQuote $ UNIMPLEMENTED
+
+-- | C code blocks (i.e. statements).
 block :: TH.QuasiQuoter
 block = genericQuote $ inlineItems TH.Safe
 

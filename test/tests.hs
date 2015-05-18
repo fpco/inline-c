@@ -2,7 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
-import           Prelude hiding (exp, sum)
+import           Prelude hiding (exp, pure, sum)
 
 import           Data.Monoid ((<>))
 import qualified Data.Vector.Storable.Mutable as V
@@ -71,6 +71,11 @@ main = Hspec.hspec $ do
       let y = 4
       z <- [exp| int{ $(int x) + $(int y) + 5 } |]
       z `Hspec.shouldBe` x + y + 5
+    Hspec.it "pure" $ do
+      let x = 2
+      let y = 10
+      let z = [pure| int{ $(int x) + 10 + $(int y) } |]
+      z `Hspec.shouldBe` x + y + 10
     Hspec.it "unsafe exp" $ do
       let x = 2
       let y = 10
