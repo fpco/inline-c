@@ -138,10 +138,11 @@ import           Language.C.Inline.FunPtr
 --
 -- * The first type to appear (@int@ in the example) is the type of said C code.
 --
--- * The syntax of the @\<C code\>@ depends on on the quasi-quoter used,
---   and the anti-quoters available.  @exp@ functions accept a C
---   expression.  @block@ functions accept a list of statemens, like the
---   body of a function.
+-- * The syntax of the @\<C code\>@ depends on on the quasi-quoter used, and the
+--   anti-quoters available. The @exp@ quasi-quoter expects a C expression. The
+--   @block@ quasi-quoter expects a list of statements, like the body of
+--   a function. Just like a C function, a block has a return type, matching the
+--   type of any values in any @return@ statements appearing in the block.
 --
 -- See also the @README.md@ file for more documentation.
 --
