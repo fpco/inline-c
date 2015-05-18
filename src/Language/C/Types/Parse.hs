@@ -1,5 +1,4 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -71,7 +70,7 @@ module Language.C.Types.Parse
   , ParameterDeclarationWithTypeNames(..)
   ) where
 
-import           Control.Applicative ((<|>))
+import           Control.Applicative
 import           Control.Monad (msum, void, MonadPlus, unless, when)
 import           Control.Monad.Reader (MonadReader, ask, runReaderT, ReaderT)
 import           Data.Functor.Identity (Identity)
@@ -90,11 +89,6 @@ import           Text.Parser.Token
 import qualified Text.Parser.Token.Highlight as Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
-
-#if __GLASGOW_HASKELL__ < 710
-import           Control.Applicative (Applicative, (<*>), (<*))
-import           Data.Functor ((<$>), (<$))
-#endif
 
 ------------------------------------------------------------------------
 -- Parser

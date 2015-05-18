@@ -1,5 +1,4 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -48,7 +47,7 @@ module Language.C.Inline.Internal
     , genericQuote
     ) where
 
-import           Control.Applicative ((<|>))
+import           Control.Applicative
 import           Control.Exception (catch, throwIO)
 import           Control.Monad (forM, void, msum, when, unless)
 import           Control.Monad.State (evalStateT, StateT, get, put)
@@ -75,11 +74,6 @@ import qualified Text.Parser.LookAhead as Parser
 import qualified Text.Parser.Token as Parser
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
-
-#if __GLASGOW_HASKELL__ < 710
-import           Control.Applicative ((<*), (*>), (<|>))
-import           Data.Functor ((<$>))
-#endif
 
 import qualified Language.C.Types as C
 import           Language.C.Inline.Context

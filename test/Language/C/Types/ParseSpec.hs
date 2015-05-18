@@ -1,11 +1,12 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+
 module Language.C.Types.ParseSpec (spec) where
 
-import           Control.Applicative ((<*), (*>))
+import           Control.Applicative
 import           Control.Monad.Trans.Class (lift)
 import qualified Data.Set as Set
 import qualified Test.Hspec as Hspec
@@ -16,6 +17,8 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import           Language.C.Types.Parse
 import qualified Language.C.Types as Types
+
+import Prelude -- Fix for 7.10 unused warnings.
 
 spec :: Hspec.SpecWith ()
 spec = do
