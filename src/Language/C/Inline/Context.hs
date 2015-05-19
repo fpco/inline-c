@@ -101,6 +101,15 @@ data AntiQuoter a = AntiQuoter
     -- If the the type returned is @ty@, the 'TH.Exp' __must__ have type @forall
     -- a. (ty -> IO a) -> IO a@. This allows to do resource handling when
     -- preparing C values.
+    --
+    -- Care must be taken when 'Purity' is taken into account.
+    -- Specifically, the returned code in IO must be idempotent to
+    -- guarantee its safety when used in pure code.  More specifically,
+    -- we cannot prevent the IO code from being inlined.  If
+    -- non-idempotent marshallers are required (e.g. if an update to
+    -- some global state is needed) then we reccomend throwing an error
+    -- when 'Purity' is 'Pure' (for example "you cannot use context X
+    -- with @pure@"), which will show up at compile time.
   }
 
 -- | An identifier for a 'AntiQuoter'.
@@ -244,6 +253,10 @@ convertType_ err purity cTypes cTy = do
 --
 -- For example, we can capture function @f@ of type @CInt -> CInt -> IO
 -- CInt@ in C code using @$fun:(int (*f)(int, int))@.
+--
+-- When used in a @pure@ embedding, the Haskell function will have to be
+-- pure too.  Continuing the example above we'll have @CInt -> CInt ->
+-- IO CInt@.
 --
 -- Does not include the 'baseCtx', since most of the time it's going to
 -- be included as part of larger contexts.

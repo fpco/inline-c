@@ -179,9 +179,13 @@ import           Language.C.Inline.FunPtr
 --
 -- == Function purity
 --
--- All @inline-c@ quasiquotes live in 'IO'. If you know the embedded C code is
--- pure, wrap it inside an @unsafePerformIO@ as you would do with standard
--- impure-but-pure Haskell code.
+-- The @'exp'@ and @'block'@ quasiquotes live in 'IO'. We also provide
+-- another quasi-quoter, @'pure'@, that embeds a C expression as pure
+-- Haskell code.  For more complex interaction between Haskell and C
+-- that still results in referentially transparent code we reccomend
+-- working in IO and wrapping the relevant mix of C and Haskell inside
+-- an @unsafePerformIO@, as you would do with standard impure-but-pure
+-- Haskell code.
 --
 -- === Safe and @unsafe@ calls
 --

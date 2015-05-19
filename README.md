@@ -56,6 +56,16 @@ many common C types to Haskell type. In this case,
 [C.exp| double { cos(1) } |] :: IO CDouble
 ```
 
+For pure C expression like these we also provide `C.pure`, which works
+exactly the same but without the `IO`:
+
+```
+[C.pure| double { cos(1) } |] :: CDouble
+```
+
+Obviously extra care must be taken when using `C.pure`: the embedded C
+code must be referentially transparent.
+
 ## Multiple statements
 
 `inline-c` allows embedding arbitrary C code, not just expressions, in
