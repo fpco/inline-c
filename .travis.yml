@@ -34,4 +34,9 @@ script:
     else
        echo "expected '$SRC_TGZ' not found";
        exit 1;
-    fi
+    fi;
+    cd ..
+  # check that the sample cabal project can be installed
+  - cd sample-cabal-project;
+    cabal configure;
+    cabal build
