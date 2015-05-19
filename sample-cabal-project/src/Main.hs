@@ -2,21 +2,23 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
-import           Language.C.Inline
+import           Foreign.C.Types
+import qualified Language.C.Inline as C
+import qualified Language.C.Inline.Unsafe as CU
 
-include "<math.h>"
-include "<stdio.h>"
+C.include "<math.h>"
+C.include "<stdio.h>"
 
 test_cexp :: CDouble -> CDouble -> IO CDouble
 test_cexp x y =
-  [cexp| double(double x, double y){ cos(x) + cos(y) } |]
+  [C.exp| double{ cos($(double x)) + cos($(double y)) } |]
 
 test_cexp_unsafe :: CDouble -> CDouble -> IO CDouble
 test_cexp_unsafe x y =
-  [cexp_unsafe| double(double x, double y){ cos(x) + cos(y) } |]
+  [CU.exp| double{ cos($(double x)) + cos($(double y)) } |]
 
 test_voidExp :: IO ()
-test_voidExp = [cexp| void { printf("Hello\n") } |]
+test_voidExp = [C.exp| void { printf("Hello\n") } |]
 
 main :: IO ()
 main = do
