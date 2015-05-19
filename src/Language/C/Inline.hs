@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -61,7 +62,11 @@ module Language.C.Inline
   , module Foreign.C.Types
   ) where
 
+#if __GLASGOW_HASKELL__ < 710
+import           Prelude hiding (exp)
+#else
 import           Prelude hiding (exp, pure)
+#endif
 
 import           Control.Monad (void)
 import           Foreign.C.Types
@@ -70,7 +75,6 @@ import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek, Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
-import           System.IO.Unsafe (unsafePerformIO)  -- for 'pure'
 
 import           Language.C.Inline.Context
 import           Language.C.Inline.Internal
@@ -231,7 +235,7 @@ import           Language.C.Inline.FunPtr
 
 -- | C expressions.
 exp :: TH.QuasiQuoter
-exp = genericQuote $ inlineExp TH.Safe
+exp = genericQuote IO $ inlineExp TH.Safe
 
 -- | Variant of 'exp', for use with expressions known to have no side effects.
 --
@@ -240,11 +244,11 @@ exp = genericQuote $ inlineExp TH.Safe
 -- use of 'pure' may endanger referential transparency, and in principle even
 -- type safety.
 pure :: TH.QuasiQuoter
-pure = genericQuote $ UNIMPLEMENTED
+pure = genericQuote Pure $ inlineExp TH.Safe
 
 -- | C code blocks (i.e. statements).
 block :: TH.QuasiQuoter
-block = genericQuote $ inlineItems TH.Safe
+block = genericQuote IO $ inlineItems TH.Safe
 
 -- | Emits a CPP include directive for C code associated with the current
 -- module. To avoid having to escape quotes, the function itself adds them when

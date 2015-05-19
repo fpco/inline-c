@@ -72,7 +72,7 @@ spec = do
       [t| CArray (Ptr (FunPtr (CInt -> IO (Ptr (CArray (Ptr CChar)))))) |]
   where
     goodConvert cTy = do
-      mbHsTy <- TH.runQ $ convertType (ctxTypesTable baseCtx) cTy
+      mbHsTy <- TH.runQ $ convertType IO (ctxTypesTable baseCtx) cTy
       case mbHsTy of
         Nothing   -> error $ "Could not convert type (goodConvert)"
         Just hsTy -> return hsTy
