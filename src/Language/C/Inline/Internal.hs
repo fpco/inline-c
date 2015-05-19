@@ -442,11 +442,12 @@ quoteCode p = TH.QuasiQuoter
   }
 
 genericQuote
-  :: (TH.TypeQ -> C.Type -> [(C.Identifier, C.Type)] -> String -> TH.ExpQ)
+  :: Purity
+  -> (TH.TypeQ -> C.Type -> [(C.Identifier, C.Type)] -> String -> TH.ExpQ)
   -- ^ Function taking that something and building an expression, see
   -- 'inlineExp' for other args.
   -> TH.QuasiQuoter
-genericQuote build = quoteCode $ \s -> do
+genericQuote purity build = quoteCode $ \s -> do
     ctx <- getContext
     ParseTypedC cType cParams cExp <-
       runParserInQ s (isTypeName (ctxTypesTable ctx)) $ parseTypedC $ ctxAntiQuoters ctx
@@ -474,14 +475,18 @@ genericQuote build = quoteCode $ \s -> do
                 error  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
                          show antiId ++ ". (genericQuote)"
               Just x ->
-                aqMarshaller antiQ (ctxTypesTable ctx) cTy x
+                aqMarshaller antiQ purity (ctxTypesTable ctx) cTy x
     let hsFunType = convertCFunSig hsType $ map fst hsParams
     let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
-    buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
+    ioCall <- buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
+    -- If the user requested a pure function, make it so.
+    case purity of
+      Pure -> [| unsafePerformIO $(return ioCall) |]
+      IO -> return ioCall
   where
     cToHs :: Context -> C.Type -> TH.TypeQ
     cToHs ctx cTy = do
-      mbHsTy <- convertType (ctxTypesTable ctx) cTy
+      mbHsTy <- convertType purity (ctxTypesTable ctx) cTy
       case mbHsTy of
         Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
         Just hsTy -> return hsTy

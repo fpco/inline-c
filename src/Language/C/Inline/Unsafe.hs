@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 -- | @unsafe@ variants of the "Language.C.Inline" quasi-quoters, to call the C code
 -- unsafely in the sense of
 -- <https://www.haskell.org/onlinereport/haskell2010/haskellch8.html#x15-1590008.4.3>.
@@ -13,17 +15,35 @@
 
 module Language.C.Inline.Unsafe
   ( exp
+  , pure
   , block
   ) where
 
-import Language.C.Inline.Internal
+#if __GLASGOW_HASKELL__ < 710
+import           Prelude hiding (exp)
+#else
+import           Prelude hiding (exp, pure)
+#endif
+
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
 
-import           Prelude hiding (exp)
+import           Language.C.Inline.Context
+import           Language.C.Inline.Internal
 
+-- | C expressions.
 exp :: TH.QuasiQuoter
-exp = genericQuote $ inlineExp TH.Unsafe
+exp = genericQuote IO $ inlineExp TH.Unsafe
 
+-- | Variant of 'exp', for use with expressions known to have no side effects.
+--
+-- BEWARE: use this function with caution, only when you know what you are
+-- doing. If an expression does in fact have side-effects, then indiscriminate
+-- use of 'pure' may endanger referential transparency, and in principle even
+-- type safety.
+pure :: TH.QuasiQuoter
+pure = genericQuote Pure $ inlineExp TH.Unsafe
+
+-- | C code blocks (i.e. statements).
 block :: TH.QuasiQuoter
-block = genericQuote $ inlineItems TH.Unsafe
+block = genericQuote IO $ inlineItems TH.Unsafe

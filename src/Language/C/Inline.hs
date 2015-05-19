@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -34,6 +35,7 @@ module Language.C.Inline
     -- * Inline C
     -- $quoting
   , exp
+  , pure
   , block
   , include
   , verbatim
@@ -60,7 +62,11 @@ module Language.C.Inline
   , module Foreign.C.Types
   ) where
 
+#if __GLASGOW_HASKELL__ < 710
 import           Prelude hiding (exp)
+#else
+import           Prelude hiding (exp, pure)
+#endif
 
 import           Control.Monad (void)
 import           Foreign.C.Types
@@ -173,9 +179,13 @@ import           Language.C.Inline.FunPtr
 --
 -- == Function purity
 --
--- All @inline-c@ quasiquotes live in 'IO'. If you know the embedded C code is
--- pure, wrap it inside an @unsafePerformIO@ as you would do with standard
--- impure-but-pure Haskell code.
+-- The @'exp'@ and @'block'@ quasiquotes live in 'IO'. We also provide
+-- another quasi-quoter, @'pure'@, that embeds a C expression as pure
+-- Haskell code.  For more complex interaction between Haskell and C
+-- that still results in referentially transparent code we reccomend
+-- working in IO and wrapping the relevant mix of C and Haskell inside
+-- an @unsafePerformIO@, as you would do with standard impure-but-pure
+-- Haskell code.
 --
 -- === Safe and @unsafe@ calls
 --
@@ -227,11 +237,22 @@ import           Language.C.Inline.FunPtr
 --   'return' vec
 -- @
 
+-- | C expressions.
 exp :: TH.QuasiQuoter
-exp = genericQuote $ inlineExp TH.Safe
+exp = genericQuote IO $ inlineExp TH.Safe
 
+-- | Variant of 'exp', for use with expressions known to have no side effects.
+--
+-- BEWARE: use this function with caution, only when you know what you are
+-- doing. If an expression does in fact have side-effects, then indiscriminate
+-- use of 'pure' may endanger referential transparency, and in principle even
+-- type safety.
+pure :: TH.QuasiQuoter
+pure = genericQuote Pure $ inlineExp TH.Safe
+
+-- | C code blocks (i.e. statements).
 block :: TH.QuasiQuoter
-block = genericQuote $ inlineItems TH.Safe
+block = genericQuote IO $ inlineItems TH.Safe
 
 -- | Emits a CPP include directive for C code associated with the current
 -- module. To avoid having to escape quotes, the function itself adds them when

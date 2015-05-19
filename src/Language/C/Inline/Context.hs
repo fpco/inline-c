@@ -20,6 +20,7 @@
 module Language.C.Inline.Context
   ( -- * 'TypesTable'
     TypesTable
+  , Purity(..)
   , convertType
   , CArray
   , isTypeName
@@ -67,6 +68,13 @@ import qualified Language.C.Types as C
 -- parse C types, and to convert them to Haskell types.
 type TypesTable = Map.Map C.TypeSpecifier TH.TypeQ
 
+-- | A data type to indicate whether the user requested pure or IO
+-- function from Haskell
+data Purity
+  = Pure
+  | IO
+  deriving (Eq, Show)
+
 -- | Specifies how to parse and process an antiquotation in the C code.
 --
 -- All antiquotations (apart from plain variable capture) have syntax
@@ -83,9 +91,9 @@ data AntiQuoter a = AntiQuoter
     -- assign to the variable that will replace the anti-quotation, the type of
     -- said variable, and some arbitrary data which will then be fed to
     -- 'aqMarshaller'.
-  , aqMarshaller :: TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
-    -- ^ Takes the type and the body returned by 'aqParser', together with the
-    -- current 'TypesTable'.
+  , aqMarshaller :: Purity -> TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
+    -- ^ Takes the requested purity, the current 'TypesTable', andthe
+    -- type and the body returned by 'aqParser'.
     --
     -- Returns the Haskell type for the parameter, and the Haskell expression
     -- that will be passed in as the parameter.
@@ -93,6 +101,15 @@ data AntiQuoter a = AntiQuoter
     -- If the the type returned is @ty@, the 'TH.Exp' __must__ have type @forall
     -- a. (ty -> IO a) -> IO a@. This allows to do resource handling when
     -- preparing C values.
+    --
+    -- Care must be taken when 'Purity' is taken into account.
+    -- Specifically, the returned code in IO must be idempotent to
+    -- guarantee its safety when used in pure code.  More specifically,
+    -- we cannot prevent the IO code from being inlined.  If
+    -- non-idempotent marshallers are required (e.g. if an update to
+    -- some global state is needed) then we reccomend throwing an error
+    -- when 'Purity' is 'Pure' (for example "you cannot use context X
+    -- with @pure@"), which will show up at compile time.
   }
 
 -- | An identifier for a 'AntiQuoter'.
@@ -175,10 +192,11 @@ type CArray = Ptr
 -- | Given a 'Context', it uses its 'ctxTypesTable' to convert
 -- arbitrary C types.
 convertType
-  :: TypesTable
+  :: Purity
+  -> TypesTable
   -> C.Type
   -> TH.Q (Maybe TH.Type)
-convertType cTypes = runMaybeT . go
+convertType purity cTypes = runMaybeT . go
   where
     goDecl = go . C.parameterDeclarationType
 
@@ -203,7 +221,9 @@ convertType cTypes = runMaybeT . go
         mzero
 
     buildArr [] hsRetType =
-      [t| IO $(return hsRetType) |]
+      case purity of
+        Pure -> [t| $(return hsRetType) |]
+        IO -> [t| IO $(return hsRetType) |]
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
 
@@ -221,9 +241,9 @@ getHsVariable err s = do
                        ", because it's not in scope. (" ++ err ++ ")"
     Just hsName -> TH.varE hsName
 
-convertType_ :: String -> TypesTable -> C.Type -> TH.Q TH.Type
-convertType_ err cTypes cTy = do
-  mbHsType <- convertType cTypes cTy
+convertType_ :: String -> Purity -> TypesTable -> C.Type -> TH.Q TH.Type
+convertType_ err purity cTypes cTy = do
+  mbHsType <- convertType purity cTypes cTy
   case mbHsType of
     Nothing -> error $ "Cannot convert C type (" ++ err ++ ")"
     Just hsType -> return hsType
@@ -233,6 +253,10 @@ convertType_ err cTypes cTy = do
 --
 -- For example, we can capture function @f@ of type @CInt -> CInt -> IO
 -- CInt@ in C code using @$fun:(int (*f)(int, int))@.
+--
+-- When used in a @pure@ embedding, the Haskell function will have to be
+-- pure too.  Continuing the example above we'll have @CInt -> CInt ->
+-- IO CInt@.
 --
 -- Does not include the 'baseCtx', since most of the time it's going to
 -- be included as part of larger contexts.
@@ -250,8 +274,8 @@ funPtrAntiQuoter = AntiQuoter
         Just id' -> do
          let s = C.unIdentifier id'
          return (s, C.parameterDeclarationType cTy, s)
-  , aqMarshaller = \cTypes cTy cId -> do
-      hsTy <- convertType_ "funCtx" cTypes cTy
+  , aqMarshaller = \purity cTypes cTy cId -> do
+      hsTy <- convertType_ "funCtx" purity cTypes cTy
       hsExp <- getHsVariable "funCtx" cId
       case hsTy of
         TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr -> do
@@ -311,8 +335,8 @@ vecPtrAntiQuoter = AntiQuoter
         Just id' -> do
          let s = C.unIdentifier id'
          return (s, C.parameterDeclarationType cTy, s)
-  , aqMarshaller = \cTypes cTy cId -> do
-      hsTy <- convertType_ "vecCtx" cTypes cTy
+  , aqMarshaller = \purity cTypes cTy cId -> do
+      hsTy <- convertType_ "vecCtx" purity cTypes cTy
       hsExp <- getHsVariable "vecCtx" cId
       hsExp' <- [| vecCtxUnsafeWith $(return hsExp) |]
       return (hsTy, hsExp')
@@ -324,7 +348,7 @@ vecLenAntiQuoter = AntiQuoter
       cId <- C.parseIdentifier
       let s = C.unIdentifier cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
-  , aqMarshaller = \_cTypes cTy cId -> do
+  , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "vecCtx" cId
@@ -355,7 +379,7 @@ bsPtrAntiQuoter = AntiQuoter
       cId <- C.parseIdentifier
       let s = C.unIdentifier cId
       return (s, C.Ptr [] (C.TypeSpecifier mempty (C.Char (Just C.Unsigned))), s)
-  , aqMarshaller = \_cTypes cTy cId -> do
+  , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
         C.Ptr _ (C.TypeSpecifier _ (C.Char (Just C.Unsigned))) -> do
           hsTy <- [t| Ptr CUChar |]
@@ -372,7 +396,7 @@ bsLenAntiQuoter = AntiQuoter
       cId <- C.parseIdentifier
       let s = C.unIdentifier cId
       return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
-  , aqMarshaller = \_cTypes cTy cId -> do
+  , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "bsCtx" cId
