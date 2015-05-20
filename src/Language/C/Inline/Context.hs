@@ -87,12 +87,12 @@ data Purity
 -- parseable by the respective 'aqParser'.
 data AntiQuoter a = AntiQuoter
   { aqParser :: forall m. C.CParser m => m (String, C.Type, a)
-    -- ^ Parses the body of the antiquotation, returning an hint for the name to
+    -- ^ Parses the body of the antiquotation, returning a hint for the name to
     -- assign to the variable that will replace the anti-quotation, the type of
     -- said variable, and some arbitrary data which will then be fed to
     -- 'aqMarshaller'.
   , aqMarshaller :: Purity -> TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
-    -- ^ Takes the requested purity, the current 'TypesTable', andthe
+    -- ^ Takes the requested purity, the current 'TypesTable', and the
     -- type and the body returned by 'aqParser'.
     --
     -- Returns the Haskell type for the parameter, and the Haskell expression
@@ -102,14 +102,13 @@ data AntiQuoter a = AntiQuoter
     -- a. (ty -> IO a) -> IO a@. This allows to do resource handling when
     -- preparing C values.
     --
-    -- Care must be taken when 'Purity' is taken into account.
-    -- Specifically, the returned code in IO must be idempotent to
-    -- guarantee its safety when used in pure code.  More specifically,
-    -- we cannot prevent the IO code from being inlined.  If
-    -- non-idempotent marshallers are required (e.g. if an update to
-    -- some global state is needed) then we reccomend throwing an error
-    -- when 'Purity' is 'Pure' (for example "you cannot use context X
-    -- with @pure@"), which will show up at compile time.
+    -- Care must be taken regarding 'Purity'. Specifically, the generated IO
+    -- computation must be idempotent to guarantee its safety when used in pure
+    -- code. We cannot prevent the IO computation from being inlined, hence
+    -- potentially duplicated. If non-idempotent marshallers are required (e.g.
+    -- if an update to some global state is needed), it is best to throw an
+    -- error when 'Purity' is 'Pure' (for example "you cannot use context X with
+    -- @pure@"), which will show up at compile time.
   }
 
 -- | An identifier for a 'AntiQuoter'.

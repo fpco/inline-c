@@ -175,17 +175,12 @@ import           Language.C.Inline.FunPtr
 -- type is assumed to be of the Haskell type corresponding to the C type
 -- provided.  For example, if we capture variable @x@ using @double x@
 -- in the parameter list, the code will expect a variable @x@ of type
--- @CDouble@ in Haskell (when using 'baseCtx').
+-- 'CDouble' in Haskell (when using 'baseCtx').
 --
--- == Function purity
+-- === Purity
 --
--- The @'exp'@ and @'block'@ quasiquotes live in 'IO'. We also provide
--- another quasi-quoter, @'pure'@, that embeds a C expression as pure
--- Haskell code.  For more complex interaction between Haskell and C
--- that still results in referentially transparent code we reccomend
--- working in IO and wrapping the relevant mix of C and Haskell inside
--- an @unsafePerformIO@, as you would do with standard impure-but-pure
--- Haskell code.
+-- The 'exp' and 'block' quasi-quotes denote computations in the 'IO' monad.
+-- 'pure' denotes a pure value, expressed as a C expression.
 --
 -- === Safe and @unsafe@ calls
 --
