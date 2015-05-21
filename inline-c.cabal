@@ -53,6 +53,10 @@ test-suite tests
   hs-source-dirs:      test
   main-is:             tests.hs
   c-sources:           test/tests.c
+  other-modules:       Dummy
+                     , Language.C.Inline.ContextSpec
+                     , Language.C.Inline.ParseSpec
+                     , Language.C.Types.ParseSpec
   build-depends:       base >=4 && <5
                      , ansi-wl-pprint
                      , containers
