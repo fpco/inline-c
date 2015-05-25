@@ -377,10 +377,10 @@ bsPtrAntiQuoter = AntiQuoter
   { aqParser = do
       cId <- C.parseIdentifier
       let s = C.unIdentifier cId
-      return (s, C.Ptr [] (C.TypeSpecifier mempty (C.Char (Just C.Unsigned))), s)
+      return (s, C.Ptr [] (C.TypeSpecifier mempty (C.Char Nothing)), s)
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
-        C.Ptr _ (C.TypeSpecifier _ (C.Char (Just C.Unsigned))) -> do
+        C.Ptr _ (C.TypeSpecifier _ (C.Char Nothing)) -> do
           hsTy <- [t| Ptr CUChar |]
           hsExp <- getHsVariable "bsCtx" cId
           hsExp' <- [| \cont -> BS.unsafeUseAsCString $(return hsExp) $ \ptr -> cont (castPtr ptr)  |]

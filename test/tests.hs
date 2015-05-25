@@ -19,7 +19,7 @@ import qualified Language.C.Types.ParseSpec
 
 import           Dummy
 
-C.context (C.baseCtx <> C.funCtx <> C.vecCtx)
+C.context (C.baseCtx <> C.funCtx <> C.vecCtx <> C.bsCtx)
 
 C.include "<math.h>"
 C.include "<stdio.h>"
@@ -156,3 +156,15 @@ main = Hspec.hspec $ do
         return x;
       } |]
       sum' `Hspec.shouldBe` 3 * 10
+    Hspec.it "bytestrings" $ do
+      let bs = "foo"
+      bits <- [C.block| int {
+          int i, bits = 0;
+          for (i = 0; i < $bs-len:bs; i++) {
+            char ch = $bs-ptr:bs[i];
+            bits += (ch * 01001001001ULL & 042104210421ULL) % 017;
+          }
+          return bits;
+        } |]
+      bits `Hspec.shouldBe` 16
+
