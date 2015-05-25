@@ -52,7 +52,7 @@ import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
 import           Foreign.C.Types
-import           Foreign.Ptr (Ptr, FunPtr, castPtr)
+import           Foreign.Ptr (Ptr, FunPtr)
 import           Foreign.Storable (Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Token as Parser
@@ -381,9 +381,9 @@ bsPtrAntiQuoter = AntiQuoter
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
         C.Ptr _ (C.TypeSpecifier _ (C.Char Nothing)) -> do
-          hsTy <- [t| Ptr CUChar |]
+          hsTy <- [t| Ptr CChar |]
           hsExp <- getHsVariable "bsCtx" cId
-          hsExp' <- [| \cont -> BS.unsafeUseAsCString $(return hsExp) $ \ptr -> cont (castPtr ptr)  |]
+          hsExp' <- [| \cont -> BS.unsafeUseAsCString $(return hsExp) $ \ptr -> cont ptr  |]
           return (hsTy, hsExp')
         _ ->
           error "impossible: got type different from `unsigned char' (bsCtx)"
