@@ -168,7 +168,7 @@ baseTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ
 baseTypesTable = Map.fromList
   [ (C.Void, [t| () |])
   , (C.Char Nothing, [t| CChar |])
-  , (C.Char (Just C.Signed), [t| CChar |])
+  , (C.Char (Just C.Signed), [t| CSChar |])
   , (C.Char (Just C.Unsigned), [t| CUChar |])
   , (C.Short C.Signed, [t| CShort |])
   , (C.Short C.Unsigned, [t| CUShort |])
