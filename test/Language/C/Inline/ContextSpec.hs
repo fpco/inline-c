@@ -9,6 +9,7 @@
 module Language.C.Inline.ContextSpec (spec) where
 
 import           Control.Monad.Trans.Class (lift)
+import           Data.Word
 import qualified Test.Hspec as Hspec
 import           Text.Parser.Char
 import           Text.Parser.Combinators
@@ -31,6 +32,12 @@ spec = do
     shouldBeType (cty "char") [t| CChar |]
   Hspec.it "converts void" $ do
     shouldBeType (cty "void") [t| () |]
+  Hspec.it "converts standard library types (1)" $ do
+    shouldBeType (cty "FILE") [t| CFile |]
+  Hspec.it "converts standard library types (2)" $ do
+    shouldBeType (cty "uint16_t") [t| Word16 |]
+  Hspec.it "converts standard library types (3)" $ do
+    shouldBeType (cty "jmp_buf") [t| CJmpBuf |]
   Hspec.it "converts single ptr type" $ do
     shouldBeType (cty "long*") [t| Ptr CLong |]
   Hspec.it "converts double ptr type" $ do
