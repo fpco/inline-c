@@ -3,6 +3,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -47,10 +48,12 @@ import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BS
 import qualified Data.Map as Map
+import           Data.Int (Int8, Int16, Int32, Int64)
 import           Data.Monoid ((<>))
 import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
+import           Data.Word (Word8, Word16, Word32, Word64)
 import           Foreign.C.Types
 import           Foreign.Ptr (Ptr, FunPtr)
 import           Foreign.Storable (Storable)
@@ -167,6 +170,10 @@ baseCtx = mempty
 baseTypesTable :: Map.Map C.TypeSpecifier TH.TypeQ
 baseTypesTable = Map.fromList
   [ (C.Void, [t| () |])
+  -- Types from Foreign.C.Types in the order in which they are presented there,
+  -- along with its documentation's section headers.
+  --
+  -- Integral types
   , (C.Char Nothing, [t| CChar |])
   , (C.Char (Just C.Signed), [t| CSChar |])
   , (C.Char (Just C.Unsigned), [t| CUChar |])
@@ -176,10 +183,39 @@ baseTypesTable = Map.fromList
   , (C.Int C.Unsigned, [t| CUInt |])
   , (C.Long C.Signed, [t| CLong |])
   , (C.Long C.Unsigned, [t| CULong |])
+  , (C.TypeName "ptrdiff_t", [t| CPtrdiff |])
+  , (C.TypeName "size_t", [t| CSize |])
+  , (C.TypeName "wchar_t", [t| CWchar |])
+  , (C.TypeName "sig_atomic_t", [t| CSigAtomic |])
   , (C.LLong C.Signed, [t| CLLong |])
   , (C.LLong C.Unsigned, [t| CULLong |])
+  , (C.TypeName "intptr_t", [t| CIntPtr |])
+  , (C.TypeName "uintptr_t", [t| CUIntPtr |])
+  , (C.TypeName "intmax_t", [t| CIntMax |])
+  , (C.TypeName "uintmax_t", [t| CUIntMax |])
+  -- Numeric types
+  , (C.TypeName "clock_t", [t| CClock |])
+  , (C.TypeName "time_t", [t| CTime |])
+  , (C.TypeName "useconds_t", [t| CUSeconds |])
+  , (C.TypeName "suseconds_t", [t| CSUSeconds |])
+  -- Floating types
   , (C.Float, [t| CFloat |])
   , (C.Double, [t| CDouble |])
+  -- Other types
+  , (C.TypeName "FILE", [t| CFile |])
+  , (C.TypeName "fpos_t", [t| CFpos |])
+  , (C.TypeName "jmp_buf", [t| CJmpBuf |])
+  -- Types from stdint.h that can be statically mapped to their Haskell
+  -- equivalents. Excludes int_fast*_t and int_least*_t and the corresponding
+  -- unsigned types, since their sizes are platform-specific.
+  , (C.TypeName "int8_t", [t| Int8 |])
+  , (C.TypeName "int16_t", [t| Int16 |])
+  , (C.TypeName "int32_t", [t| Int32 |])
+  , (C.TypeName "int64_t", [t| Int64 |])
+  , (C.TypeName "uint8_t", [t| Word8 |])
+  , (C.TypeName "uint16_t", [t| Word16 |])
+  , (C.TypeName "uint32_t", [t| Word32 |])
+  , (C.TypeName "uint64_t", [t| Word64 |])
   ]
 
 -- | An alias for 'Ptr'.

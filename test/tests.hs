@@ -22,6 +22,8 @@ import           Dummy
 C.context (C.baseCtx <> C.funCtx <> C.vecCtx <> C.bsCtx)
 
 C.include "<math.h>"
+C.include "<stddef.h>"
+C.include "<stdint.h>"
 C.include "<stdio.h>"
 
 C.verbatim [r|
@@ -81,6 +83,21 @@ main = Hspec.hspec $ do
       z `Hspec.shouldBe` x + y + 7
     Hspec.it "void exp" $ do
       [C.exp| void { printf("Hello\n") } |]
+    Hspec.it "Foreign.C.Types library types" $ do
+      let x = 1
+      pd <- [C.block| ptrdiff_t { char a[2]; return &a[1] - &a[0] + $(ptrdiff_t x); } |]
+      pd `Hspec.shouldBe` 2
+      sz <- [C.exp| size_t { sizeof (char) } |]
+      sz `Hspec.shouldBe` 1
+      um <- [C.exp| uintmax_t { UINTMAX_MAX } |]
+      um `Hspec.shouldBe` maxBound
+    Hspec.it "stdint.h types" $ do
+      let x = 2
+      i16 <- [C.exp| int16_t { 1 + $(int16_t x) } |]
+      i16 `Hspec.shouldBe` 3
+      let y = 9
+      u32 <- [C.exp| uint32_t { $(uint32_t y) * 7 } |]
+      u32 `Hspec.shouldBe` 63
     Hspec.it "function pointer argument" $ do
       let ackermann m n
             | m == 0 = n + 1
