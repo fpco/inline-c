@@ -72,7 +72,7 @@ spec = do
       [t| CArray (Ptr (FunPtr (CInt -> IO (Ptr (CArray (Ptr CChar)))))) |]
   where
     goodConvert cTy = do
-      mbHsTy <- TH.runQ $ convertType IO (ctxTypesTable baseCtx) cTy
+      mbHsTy <- TH.runQ $ convertType IO baseTypes cTy
       case mbHsTy of
         Nothing   -> error $ "Could not convert type (goodConvert)"
         Just hsTy -> return hsTy
@@ -83,8 +83,10 @@ spec = do
       x `Hspec.shouldBe` y
 
     assertParse p s =
-      case C.runCParser (const False) "spec" s (lift spaces *> p <* lift eof) of
+      case C.runCParser (isTypeName baseTypes) "spec" s (lift spaces *> p <* lift eof) of
         Left err -> error $ "Parse error (assertParse): " ++ show err
         Right x -> x
 
     cty s = C.parameterDeclarationType $ assertParse C.parseParameterDeclaration s
+
+    baseTypes = ctxTypesTable baseCtx
