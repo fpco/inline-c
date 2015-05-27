@@ -55,7 +55,7 @@ import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Foreign.C.Types
-import           Foreign.Ptr (Ptr, FunPtr)
+import           Foreign.Ptr (Ptr, FunPtr, freeHaskellFunPtr)
 import           Foreign.Storable (Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Token as Parser
@@ -314,7 +314,12 @@ funPtrAntiQuoter = AntiQuoter
       hsExp <- getHsVariable "funCtx" cId
       case hsTy of
         TH.AppT (TH.ConT n) hsTy' | n == ''FunPtr -> do
-          hsExp' <- [| \cont -> cont =<< $(mkFunPtr (return hsTy')) $(return hsExp) |]
+          hsExp' <- [| \cont -> do
+              funPtr <- $(mkFunPtr (return hsTy')) $(return hsExp)
+              x <- cont funPtr
+              freeHaskellFunPtr funPtr
+              return x
+            |]
           return (hsTy, hsExp')
         _ -> error "The `fun' marshaller captures function pointers only"
   }
