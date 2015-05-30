@@ -281,7 +281,7 @@ main = do
   let x = 3
   let y = 4
   z <- [C.exp| long{
-      $fun:(int (*ackermannIO)(int, int))($(long x), $(long y))
+      $fun:(long (*ackermannIO)(long, long))($(long x), $(long y))
     } |]
   print z
 ```
