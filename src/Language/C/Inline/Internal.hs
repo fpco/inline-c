@@ -463,7 +463,7 @@ genericQuote purity build = quoteCode $ \s -> do
                       ", because it's not in scope. (genericQuote)"
             Just hsName -> do
               hsExp <- TH.varE hsName
-              [| \cont -> cont $(return hsExp) |]
+              [| \cont -> cont ($(return hsExp) :: $(return hsTy)) |]
           return (hsTy, hsExp)
         AntiQuote antiId dyn -> do
           case Map.lookup antiId (ctxAntiQuoters ctx) of
