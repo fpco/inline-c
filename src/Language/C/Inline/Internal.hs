@@ -134,7 +134,7 @@ modifyModuleState f = do
   thisModule <- getModuleId
   TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates ->
     case Map.lookup thisModule moduleStates of
-      Nothing -> error "inline-c: ModuleState not present"
+      Nothing -> fail "inline-c: ModuleState not present"
       Just ms -> do
         let (ms', x) = f ms
         return (Map.insert thisModule ms' moduleStates, x)
@@ -154,7 +154,7 @@ setContext ctx = do
   thisModule <- getModuleId
   moduleStates <- TH.runIO $ readMVar moduleStatesVar
   forM_ (Map.lookup thisModule moduleStates) $ \_ms ->
-    error "inline-c: The module has already been initialised (setContext)."
+    fail "inline-c: The module has already been initialised (setContext)."
   void $ initialiseModuleState $ Just ctx
 
 bumpGeneratedNames :: TH.Q Int
@@ -339,7 +339,7 @@ runParserInQ s isTypeName' p = do
   case C.runCParser isTypeName' (TH.loc_filename loc) s p' of
     Left err -> do
       -- TODO consider prefixing with "error while parsing C" or similar
-      error $ show err
+      fail $ show err
     Right res -> do
       return res
 
@@ -440,9 +440,9 @@ quoteCode
   -> TH.QuasiQuoter
 quoteCode p = TH.QuasiQuoter
   { TH.quoteExp = p
-  , TH.quotePat = error "inline-c: quotePat not implemented (quoteCode)"
-  , TH.quoteType = error "inline-c: quoteType not implemented (quoteCode)"
-  , TH.quoteDec = error "inline-c: quoteDec not implemented (quoteCode)"
+  , TH.quotePat = fail "inline-c: quotePat not implemented (quoteCode)"
+  , TH.quoteType = fail "inline-c: quoteType not implemented (quoteCode)"
+  , TH.quoteDec = fail "inline-c: quoteDec not implemented (quoteCode)"
   }
 
 genericQuote
@@ -463,8 +463,8 @@ genericQuote purity build = quoteCode $ \s -> do
           mbHsName <- TH.lookupValueName s'
           hsExp <- case mbHsName of
             Nothing -> do
-              error $ "Cannot capture Haskell variable " ++ s' ++
-                      ", because it's not in scope. (genericQuote)"
+              fail $ "Cannot capture Haskell variable " ++ s' ++
+                     ", because it's not in scope. (genericQuote)"
             Just hsName -> do
               hsExp <- TH.varE hsName
               [| \cont -> cont ($(return hsExp) :: $(return hsTy)) |]
@@ -472,12 +472,12 @@ genericQuote purity build = quoteCode $ \s -> do
         AntiQuote antiId dyn -> do
           case Map.lookup antiId (ctxAntiQuoters ctx) of
             Nothing ->
-              error $ "IMPOSSIBLE: could not find anti-quoter " ++ show antiId ++
-                      ". (genericQuote)"
+              fail $ "IMPOSSIBLE: could not find anti-quoter " ++ show antiId ++
+                     ". (genericQuote)"
             Just (SomeAntiQuoter antiQ) -> case fromSomeEq dyn of
               Nothing ->
-                error  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
-                         show antiId ++ ". (genericQuote)"
+                fail  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
+                        show antiId ++ ". (genericQuote)"
               Just x ->
                 aqMarshaller antiQ purity (ctxTypesTable ctx) cTy x
     let hsFunType = convertCFunSig hsType $ map fst hsParams
@@ -492,7 +492,7 @@ genericQuote purity build = quoteCode $ \s -> do
     cToHs ctx cTy = do
       mbHsTy <- convertType purity (ctxTypesTable ctx) cTy
       case mbHsTy of
-        Nothing -> error $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
+        Nothing -> fail $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
         Just hsTy -> return hsTy
 
     buildFunCall :: Context -> TH.ExpQ -> [TH.Exp] -> [TH.Name] -> TH.ExpQ

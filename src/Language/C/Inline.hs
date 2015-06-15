@@ -264,7 +264,7 @@ block = genericQuote IO $ inlineItems TH.Safe
 -- @
 include :: String -> TH.DecsQ
 include s
-  | null s = error "inline-c: empty string (include)"
+  | null s = fail "inline-c: empty string (include)"
   | head s == '<' = verbatim $ "#include " ++ s
   | otherwise = verbatim $ "#include \"" ++ s ++ "\""
 

@@ -272,15 +272,15 @@ getHsVariable :: String -> String -> TH.ExpQ
 getHsVariable err s = do
   mbHsName <- TH.lookupValueName s
   case mbHsName of
-    Nothing -> error $ "Cannot capture Haskell variable " ++ s ++
-                       ", because it's not in scope. (" ++ err ++ ")"
+    Nothing -> fail $ "Cannot capture Haskell variable " ++ s ++
+                      ", because it's not in scope. (" ++ err ++ ")"
     Just hsName -> TH.varE hsName
 
 convertType_ :: String -> Purity -> TypesTable -> C.Type -> TH.Q TH.Type
 convertType_ err purity cTypes cTy = do
   mbHsType <- convertType purity cTypes cTy
   case mbHsType of
-    Nothing -> error $ "Cannot convert C type (" ++ err ++ ")"
+    Nothing -> fail $ "Cannot convert C type (" ++ err ++ ")"
     Just hsType -> return hsType
 
 -- | This 'Context' includes a 'AntiQuoter' that removes the need for
@@ -305,7 +305,7 @@ funPtrAntiQuoter = AntiQuoter
   { aqParser = do
       cTy <- Parser.parens C.parseParameterDeclaration
       case C.parameterDeclarationId cTy of
-        Nothing -> error "Every captured function must be named (funCtx)"
+        Nothing -> fail "Every captured function must be named (funCtx)"
         Just id' -> do
          let s = C.unIdentifier id'
          return (s, C.parameterDeclarationType cTy, s)
@@ -321,7 +321,7 @@ funPtrAntiQuoter = AntiQuoter
               return x
             |]
           return (hsTy, hsExp')
-        _ -> error "The `fun' marshaller captures function pointers only"
+        _ -> fail "The `fun' marshaller captures function pointers only"
   }
 
 -- | This 'Context' includes two 'AntiQuoter's that allow to easily use
@@ -371,7 +371,7 @@ vecPtrAntiQuoter = AntiQuoter
   { aqParser = do
       cTy <- Parser.parens C.parseParameterDeclaration
       case C.parameterDeclarationId cTy of
-        Nothing -> error "Every captured vector must be named (vecCtx)"
+        Nothing -> fail "Every captured vector must be named (vecCtx)"
         Just id' -> do
          let s = C.unIdentifier id'
          return (s, C.parameterDeclarationType cTy, s)
@@ -397,7 +397,7 @@ vecLenAntiQuoter = AntiQuoter
           hsExp'' <- [| \cont -> cont $(return hsExp') |]
           return (hsTy, hsExp'')
         _ -> do
-          error "impossible: got type different from `long' (vecCtx)"
+          fail "impossible: got type different from `long' (vecCtx)"
   }
 
 
@@ -427,7 +427,7 @@ bsPtrAntiQuoter = AntiQuoter
           hsExp' <- [| \cont -> BS.unsafeUseAsCString $(return hsExp) $ \ptr -> cont ptr  |]
           return (hsTy, hsExp')
         _ ->
-          error "impossible: got type different from `unsigned char' (bsCtx)"
+          fail "impossible: got type different from `unsigned char' (bsCtx)"
   }
 
 bsLenAntiQuoter :: AntiQuoter String
@@ -445,5 +445,5 @@ bsLenAntiQuoter = AntiQuoter
           hsExp'' <- [| \cont -> cont $(return hsExp') |]
           return (hsTy, hsExp'')
         _ -> do
-          error "impossible: got type different from `long' (bsCtx)"
+          fail "impossible: got type different from `long' (bsCtx)"
   }
