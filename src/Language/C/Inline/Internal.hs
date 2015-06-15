@@ -79,15 +79,14 @@ import qualified Language.C.Types as C
 import           Language.C.Inline.Context
 import           Language.C.Inline.FunPtr
 
-type ModuleName = String
-
 data ModuleState = ModuleState
   { msContext :: Context
   , msGeneratedNames :: Int
   }
 
 {-# NOINLINE moduleStatesVar #-}
-moduleStatesVar :: MVar (Map.Map ModuleName ModuleState)
+-- | Maps Haskell file names to 'ModuleState'.
+moduleStatesVar :: MVar (Map.Map String ModuleState)
 moduleStatesVar = unsafePerformIO $ newMVar Map.empty
 
 -- | Make sure that 'moduleStatesVar' and the respective C file are up
@@ -99,7 +98,7 @@ initialiseModuleState
   -> TH.Q Context
 initialiseModuleState mbContext = do
   cFile <- cSourceLoc context
-  thisModule <- TH.loc_module <$> TH.location
+  thisModule <- TH.loc_filename <$> TH.location
   TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates -> do
     case Map.lookup thisModule moduleStates of
       Just moduleState -> return (moduleStates, msContext moduleState)
@@ -123,7 +122,7 @@ getContext = initialiseModuleState Nothing
 
 modifyModuleState :: (ModuleState -> (ModuleState, a)) -> TH.Q a
 modifyModuleState f = do
-  thisModule <- TH.loc_module <$> TH.location
+  thisModule <- TH.loc_filename <$> TH.location
   TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates ->
     case Map.lookup thisModule moduleStates of
       Nothing -> error "inline-c: ModuleState not present"
@@ -144,7 +143,7 @@ modifyModuleState f = do
 setContext :: Context -> TH.Q ()
 setContext ctx = do
   moduleStates <- TH.runIO $ readMVar moduleStatesVar
-  thisModule <- TH.loc_module <$> TH.location
+  thisModule <- TH.loc_filename <$> TH.location
   forM_ (Map.lookup thisModule moduleStates) $ \_ms ->
     error "inline-c: The module has already been initialised (setContext)."
   void $ initialiseModuleState $ Just ctx
