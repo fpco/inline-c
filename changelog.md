@@ -1,3 +1,4 @@
+- 0.5.3.4: Fix `bsCtx` docs.
 - 0.5.3.3:
   * Fix errors when using parallel builds.  See issue #22.
   * Use `fail` rather than `error` in the `Q` monad.
