@@ -84,9 +84,18 @@ data ModuleState = ModuleState
   , msGeneratedNames :: Int
   }
 
+-- | Identifier for the current module.  Currently we use the file name.
+-- Since we're pairing Haskell files with C files, it makes more sense
+-- to use the file name.  I'm not sure if it's possible to compile two
+-- modules with the same name in one run of GHC, but in this way we make
+-- sure that we don't run into trouble even it is.
+type ModuleId = String
+
+getModuleId :: TH.Q ModuleId
+getModuleId = TH.loc_filename <$> TH.location
+
 {-# NOINLINE moduleStatesVar #-}
--- | Maps Haskell file names to 'ModuleState'.
-moduleStatesVar :: MVar (Map.Map String ModuleState)
+moduleStatesVar :: MVar (Map.Map ModuleId ModuleState)
 moduleStatesVar = unsafePerformIO $ newMVar Map.empty
 
 -- | Make sure that 'moduleStatesVar' and the respective C file are up
@@ -98,7 +107,7 @@ initialiseModuleState
   -> TH.Q Context
 initialiseModuleState mbContext = do
   cFile <- cSourceLoc context
-  thisModule <- TH.loc_filename <$> TH.location
+  thisModule <- getModuleId
   TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates -> do
     case Map.lookup thisModule moduleStates of
       Just moduleState -> return (moduleStates, msContext moduleState)
@@ -122,7 +131,7 @@ getContext = initialiseModuleState Nothing
 
 modifyModuleState :: (ModuleState -> (ModuleState, a)) -> TH.Q a
 modifyModuleState f = do
-  thisModule <- TH.loc_filename <$> TH.location
+  thisModule <- getModuleId
   TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates ->
     case Map.lookup thisModule moduleStates of
       Nothing -> error "inline-c: ModuleState not present"
@@ -142,8 +151,8 @@ modifyModuleState f = do
 -- module.  Fails if that's not the case.
 setContext :: Context -> TH.Q ()
 setContext ctx = do
+  thisModule <- getModuleId
   moduleStates <- TH.runIO $ readMVar moduleStatesVar
-  thisModule <- TH.loc_filename <$> TH.location
   forM_ (Map.lookup thisModule moduleStates) $ \_ms ->
     error "inline-c: The module has already been initialised (setContext)."
   void $ initialiseModuleState $ Just ctx
