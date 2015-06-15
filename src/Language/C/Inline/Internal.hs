@@ -94,6 +94,10 @@ type ModuleId = String
 getModuleId :: TH.Q ModuleId
 getModuleId = TH.loc_filename <$> TH.location
 
+-- | 'MVar' storing the state for all the modules we visited.  Note that
+-- currently we do not bother with cleaning up the state after we're
+-- done compiling a module.  TODO if there is an easy way, clean up the
+-- state.
 {-# NOINLINE moduleStatesVar #-}
 moduleStatesVar :: MVar (Map.Map ModuleId ModuleState)
 moduleStatesVar = unsafePerformIO $ newMVar Map.empty
