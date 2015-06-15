@@ -48,14 +48,14 @@ module Language.C.Inline.Internal
     ) where
 
 import           Control.Applicative
+import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar, readMVar)
 import           Control.Exception (catch, throwIO)
-import           Control.Monad (forM, void, msum, when, unless)
+import           Control.Monad (forM, void, msum, unless)
 import           Control.Monad.State (evalStateT, StateT, get, put)
 import           Control.Monad.Trans.Class (lift)
 import qualified Crypto.Hash as CryptoHash
 import qualified Data.Binary as Binary
 import           Data.Foldable (forM_)
-import           Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
 import           Data.Typeable (Typeable, cast)
@@ -79,18 +79,19 @@ import qualified Language.C.Types as C
 import           Language.C.Inline.Context
 import           Language.C.Inline.FunPtr
 
+type ModuleName = String
+
 data ModuleState = ModuleState
-  { msModuleName :: String
-  , msContext :: Context
+  { msContext :: Context
   , msGeneratedNames :: Int
   }
 
-{-# NOINLINE moduleStateRef #-}
-moduleStateRef :: IORef (Maybe ModuleState)
-moduleStateRef = unsafePerformIO $ newIORef Nothing
+{-# NOINLINE moduleStatesVar #-}
+moduleStatesVar :: MVar (Map.Map ModuleName ModuleState)
+moduleStatesVar = unsafePerformIO $ newMVar Map.empty
 
--- | Make sure that 'moduleStateRef' and the respective C file are up
--- to date.
+-- | Make sure that 'moduleStatesVar' and the respective C file are up
+--   to date.
 initialiseModuleState
   :: Maybe Context
   -- ^ The 'Context' to use if we initialise the module.  If 'Nothing',
@@ -98,23 +99,20 @@ initialiseModuleState
   -> TH.Q Context
 initialiseModuleState mbContext = do
   cFile <- cSourceLoc context
-  mbModuleState <- TH.runIO $ readIORef moduleStateRef
   thisModule <- TH.loc_module <$> TH.location
-  let recordThisModule = TH.runIO $ do
+  TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates -> do
+    case Map.lookup thisModule moduleStates of
+      Just moduleState -> return (moduleStates, msContext moduleState)
+      Nothing -> do
         -- If the file exists and this is the first time we write
         -- something from this module (in other words, if we are
         -- recompiling the module), kill the file first.
         removeIfExists cFile
-        writeIORef moduleStateRef $ Just ModuleState
-          { msModuleName = thisModule
-          , msContext = context
-          , msGeneratedNames = 0
-          }
-        return context
-  case mbModuleState of
-    Nothing -> recordThisModule
-    Just ms | msModuleName ms == thisModule -> return $ msContext ms
-    Just _ms -> recordThisModule
+        let moduleState = ModuleState
+              { msContext = context
+              , msGeneratedNames = 0
+              }
+        return (Map.insert thisModule moduleState moduleStates, context)
   where
     context = fromMaybe baseCtx mbContext
 
@@ -123,14 +121,15 @@ initialiseModuleState mbContext = do
 getContext :: TH.Q Context
 getContext = initialiseModuleState Nothing
 
-getModuleState :: TH.Q ModuleState
-getModuleState = do
-  mbModuleState <- TH.runIO $ readIORef moduleStateRef
+modifyModuleState :: (ModuleState -> (ModuleState, a)) -> TH.Q a
+modifyModuleState f = do
   thisModule <- TH.loc_module <$> TH.location
-  case mbModuleState of
-    Nothing -> error "inline-c: ModuleState not present"
-    Just ms | msModuleName ms == thisModule -> return ms
-    Just _ms -> error "inline-c: stale ModuleState"
+  TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates ->
+    case Map.lookup thisModule moduleStates of
+      Nothing -> error "inline-c: ModuleState not present"
+      Just ms -> do
+        let (ms', x) = f ms
+        return (Map.insert thisModule ms' moduleStates, x)
 
 -- $context
 --
@@ -144,20 +143,17 @@ getModuleState = do
 -- module.  Fails if that's not the case.
 setContext :: Context -> TH.Q ()
 setContext ctx = do
-  mbModuleState <- TH.runIO $ readIORef moduleStateRef
-  forM_ mbModuleState $ \ms -> do
-    thisModule <- TH.loc_module <$> TH.location
-    when (msModuleName ms == thisModule) $
-      error "inline-c: The module has already been initialised (setContext)."
+  moduleStates <- TH.runIO $ readMVar moduleStatesVar
+  thisModule <- TH.loc_module <$> TH.location
+  forM_ (Map.lookup thisModule moduleStates) $ \_ms ->
+    error "inline-c: The module has already been initialised (setContext)."
   void $ initialiseModuleState $ Just ctx
 
 bumpGeneratedNames :: TH.Q Int
 bumpGeneratedNames = do
-  ms <- getModuleState
-  TH.runIO $ do
+  modifyModuleState $ \ms ->
     let c' = msGeneratedNames ms
-    writeIORef moduleStateRef $ Just ms{msGeneratedNames = c' + 1}
-    return c'
+    in (ms{msGeneratedNames = c' + 1}, c')
 
 ------------------------------------------------------------------------
 -- Emitting
