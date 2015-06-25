@@ -1,12 +1,15 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
 -- | Views of C datatypes. While "Language.C.Types.Parse" defines datatypes for
@@ -21,7 +24,9 @@
 
 module Language.C.Types
   ( -- * Types
-    P.Identifier(..)
+    P.CIdentifier
+  , P.unCIdentifier
+  , P.cIdentifierFromString
   , P.StorageClassSpecifier(..)
   , P.TypeQualifier(..)
   , P.FunctionSpecifier(..)
@@ -33,8 +38,10 @@ module Language.C.Types
   , ParameterDeclaration(..)
 
     -- * Parsing
-  , P.IsTypeName
+  , P.TypeNames
   , P.CParser
+  , P.CParserContext
+  , P.cCParserContext
   , P.runCParser
   , P.quickCParser
   , P.quickCParser_
@@ -56,9 +63,11 @@ module Language.C.Types
 import           Control.Arrow (second)
 import           Control.Monad (when, unless, forM_)
 import           Control.Monad.State (execState, modify)
+import           Data.Foldable (Foldable)
 import           Data.List (partition)
 import           Data.Maybe (fromMaybe)
 import           Data.Monoid ((<>))
+import           Data.Traversable (Traversable)
 import           Data.Typeable (Typeable)
 import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
@@ -83,9 +92,9 @@ data TypeSpecifier
   | Float
   | Double
   | LDouble
-  | TypeName P.Identifier
-  | Struct P.Identifier
-  | Enum P.Identifier
+  | TypeName P.CIdentifier
+  | Struct P.CIdentifier
+  | Enum P.CIdentifier
   deriving (Typeable, Show, Eq, Ord)
 
 data Specifiers = Specifiers
@@ -100,22 +109,22 @@ instance Monoid Specifiers where
   mappend (Specifiers x1 y1 z1) (Specifiers x2 y2 z2) =
     Specifiers (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
 
-data Type
+data Type i
   = TypeSpecifier Specifiers TypeSpecifier
-  | Ptr [P.TypeQualifier] Type
-  | Array P.ArrayType Type
-  | Proto Type [ParameterDeclaration]
-  deriving (Typeable, Show, Eq)
+  | Ptr [P.TypeQualifier] (Type i)
+  | Array (P.ArrayType i) (Type i)
+  | Proto (Type i) [ParameterDeclaration i]
+  deriving (Typeable, Show, Eq, Functor, Foldable, Traversable)
 
 data Sign
   = Signed
   | Unsigned
   deriving (Typeable, Show, Eq, Ord)
 
-data ParameterDeclaration = ParameterDeclaration
-  { parameterDeclarationId :: Maybe P.Identifier
-  , parameterDeclarationType :: Type
-  } deriving (Typeable, Show, Eq)
+data ParameterDeclaration i = ParameterDeclaration
+  { parameterDeclarationId :: Maybe i
+  , parameterDeclarationType :: (Type i)
+  } deriving (Typeable, Show, Eq, Functor, Foldable, Traversable)
 
 ------------------------------------------------------------------------
 -- Conversion
@@ -130,15 +139,16 @@ failConversion :: UntangleErr -> Either UntangleErr a
 failConversion = Left
 
 untangleParameterDeclaration
-  :: P.ParameterDeclaration -> Either UntangleErr ParameterDeclaration
+  :: P.ParameterDeclaration i -> Either UntangleErr (ParameterDeclaration i)
 untangleParameterDeclaration P.ParameterDeclaration{..} = do
   (specs, tySpec) <- untangleDeclarationSpecifiers parameterDeclarationSpecifiers
   let baseTy = TypeSpecifier specs tySpec
   (mbS, ty) <- case parameterDeclarationDeclarator of
-    Left decltor -> do
+    P.IsDeclarator decltor -> do
       (s, ty) <- untangleDeclarator baseTy decltor
       return (Just s, ty)
-    Right decltor -> (Nothing, ) <$> untangleAbstractDeclarator baseTy decltor
+    P.IsAbstractDeclarator decltor ->
+      (Nothing, ) <$> untangleAbstractDeclarator baseTy decltor
   return $ ParameterDeclaration mbS ty
 
 untangleDeclarationSpecifiers
@@ -220,14 +230,14 @@ untangleDeclarationSpecifiers declSpecs = do
   return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
 
 untangleDeclarator
-  :: Type -> P.Declarator -> Either UntangleErr (P.Identifier, Type)
+  :: forall i. Type i -> P.Declarator i -> Either UntangleErr (i, Type i)
 untangleDeclarator ty0 (P.Declarator ptrs0 directDecltor) = go ty0 ptrs0
   where
-    go :: Type -> [P.Pointer] -> Either UntangleErr (P.Identifier, Type)
+    go :: Type i -> [P.Pointer] -> Either UntangleErr (i, Type i)
     go ty [] = goDirect ty directDecltor
     go ty (P.Pointer quals : ptrs) = go (Ptr quals ty) ptrs
 
-    goDirect :: Type -> P.DirectDeclarator -> Either UntangleErr (P.Identifier, Type)
+    goDirect :: Type i -> P.DirectDeclarator i -> Either UntangleErr (i, Type i)
     goDirect ty direct0 = case direct0 of
       P.DeclaratorRoot s -> return (s, ty)
       P.ArrayOrProto direct (P.Array arrayType) ->
@@ -239,17 +249,17 @@ untangleDeclarator ty0 (P.Declarator ptrs0 directDecltor) = go ty0 ptrs0
         untangleDeclarator ty decltor
 
 untangleAbstractDeclarator
-  :: Type -> P.AbstractDeclarator -> Either UntangleErr Type
+  :: forall i. Type i -> P.AbstractDeclarator i -> Either UntangleErr (Type i)
 untangleAbstractDeclarator ty0 (P.AbstractDeclarator ptrs0 mbDirectDecltor) =
   go ty0 ptrs0
   where
-    go :: Type -> [P.Pointer] -> Either UntangleErr Type
+    go :: Type i -> [P.Pointer] -> Either UntangleErr (Type i)
     go ty [] = case mbDirectDecltor of
       Nothing -> return ty
       Just directDecltor -> goDirect ty directDecltor
     go ty (P.Pointer quals : ptrs) = go (Ptr quals ty) ptrs
 
-    goDirect :: Type -> P.DirectAbstractDeclarator -> Either UntangleErr Type
+    goDirect :: Type i -> P.DirectAbstractDeclarator i -> Either UntangleErr (Type i)
     goDirect ty direct0 = case direct0 of
       P.ArrayOrProtoThere direct (P.Array arrayType) ->
         goDirect (Array arrayType ty) direct
@@ -267,15 +277,16 @@ untangleAbstractDeclarator ty0 (P.AbstractDeclarator ptrs0 mbDirectDecltor) =
 ------------------------------------------------------------------------
 -- Tangling
 
-tangleParameterDeclaration :: ParameterDeclaration -> P.ParameterDeclaration
+tangleParameterDeclaration
+  :: forall i. ParameterDeclaration i -> P.ParameterDeclaration i
 tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
     uncurry P.ParameterDeclaration $ case mbId of
-      Nothing -> second Right $ goAbstractDirect ty00 Nothing
-      Just id' -> second Left $ goConcreteDirect ty00 $ P.DeclaratorRoot id'
+      Nothing -> second P.IsAbstractDeclarator $ goAbstractDirect ty00 Nothing
+      Just id' -> second P.IsDeclarator $ goConcreteDirect ty00 $ P.DeclaratorRoot id'
   where
     goAbstractDirect
-      :: Type -> Maybe P.DirectAbstractDeclarator
-      -> ([P.DeclarationSpecifier], P.AbstractDeclarator)
+      :: Type i -> Maybe (P.DirectAbstractDeclarator i)
+      -> ([P.DeclarationSpecifier], P.AbstractDeclarator i)
     goAbstractDirect ty0 mbDirect = case ty0 of
       TypeSpecifier specifiers tySpec ->
         let declSpecs = tangleTypeSpecifier specifiers tySpec
@@ -298,8 +309,8 @@ tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
             goAbstractDirect ty $ Just $ P.ArrayOrProtoThere decltor proto
 
     goAbstract
-      :: Type -> [P.Pointer] -> Maybe P.DirectAbstractDeclarator
-      -> ([P.DeclarationSpecifier], P.AbstractDeclarator)
+      :: Type i -> [P.Pointer] -> Maybe (P.DirectAbstractDeclarator i)
+      -> ([P.DeclarationSpecifier], P.AbstractDeclarator i)
     goAbstract ty0 ptrs mbDirect = case ty0 of
       TypeSpecifier specifiers tySpec ->
         let declSpecs = tangleTypeSpecifier specifiers tySpec
@@ -314,8 +325,8 @@ tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
           P.AbstractDeclarator ptrs mbDirect
 
     goConcreteDirect
-      :: Type -> P.DirectDeclarator
-      -> ([P.DeclarationSpecifier], P.Declarator)
+      :: Type i -> P.DirectDeclarator i
+      -> ([P.DeclarationSpecifier], P.Declarator i)
     goConcreteDirect ty0 direct = case ty0 of
       TypeSpecifier specifiers tySpec ->
         let declSpecs = tangleTypeSpecifier specifiers tySpec
@@ -329,8 +340,8 @@ tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
           P.Proto $ map tangleParameterDeclaration params
 
     goConcrete
-      :: Type -> [P.Pointer] -> P.DirectDeclarator
-      -> ([P.DeclarationSpecifier], P.Declarator)
+      :: Type i -> [P.Pointer] -> P.DirectDeclarator i
+      -> ([P.DeclarationSpecifier], P.Declarator i)
     goConcrete ty0 ptrs direct = case ty0 of
       TypeSpecifier specifiers tySpec ->
         let declSpecs = tangleTypeSpecifier specifiers tySpec
@@ -371,14 +382,14 @@ tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
 ------------------------------------------------------------------------
 -- To english
 
-describeParameterDeclaration :: ParameterDeclaration -> PP.Doc
+describeParameterDeclaration :: PP.Pretty i => ParameterDeclaration i -> PP.Doc
 describeParameterDeclaration (ParameterDeclaration mbId ty) =
   let idDoc = case mbId of
         Nothing -> ""
         Just id' -> PP.pretty id' <+> "is a "
   in idDoc <> describeType ty
 
-describeType :: Type -> PP.Doc
+describeType :: PP.Pretty i => Type i -> PP.Doc
 describeType ty0 = case ty0 of
   TypeSpecifier specs tySpec -> engSpecs specs <> PP.pretty tySpec
   Ptr quals ty -> engQuals quals <> "ptr to" <+> describeType ty
@@ -412,25 +423,29 @@ describeType ty0 = case ty0 of
 -- Convenient parsing
 
 untangleParameterDeclaration'
-  :: P.CParser m => P.ParameterDeclaration -> m ParameterDeclaration
+  :: (P.CParser i m, PP.Pretty i)
+  => P.ParameterDeclaration i -> m (ParameterDeclaration i)
 untangleParameterDeclaration' pDecl =
   case untangleParameterDeclaration pDecl of
     Left err -> fail $ pretty80 $
       "Error while parsing declaration:" </> PP.pretty err </> PP.pretty pDecl
     Right x -> return x
 
-parseParameterDeclaration :: P.CParser m => m ParameterDeclaration
+parseParameterDeclaration
+  :: (P.CParser i m, PP.Pretty i) => m (ParameterDeclaration i)
 parseParameterDeclaration =
   untangleParameterDeclaration' =<< P.parameter_declaration
 
-parseParameterList :: P.CParser m => m [ParameterDeclaration]
+parseParameterList
+  :: (P.CParser i m, PP.Pretty i)
+  => m [ParameterDeclaration i]
 parseParameterList =
   mapM untangleParameterDeclaration' =<< P.parameter_list
 
-parseIdentifier :: P.CParser m => m P.Identifier
+parseIdentifier :: P.CParser i m => m i
 parseIdentifier = P.identifier_no_lex
 
-parseType :: P.CParser m => m Type
+parseType :: (P.CParser i m, PP.Pretty i) => m (Type i)
 parseType = parameterDeclarationType <$> parseParameterDeclaration
 
 ------------------------------------------------------------------------
@@ -466,10 +481,10 @@ instance PP.Pretty UntangleErr where
     NoDataTypes specs ->
       "No data types in " </> PP.prettyList specs
 
-instance PP.Pretty ParameterDeclaration where
+instance PP.Pretty i => PP.Pretty (ParameterDeclaration i) where
   pretty = PP.pretty . tangleParameterDeclaration
 
-instance PP.Pretty Type where
+instance PP.Pretty i => PP.Pretty (Type i) where
   pretty ty =
     PP.pretty $ tangleParameterDeclaration $ ParameterDeclaration Nothing ty
 

@@ -24,7 +24,7 @@ module Language.C.Inline.Context
   , Purity(..)
   , convertType
   , CArray
-  , isTypeName
+  , typeNamesFromTypesTable
 
     -- * 'AntiQuoter'
   , AntiQuoter(..)
@@ -47,9 +47,10 @@ import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BS
-import qualified Data.Map as Map
 import           Data.Int (Int8, Int16, Int32, Int64)
+import qualified Data.Map as Map
 import           Data.Monoid ((<>))
+import           Data.Traversable (traverse)
 import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -59,6 +60,7 @@ import           Foreign.Ptr (Ptr, FunPtr, freeHaskellFunPtr)
 import           Foreign.Storable (Storable)
 import qualified Language.Haskell.TH as TH
 import qualified Text.Parser.Token as Parser
+import qualified Data.HashSet as HashSet
 
 #if __GLASGOW_HASKELL__ < 710
 import           Data.Monoid (Monoid(..))
@@ -66,6 +68,7 @@ import           Data.Monoid (Monoid(..))
 
 import           Language.C.Inline.FunPtr
 import qualified Language.C.Types as C
+import           Language.C.Inline.HaskellIdentifier
 
 -- | A mapping from 'C.TypeSpecifier's to Haskell types.  Needed both to
 -- parse C types, and to convert them to Haskell types.
@@ -89,12 +92,15 @@ data Purity
 -- Where @XXX@ is the name of the antiquoter and @YYY@ is something
 -- parseable by the respective 'aqParser'.
 data AntiQuoter a = AntiQuoter
-  { aqParser :: forall m. C.CParser m => m (String, C.Type, a)
+  { aqParser :: forall m. C.CParser HaskellIdentifier m => m (C.CIdentifier, C.Type C.CIdentifier, a)
     -- ^ Parses the body of the antiquotation, returning a hint for the name to
     -- assign to the variable that will replace the anti-quotation, the type of
     -- said variable, and some arbitrary data which will then be fed to
     -- 'aqMarshaller'.
-  , aqMarshaller :: Purity -> TypesTable -> C.Type -> a -> TH.Q (TH.Type, TH.Exp)
+    --
+    -- The 'C.Type' has 'Void' as an identifier type to make sure that
+    -- no names appear in it.
+  , aqMarshaller :: Purity -> TypesTable -> C.Type C.CIdentifier -> a -> TH.Q (TH.Type, TH.Exp)
     -- ^ Takes the requested purity, the current 'TypesTable', and the
     -- type and the body returned by 'aqParser'.
     --
@@ -229,13 +235,13 @@ type CArray = Ptr
 convertType
   :: Purity
   -> TypesTable
-  -> C.Type
+  -> C.Type C.CIdentifier
   -> TH.Q (Maybe TH.Type)
 convertType purity cTypes = runMaybeT . go
   where
     goDecl = go . C.parameterDeclarationType
 
-    go :: C.Type -> MaybeT TH.Q TH.Type
+    go :: C.Type C.CIdentifier -> MaybeT TH.Q TH.Type
     go cTy = case cTy of
       C.TypeSpecifier _specs cSpec ->
         case Map.lookup cSpec cTypes of
@@ -262,21 +268,22 @@ convertType purity cTypes = runMaybeT . go
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
 
-isTypeName :: TypesTable -> C.Identifier -> Bool
-isTypeName cTypes id' = Map.member (C.TypeName id') cTypes
+typeNamesFromTypesTable :: TypesTable -> C.TypeNames
+typeNamesFromTypesTable cTypes = HashSet.fromList
+  [ id' | C.TypeName id' <- Map.keys cTypes ]
 
 ------------------------------------------------------------------------
 -- Useful contexts
 
-getHsVariable :: String -> String -> TH.ExpQ
+getHsVariable :: String -> HaskellIdentifier -> TH.ExpQ
 getHsVariable err s = do
-  mbHsName <- TH.lookupValueName s
+  mbHsName <- TH.lookupValueName $ unHaskellIdentifier s
   case mbHsName of
-    Nothing -> fail $ "Cannot capture Haskell variable " ++ s ++
+    Nothing -> fail $ "Cannot capture Haskell variable " ++ unHaskellIdentifier s ++
                       ", because it's not in scope. (" ++ err ++ ")"
     Just hsName -> TH.varE hsName
 
-convertType_ :: String -> Purity -> TypesTable -> C.Type -> TH.Q TH.Type
+convertType_ :: String -> Purity -> TypesTable -> C.Type C.CIdentifier -> TH.Q TH.Type
 convertType_ err purity cTypes cTy = do
   mbHsType <- convertType purity cTypes cTy
   case mbHsType of
@@ -300,15 +307,9 @@ funCtx = mempty
   { ctxAntiQuoters = Map.fromList [("fun", SomeAntiQuoter funPtrAntiQuoter)]
   }
 
-funPtrAntiQuoter :: AntiQuoter String
+funPtrAntiQuoter :: AntiQuoter HaskellIdentifier
 funPtrAntiQuoter = AntiQuoter
-  { aqParser = do
-      cTy <- Parser.parens C.parseParameterDeclaration
-      case C.parameterDeclarationId cTy of
-        Nothing -> fail "Every captured function must be named (funCtx)"
-        Just id' -> do
-         let s = C.unIdentifier id'
-         return (s, C.parameterDeclarationType cTy, s)
+  { aqParser = cDeclAqParser
   , aqMarshaller = \purity cTypes cTy cId -> do
       hsTy <- convertType_ "funCtx" purity cTypes cTy
       hsExp <- getHsVariable "funCtx" cId
@@ -366,15 +367,9 @@ instance Storable a => VecCtx (VM.IOVector a) where
   vecCtxLength = VM.length
   vecCtxUnsafeWith = VM.unsafeWith
 
-vecPtrAntiQuoter :: AntiQuoter String
+vecPtrAntiQuoter :: AntiQuoter HaskellIdentifier
 vecPtrAntiQuoter = AntiQuoter
-  { aqParser = do
-      cTy <- Parser.parens C.parseParameterDeclaration
-      case C.parameterDeclarationId cTy of
-        Nothing -> fail "Every captured vector must be named (vecCtx)"
-        Just id' -> do
-         let s = C.unIdentifier id'
-         return (s, C.parameterDeclarationType cTy, s)
+  { aqParser = cDeclAqParser
   , aqMarshaller = \purity cTypes cTy cId -> do
       hsTy <- convertType_ "vecCtx" purity cTypes cTy
       hsExp <- getHsVariable "vecCtx" cId
@@ -382,12 +377,12 @@ vecPtrAntiQuoter = AntiQuoter
       return (hsTy, hsExp')
   }
 
-vecLenAntiQuoter :: AntiQuoter String
+vecLenAntiQuoter :: AntiQuoter HaskellIdentifier
 vecLenAntiQuoter = AntiQuoter
   { aqParser = do
-      cId <- C.parseIdentifier
-      let s = C.unIdentifier cId
-      return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
+      hId <- C.parseIdentifier
+      let cId = mangleHaskellIdentifier hId
+      return (cId, C.TypeSpecifier mempty (C.Long C.Signed), hId)
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
@@ -413,12 +408,12 @@ bsCtx = mempty
       ]
   }
 
-bsPtrAntiQuoter :: AntiQuoter String
+bsPtrAntiQuoter :: AntiQuoter HaskellIdentifier
 bsPtrAntiQuoter = AntiQuoter
   { aqParser = do
-      cId <- C.parseIdentifier
-      let s = C.unIdentifier cId
-      return (s, C.Ptr [] (C.TypeSpecifier mempty (C.Char Nothing)), s)
+      hId <- C.parseIdentifier
+      let cId = mangleHaskellIdentifier hId
+      return (cId, C.Ptr [] (C.TypeSpecifier mempty (C.Char Nothing)), hId)
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
         C.Ptr _ (C.TypeSpecifier _ (C.Char Nothing)) -> do
@@ -430,12 +425,12 @@ bsPtrAntiQuoter = AntiQuoter
           fail "impossible: got type different from `unsigned char' (bsCtx)"
   }
 
-bsLenAntiQuoter :: AntiQuoter String
+bsLenAntiQuoter :: AntiQuoter HaskellIdentifier
 bsLenAntiQuoter = AntiQuoter
   { aqParser = do
-      cId <- C.parseIdentifier
-      let s = C.unIdentifier cId
-      return (s, C.TypeSpecifier mempty (C.Long C.Signed), s)
+      hId <- C.parseIdentifier
+      let cId = mangleHaskellIdentifier hId
+      return (cId, C.TypeSpecifier mempty (C.Long C.Signed), hId)
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
@@ -447,3 +442,27 @@ bsLenAntiQuoter = AntiQuoter
         _ -> do
           fail "impossible: got type different from `long' (bsCtx)"
   }
+
+-- Utils
+------------------------------------------------------------------------
+
+cDeclAqParser
+  :: C.CParser HaskellIdentifier m
+  => m (C.CIdentifier, C.Type C.CIdentifier, HaskellIdentifier)
+cDeclAqParser = do
+  cTy <- Parser.parens C.parseParameterDeclaration
+  case C.parameterDeclarationId cTy of
+    Nothing -> fail "Every captured function must be named (funCtx)"
+    Just hId -> do
+     let cId = mangleHaskellIdentifier hId
+     cTy' <- deHaskellifyCType $ C.parameterDeclarationType cTy
+     return (cId, cTy', hId)
+
+deHaskellifyCType
+  :: C.CParser HaskellIdentifier m
+  => C.Type HaskellIdentifier -> m (C.Type C.CIdentifier)
+deHaskellifyCType = traverse $ \hId -> do
+  case C.cIdentifierFromString (unHaskellIdentifier hId) of
+    Left err -> fail $ "Illegal Haskell identifier " ++ unHaskellIdentifier hId ++
+                       " in C type:\n" ++ err
+    Right x -> return x

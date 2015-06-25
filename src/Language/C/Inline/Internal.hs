@@ -58,6 +58,7 @@ import qualified Data.Binary as Binary
 import           Data.Foldable (forM_)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
+import           Data.Traversable (for)
 import           Data.Typeable (Typeable, cast)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
@@ -75,9 +76,10 @@ import qualified Text.Parser.Token as Parser
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
-import qualified Language.C.Types as C
 import           Language.C.Inline.Context
 import           Language.C.Inline.FunPtr
+import           Language.C.Inline.HaskellIdentifier
+import qualified Language.C.Types as C
 
 data ModuleState = ModuleState
   { msContext :: Context
@@ -276,9 +278,9 @@ inlineExp
   -- ^ Safety of the foreign call
   -> TH.TypeQ
   -- ^ Type of the foreign call
-  -> C.Type
+  -> C.Type C.CIdentifier
   -- ^ Return type of the C expr
-  -> [(C.Identifier, C.Type)]
+  -> [(C.CIdentifier, C.Type C.CIdentifier)]
   -- ^ Parameters of the C expr
   -> String
   -- ^ The C expression
@@ -308,9 +310,9 @@ inlineItems
   -- ^ Safety of the foreign call
   -> TH.TypeQ
   -- ^ Type of the foreign call
-  -> C.Type
+  -> C.Type C.CIdentifier
   -- ^ Return type of the C expr
-  -> [(C.Identifier, C.Type)]
+  -> [(C.CIdentifier, C.Type C.CIdentifier)]
   -- ^ Parameters of the C expr
   -> String
   -- ^ The C items
@@ -319,7 +321,11 @@ inlineItems callSafety type_ cRetType cParams cItems = do
   let mkParam (id', paramTy) = C.ParameterDeclaration (Just id') paramTy
   let proto = C.Proto cRetType (map mkParam cParams)
   funName <- uniqueCName $ show proto ++ cItems
-  let decl = C.ParameterDeclaration (Just (C.Identifier funName)) proto
+  cFunName <- case C.cIdentifierFromString funName of
+    Left err -> fail $ "inlineItems: impossible, generated bad C identifier " ++
+                       "funName:\n" ++ err
+    Right x -> return x
+  let decl = C.ParameterDeclaration (Just cFunName) proto
   let defs =
         prettyOneLine decl ++ " {\n" ++
         cItems ++ "\n}\n"
@@ -334,13 +340,13 @@ inlineItems callSafety type_ cRetType cParams cItems = do
 -- Parsing
 
 runParserInQ
-  :: String -> C.IsTypeName -> (forall m. C.CParser m => m a) -> TH.Q a
-runParserInQ s isTypeName' p = do
+  :: String -> C.TypeNames -> (forall m. C.CParser HaskellIdentifier m => m a) -> TH.Q a
+runParserInQ s typeNames' p = do
   loc <- TH.location
   let (line, col) = TH.loc_start loc
   let parsecLoc = Parsec.newPos (TH.loc_filename loc) line col
   let p' = lift (Parsec.setPosition parsecLoc) *> p <* lift Parser.eof
-  case C.runCParser isTypeName' (TH.loc_filename loc) s p' of
+  case C.runCParser (haskellCParserContext typeNames') (TH.loc_filename loc) s p' of
     Left err -> do
       -- TODO consider prefixing with "error while parsing C" or similar
       fail $ show err
@@ -364,49 +370,43 @@ fromSomeEq :: (Eq a, Typeable a) => SomeEq -> Maybe a
 fromSomeEq (SomeEq x) = cast x
 
 data ParameterType
-  = Plain String                -- The name of the captured variable
+  = Plain HaskellIdentifier                -- The name of the captured variable
   | AntiQuote AntiQuoterId SomeEq
   deriving (Show, Eq)
 
 data ParseTypedC = ParseTypedC
-  { ptcReturnType :: C.Type
-  , ptcParameters :: [(C.Identifier, C.Type, ParameterType)]
+  { ptcReturnType :: C.Type C.CIdentifier
+  , ptcParameters :: [(C.CIdentifier, C.Type C.CIdentifier, ParameterType)]
   , ptcBody :: String
   }
 
+-- To parse C declarations, we're faced with a bit of a problem: we want
+-- to parse the anti-quotations so that Haskell identifiers are
+-- accepted, but we want them to appear only as the root of
+-- declarations.  For this reason, we parse allowing Haskell identifiers
+-- everywhere, and then we "purge" Haskell identifiers everywhere but at
+-- the root.
 parseTypedC
-  :: forall m. C.CParser m
+  :: forall m. C.CParser HaskellIdentifier m
   => AntiQuoters -> m ParseTypedC
   -- ^ Returns the return type, the captured variables, and the body.
 parseTypedC antiQs = do
   -- Parse return type (consume spaces first)
   Parser.spaces
-  cRetType <- C.parseType
+  cRetType <- purgeHaskellIdentifiers =<< C.parseType
   -- Parse the body
   void $ Parser.char '{'
   (cParams, cBody) <- evalStateT parseBody 0
   return $ ParseTypedC cRetType cParams cBody
   where
-    parseBody :: StateT Int m ([(C.Identifier, C.Type, ParameterType)], String)
+    parseBody
+      :: StateT Int m ([(C.CIdentifier, C.Type C.CIdentifier, ParameterType)], String)
     parseBody = do
       -- Note that this code does not use "lexing" combinators (apart
       -- when appropriate) because we want to make sure to preserve
       -- whitespace after we substitute things.
       s <- Parser.manyTill Parser.anyChar $
            Parser.lookAhead (Parser.char '}' <|> Parser.char '$')
-      let parseEscapedDollar = do
-            void $ Parser.char '$'
-            return ([], "$")
-      let parseTypedCapture = do
-            void $ Parser.symbolic '('
-            decl <- C.parseParameterDeclaration
-            s' <- case C.parameterDeclarationId decl of
-              Nothing -> fail $ pretty80 $
-                "Un-named captured variable in decl" <+> PP.pretty decl
-              Just id' -> return $ C.unIdentifier id'
-            id' <- freshId s'
-            void $ Parser.char ')'
-            return ([(id', C.parameterDeclarationType decl, Plain s')], C.unIdentifier id')
       (decls, s') <- msum
         [ do Parser.try $ do -- Try because we might fail to parse the 'eof'
                 -- 'symbolic' because we want to consume whitespace
@@ -424,19 +424,55 @@ parseTypedC antiQs = do
       return (decls, s ++ s')
       where
 
-    parseAntiQuote :: StateT Int m ([(C.Identifier, C.Type, ParameterType)], String)
+    parseAntiQuote
+      :: StateT Int m ([(C.CIdentifier, C.Type C.CIdentifier, ParameterType)], String)
     parseAntiQuote = msum
       [ do void $ Parser.try (Parser.string $ antiQId ++ ":") Parser.<?> "anti quoter id"
            (s, cTy, x) <- aqParser antiQ
            id' <- freshId s
-           return ([(id', cTy, AntiQuote antiQId (toSomeEq x))], C.unIdentifier id')
+           return ([(id', cTy, AntiQuote antiQId (toSomeEq x))], C.unCIdentifier id')
       | (antiQId, SomeAntiQuoter antiQ) <- Map.toList antiQs
       ]
+
+    parseEscapedDollar :: StateT Int m ([a], String)
+    parseEscapedDollar = do
+      void $ Parser.char '$'
+      return ([], "$")
+
+    parseTypedCapture
+      :: StateT Int m ([(C.CIdentifier, C.Type C.CIdentifier, ParameterType)], String)
+    parseTypedCapture = do
+      void $ Parser.symbolic '('
+      decl <- C.parseParameterDeclaration
+      declType <- purgeHaskellIdentifiers $ C.parameterDeclarationType decl
+      -- Purge the declaration type of all the Haskell identifiers.
+      hId <- case C.parameterDeclarationId decl of
+        Nothing -> fail $ pretty80 $
+          "Un-named captured variable in decl" <+> PP.pretty decl
+        Just hId -> return hId
+      id' <- freshId $ mangleHaskellIdentifier hId
+      void $ Parser.char ')'
+      return ([(id', declType, Plain hId)], C.unCIdentifier id')
 
     freshId s = do
       c <- get
       put $ c + 1
-      return $ C.Identifier $ s ++ "_inline_c_" ++ show c
+      case C.cIdentifierFromString (C.unCIdentifier s ++ "_inline_c_" ++ show c) of
+        Left _err -> error "freshId: The impossible happened"
+        Right x -> return x
+
+    -- The @m@ is polymorphic because we use this both for the plain
+    -- parser and the StateT parser we use above.  We only need 'fail'.
+    purgeHaskellIdentifiers
+      :: forall n. (Applicative n, Monad n)
+      => C.Type HaskellIdentifier -> n (C.Type C.CIdentifier)
+    purgeHaskellIdentifiers cTy = for cTy $ \hsIdent -> do
+      let hsIdentS = unHaskellIdentifier hsIdent
+      case C.cIdentifierFromString hsIdentS of
+        Left err -> fail $ "Haskell identifier " ++ hsIdentS ++ " in illegal position" ++
+                           "in C type\n" ++ pretty80 cTy ++ "\n" ++
+                           "A C identifier was expected, but:\n" ++ err
+        Right cIdent -> return cIdent
 
 quoteCode
   :: (String -> TH.ExpQ)
@@ -451,23 +487,23 @@ quoteCode p = TH.QuasiQuoter
 
 genericQuote
   :: Purity
-  -> (TH.TypeQ -> C.Type -> [(C.Identifier, C.Type)] -> String -> TH.ExpQ)
-  -- ^ Function taking that something and building an expression, see
-  -- 'inlineExp' for other args.
+  -> (TH.TypeQ -> C.Type C.CIdentifier -> [(C.CIdentifier, C.Type C.CIdentifier)] -> String -> TH.ExpQ)
+  -- ^ Function building an Haskell expression, see 'inlineExp' for
+  -- guidance on the other args.
   -> TH.QuasiQuoter
 genericQuote purity build = quoteCode $ \s -> do
     ctx <- getContext
     ParseTypedC cType cParams cExp <-
-      runParserInQ s (isTypeName (ctxTypesTable ctx)) $ parseTypedC $ ctxAntiQuoters ctx
+      runParserInQ s (typeNamesFromTypesTable (ctxTypesTable ctx)) $ parseTypedC $ ctxAntiQuoters ctx
     hsType <- cToHs ctx cType
     hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
       case parTy of
         Plain s' -> do
           hsTy <- cToHs ctx cTy
-          mbHsName <- TH.lookupValueName s'
+          mbHsName <- TH.lookupValueName $ unHaskellIdentifier s'
           hsExp <- case mbHsName of
             Nothing -> do
-              fail $ "Cannot capture Haskell variable " ++ s' ++
+              fail $ "Cannot capture Haskell variable " ++ unHaskellIdentifier s' ++
                      ", because it's not in scope. (genericQuote)"
             Just hsName -> do
               hsExp <- TH.varE hsName
@@ -492,7 +528,7 @@ genericQuote purity build = quoteCode $ \s -> do
       Pure -> [| unsafePerformIO $(return ioCall) |]
       IO -> return ioCall
   where
-    cToHs :: Context -> C.Type -> TH.TypeQ
+    cToHs :: Context -> C.Type C.CIdentifier -> TH.TypeQ
     cToHs ctx cTy = do
       mbHsTy <- convertType purity (ctxTypesTable ctx) cTy
       case mbHsTy of

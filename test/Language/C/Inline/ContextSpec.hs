@@ -90,7 +90,7 @@ spec = do
       x `Hspec.shouldBe` y
 
     assertParse p s =
-      case C.runCParser (isTypeName baseTypes) "spec" s (lift spaces *> p <* lift eof) of
+      case C.runCParser (C.cCParserContext (typeNamesFromTypesTable baseTypes)) "spec" s (lift spaces *> p <* lift eof) of
         Left err -> error $ "Parse error (assertParse): " ++ show err
         Right x -> x
 

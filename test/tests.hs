@@ -2,10 +2,12 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
+import           Control.Monad (void)
 import           Data.Monoid ((<>))
 import qualified Data.Vector.Storable.Mutable as V
 import           Foreign.C.Types
 import qualified Language.Haskell.TH as TH
+import           Prelude
 import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
 
@@ -184,4 +186,9 @@ main = Hspec.hspec $ do
           return bits;
         } |]
       bits `Hspec.shouldBe` 16
-
+    Hspec.it "Haskell identifiers" $ do
+      let x' = 3
+      void $ [C.exp| int { $(int x') } |]
+      let ä = 3
+      void $ [C.exp| int { $(int ä) } |]
+      void $ [C.exp| int { $(int Prelude.maxBound) } |]
