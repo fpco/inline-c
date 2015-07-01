@@ -1,4 +1,5 @@
 packages:
 - '.'
+- sample-cabal-project/
 extra-deps: []
 resolver: lts-2.14
