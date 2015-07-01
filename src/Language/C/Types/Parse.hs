@@ -135,7 +135,7 @@ cIdentifierFromString s =
   -- @
   -- cIdentifierFromString => fromString => cIdentifierFromString => ...
   -- @
-  case Parsec.parse (identNoLex cIdentStyle <* eof) "identifier_no_lex" s of
+  case Parsec.parse (identNoLex cIdentStyle <* eof) "cIdentifierFromString" s of
     Left err -> Left $ show err
     Right x -> Right $ CIdentifier x
 
