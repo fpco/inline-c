@@ -68,6 +68,8 @@ spec = do
       retType `Hspec.shouldBe` (cty "int")
       params `shouldMatchParameters` [(cty "int", Plain "Foo.bar")]
       cExp `shouldMatchBody` " Foobar[a-z0-9_]+ "
+    Hspec.it "does not parse Haskell identifier in bad position" $ do
+      badParse [r| double (*)(double Foo.bar) { 3.0 } |]
   where
     ctx = baseCtx <> funCtx
 
