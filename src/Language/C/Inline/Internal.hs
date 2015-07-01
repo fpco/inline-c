@@ -1,6 +1,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -55,7 +56,7 @@ import           Control.Monad.State (evalStateT, StateT, get, put)
 import           Control.Monad.Trans.Class (lift)
 import qualified Crypto.Hash as CryptoHash
 import qualified Data.Binary as Binary
-import           Data.Foldable (forM_)
+import           Data.Foldable (forM_, mapM_)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
 import           Data.Traversable (for)
@@ -63,6 +64,7 @@ import           Data.Typeable (Typeable, cast)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
+import           Prelude hiding (mapM_)
 import           System.Directory (removeFile)
 import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Error (isDoesNotExistError)
@@ -75,6 +77,7 @@ import qualified Text.Parser.LookAhead as Parser
 import qualified Text.Parser.Token as Parser
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           System.Environment (getProgName)
 
 import           Language.C.Inline.Context
 import           Language.C.Inline.FunPtr
@@ -112,7 +115,7 @@ initialiseModuleState
   -- 'baseCtx' will be used.
   -> TH.Q Context
 initialiseModuleState mbContext = do
-  cFile <- cSourceLoc context
+  mbcFile <- cSourceLoc context
   thisModule <- getModuleId
   TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates -> do
     case Map.lookup thisModule moduleStates of
@@ -121,7 +124,7 @@ initialiseModuleState mbContext = do
         -- If the file exists and this is the first time we write
         -- something from this module (in other words, if we are
         -- recompiling the module), kill the file first.
-        removeIfExists cFile
+        forM_ mbcFile $ \cFile -> removeIfExists cFile
         let moduleState = ModuleState
               { msContext = context
               , msGeneratedNames = 0
@@ -172,11 +175,23 @@ bumpGeneratedNames = do
 ------------------------------------------------------------------------
 -- Emitting
 
-cSourceLoc :: Context -> TH.Q FilePath
+-- | Return the path in which to emit C code. Or 'Nothing' if emitting should be
+-- inhibited, say because we're only type checking the module, not emitting code
+-- (e.g. with @-fno-code@ or in @haddock@).
+cSourceLoc :: Context -> TH.Q (Maybe FilePath)
 cSourceLoc ctx = do
-  thisFile <- TH.loc_filename <$> TH.location
-  let ext = fromMaybe "c" $ ctxFileExtension ctx
-  return $ dropExtension thisFile `addExtension` ext
+    thisFile <- TH.loc_filename <$> TH.location
+    let ext = fromMaybe "c" $ ctxFileExtension ctx
+    TH.runIO emitting >>= \case
+      True -> return $ Just $ dropExtension thisFile `addExtension` ext
+      False -> return $ Nothing
+  where
+    emitting = do
+      prog <- getProgName
+      -- Hard-code a common case for not generating code.
+      return $ case prog of
+        "haddock" -> False
+        _ -> True
 
 removeIfExists :: FilePath -> IO ()
 removeIfExists fileName = removeFile fileName `catch` handleExists
@@ -187,8 +202,8 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 emitVerbatim :: String -> TH.DecsQ
 emitVerbatim s = do
   ctx <- getContext
-  cFile <- cSourceLoc ctx
-  TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
+  cSourceLoc ctx >>=
+    mapM_ (\cFile -> TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n")
   return []
 
 ------------------------------------------------------------------------
