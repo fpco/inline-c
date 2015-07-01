@@ -1,3 +1,4 @@
+- 0.5.4.0: Allow Haskell identifiers in anti-quotes.  See issue #23.
 - 0.5.3.4: Fix `bsCtx` docs.
 - 0.5.3.3:
   * Fix errors when using parallel builds.  See issue #22.
