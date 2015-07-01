@@ -8,8 +8,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans #-} -- This is used for IsString C.Id
-
 -- | Enable painless embedding of C code in Haskell code. If you're interested
 -- in how to use the library, skip to the "Inline C" section. To build, read the
 -- first two sections.
