@@ -136,6 +136,9 @@ main = do
 Here, the Haskell variable `n` is captured right where we need it using
 `$(int n)`.  Standard anti-quotation (we'll talk about additional ones
 later) consists of a `$` followed by a C declaration in parenthesis.
+Note that any valid Haskell identifiers can be used when anti-quoting,
+including ones including constructors, qualified names, names containing
+unicode, etc.
 
 For each anti-quotation, a variable with a matching type is expected in
 the Haskell environment.  In this case `inline-c` expects a variable
