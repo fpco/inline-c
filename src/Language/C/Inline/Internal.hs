@@ -178,17 +178,17 @@ bumpGeneratedNames = do
 -- (e.g. with @-fno-code@ or in @haddock@)
 cSourceLoc :: Context -> TH.Q (Maybe FilePath)
 cSourceLoc ctx = do
-    thisFile <- TH.loc_filename <$> TH.location
-    let ext = fromMaybe "c" $ ctxFileExtension ctx
-    emitCode <- TH.runIO $ do
-      prog <- getProgName
-      -- Hard-code a common case for not generating code.  haddock just
-      -- type-checks, so we do not need to generate the C file again.
-      -- See issue #24.
-      return $ prog /= "haddock"
-    return $ if emitCode
-      then Just $ dropExtension thisFile `addExtension` ext
-      else Nothing
+    prog <- TH.runIO getProgName
+    -- Hard-code a common case for not generating code.  haddock just
+    -- type-checks, so we do not need to generate the C file again.
+    -- See issue #24.
+    let emitCode = prog /= "haddock"
+    if not emitCode
+      then return Nothing
+      else do
+        thisFile <- TH.loc_filename <$> TH.location
+        let ext = fromMaybe "c" $ ctxFileExtension ctx
+        return $ Just $ dropExtension thisFile `addExtension` ext
 
 removeIfExists :: FilePath -> IO ()
 removeIfExists fileName = removeFile fileName `catch` handleExists
