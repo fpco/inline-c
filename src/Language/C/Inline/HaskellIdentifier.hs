@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -12,8 +13,7 @@ module Language.C.Inline.HaskellIdentifier
   , mangleHaskellIdentifier
   ) where
 
-import           Control.Applicative ((<*), (<$>))
-import           Control.Applicative ((<|>), (<*>))
+import           Control.Applicative ((<|>))
 import           Control.Monad (when, msum, void)
 import           Data.Char (ord)
 import qualified Data.HashSet as HashSet
@@ -31,6 +31,10 @@ import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 import qualified Language.C.Types.Parse as C
+
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Applicative ((<*), (<$>), (<*>))
+#endif
 
 -- | A possibly qualified Haskell identifier.
 newtype HaskellIdentifier = HaskellIdentifier {unHaskellIdentifier :: String}

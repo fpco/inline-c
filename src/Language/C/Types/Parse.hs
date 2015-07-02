@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFoldable #-}
@@ -89,14 +90,12 @@ module Language.C.Types.Parse
 import           Control.Applicative
 import           Control.Monad (msum, void, MonadPlus, unless, when)
 import           Control.Monad.Reader (MonadReader, runReaderT, ReaderT, asks, ask)
-import           Data.Foldable (Foldable)
 import           Data.Functor.Identity (Identity)
 import qualified Data.HashSet as HashSet
 import           Data.Hashable (Hashable)
 import           Data.Maybe (mapMaybe)
 import           Data.Monoid ((<>))
 import           Data.String (IsString(..))
-import           Data.Traversable (Traversable)
 import           Data.Typeable (Typeable)
 import qualified Test.QuickCheck as QC
 import qualified Text.Parsec as Parsec
@@ -107,6 +106,11 @@ import           Text.Parser.Token
 import qualified Text.Parser.Token.Highlight as Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+
+#if __GLASGOW_HASKELL__ < 710
+import           Data.Foldable (Foldable)
+import           Data.Traversable (Traversable)
+#endif
 
 ------------------------------------------------------------------------
 -- Config

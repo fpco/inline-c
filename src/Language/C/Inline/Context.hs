@@ -50,7 +50,6 @@ import qualified Data.ByteString.Unsafe as BS
 import           Data.Int (Int8, Int16, Int32, Int64)
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
-import           Data.Traversable (traverse)
 import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -64,6 +63,7 @@ import qualified Data.HashSet as HashSet
 
 #if __GLASGOW_HASKELL__ < 710
 import           Data.Monoid (Monoid(..))
+import           Data.Traversable (traverse)
 #endif
 
 import           Language.C.Inline.FunPtr
