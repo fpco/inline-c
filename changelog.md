@@ -1,3 +1,5 @@
+- 0.5.4.1: Do not generate C code when haddock is type checking.  See
+  issue #24.
 - 0.5.4.0: Allow Haskell identifiers in anti-quotes.  See issue #23.
 - 0.5.3.4: Fix `bsCtx` docs.
 - 0.5.3.3:
