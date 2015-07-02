@@ -17,7 +17,7 @@ install:
   - travis_retry cabal update
   - cabal install happy alex
   - cabal install gtk2hs-buildtools
-  - cabal install --only-dependencies --enable-tests --enable-benchmarks -fgsl-example
+  - cabal install --only-dependencies --enable-tests --enable-benchmarks -fgsl-example -j1
 
 script:
   - cabal configure -flib-Werror -v2 --enable-tests --enable-benchmarks -fgsl-example
