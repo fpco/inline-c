@@ -1,7 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -56,7 +55,7 @@ import           Control.Monad.State (evalStateT, StateT, get, put)
 import           Control.Monad.Trans.Class (lift)
 import qualified Crypto.Hash as CryptoHash
 import qualified Data.Binary as Binary
-import           Data.Foldable (forM_, mapM_)
+import           Data.Foldable (forM_)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
 import           Data.Traversable (for)
@@ -64,7 +63,6 @@ import           Data.Typeable (Typeable, cast)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
-import           Prelude hiding (mapM_)
 import           System.Directory (removeFile)
 import           System.FilePath (addExtension, dropExtension)
 import           System.IO.Error (isDoesNotExistError)
@@ -177,21 +175,20 @@ bumpGeneratedNames = do
 
 -- | Return the path in which to emit C code. Or 'Nothing' if emitting should be
 -- inhibited, say because we're only type checking the module, not emitting code
--- (e.g. with @-fno-code@ or in @haddock@).
+-- (e.g. with @-fno-code@ or in @haddock@)
 cSourceLoc :: Context -> TH.Q (Maybe FilePath)
 cSourceLoc ctx = do
     thisFile <- TH.loc_filename <$> TH.location
     let ext = fromMaybe "c" $ ctxFileExtension ctx
-    TH.runIO emitting >>= \case
-      True -> return $ Just $ dropExtension thisFile `addExtension` ext
-      False -> return $ Nothing
-  where
-    emitting = do
+    emitCode <- TH.runIO $ do
       prog <- getProgName
-      -- Hard-code a common case for not generating code.
-      return $ case prog of
-        "haddock" -> False
-        _ -> True
+      -- Hard-code a common case for not generating code.  haddock just
+      -- type-checks, so we do not need to generate the C file again.
+      -- See issue #24.
+      return $ prog /= "haddock"
+    return $ if emitCode
+      then Just $ dropExtension thisFile `addExtension` ext
+      else Nothing
 
 removeIfExists :: FilePath -> IO ()
 removeIfExists fileName = removeFile fileName `catch` handleExists
@@ -202,8 +199,10 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 emitVerbatim :: String -> TH.DecsQ
 emitVerbatim s = do
   ctx <- getContext
-  cSourceLoc ctx >>=
-    mapM_ (\cFile -> TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n")
+  mbCFile <- cSourceLoc ctx
+  case mbCFile of
+    Nothing -> return ()
+    Just cFile -> TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
   return []
 
 ------------------------------------------------------------------------
