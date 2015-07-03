@@ -1,5 +1,5 @@
 name:                inline-c
-version:             0.5.4.1
+version:             0.5.4.2
 synopsis:            Write Haskell source files including C code inline. No FFI required.
 description:         See <https://github.com/fpco/inline-c/blob/master/README.md>.
 license:             MIT
