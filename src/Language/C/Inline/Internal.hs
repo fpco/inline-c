@@ -95,7 +95,7 @@ data ModuleState = ModuleState
 type ModuleId = String
 
 getModuleId :: TH.Q ModuleId
-getModuleId = TH.loc_filename <$> TH.location
+getModuleId = TH.loc_efilename <$> TH.location
 
 -- | 'MVar' storing the state for all the modules we visited.  Note that
 -- currently we do not bother with cleaning up the state after we're
@@ -270,8 +270,23 @@ inlineCode Code{..} = do
   TH.addTopDecls [dec]
   TH.varE ffiImportName
 
-uniqueCName :: String -> TH.Q String
+uniqueCName
+  :: String
+  -- ^ Some string identifying the body of the symbol the name will
+  -- refer too -- e.g. the function arguments + body.  This is used to
+  -- generate persistent names: we do not want completely random names
+  -- since this causes issues when cabal builds things repeatedly, for
+  -- example when building with profiling.
+  -> TH.Q String
 uniqueCName x = do
+  -- The name looks like this:
+  -- inline_c_MODULE_INDEX_HASH
+  --
+  -- Where:
+  -- * MODULE is the module name but with _s instead of .s;
+  -- * INDEX is a counter that keeps track of how many names we're generating
+  --   for each module;
+  -- * HASH is the SHA1 hash of the contents.
   c' <- bumpGeneratedNames
   let unique :: CryptoHash.Digest CryptoHash.SHA1 = CryptoHash.hashlazy $ Binary.encode x
   module_ <- TH.loc_module <$> TH.location
