@@ -274,7 +274,10 @@ uniqueCName :: String -> TH.Q String
 uniqueCName x = do
   c' <- bumpGeneratedNames
   let unique :: CryptoHash.Digest CryptoHash.SHA1 = CryptoHash.hashlazy $ Binary.encode x
-  return $ "inline_c_" ++ show c' ++ "_" ++ show unique
+  module_ <- TH.loc_module <$> TH.location
+  let replaceDot '.' = '_'
+      replaceDot c = c
+  return $ "inline_c_" ++ map replaceDot module_ ++ "_" ++ show c' ++ "_" ++ show unique
 
 -- | Same as 'inlineCItems', but with a single expression.
 --
