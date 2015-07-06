@@ -56,8 +56,7 @@ import           Control.Monad.Trans.Class (lift)
 import qualified Crypto.Hash as CryptoHash
 import qualified Data.Binary as Binary
 import           Data.Foldable (forM_)
-import           Data.List (isSuffixOf, intercalate)
-import           Data.List.Split (splitOn)
+import           Data.List (isSuffixOf)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
 import           Data.Traversable (for)
@@ -138,12 +137,8 @@ identifyCSourceLoc ext0 = do
   if not emitCode
     then return Nothing
     else do
-      -- Check if we're running with cabal.  This will work with
-      -- GHC >= 6.11 and cabal, which is enough for us (we require GHC
-      -- 7.8 because of our TH version).  See
-      -- <https://mail.haskell.org/pipermail/cabal-devel/2009-July/005521.html>.
-      args <- TH.runIO $ getArgs
-      if "-fbuilding-cabal-package" `elem` args
+      cabalBuilding <- TH.runIO isCabalBuilding
+      if cabalBuilding
         then do
           (cabalRoot, hsFile) <- findCabalDirectory
           inlineCSubdir <- TH.runIO getInlineCSubdir
@@ -182,6 +177,14 @@ identifyCSourceLoc ext0 = do
       return $ case mbSubdir of
         Nothing -> "inline-c"
         Just subdir -> subdir
+
+    -- Check if we're running with cabal.  This will work with
+    -- GHC >= 6.11 and cabal, which is enough for us (we require GHC
+    -- 7.8 because of our TH version).  See
+    -- <https://mail.haskell.org/pipermail/cabal-devel/2009-July/005521.html>.
+    isCabalBuilding = do
+      args <- getArgs
+      return $ "-fbuilding-cabal-package" `elem` args
 
 -- | Make sure that 'moduleStatesVar' and the respective C file are up
 --   to date.
