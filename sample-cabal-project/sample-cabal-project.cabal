@@ -8,16 +8,25 @@ copyright:           (c) 2015 FP Complete Corporation
 build-type:          Simple
 cabal-version:       >=1.10
 
-executable sample-cabal-project
-  main-is:             Main.hs
+library
   hs-source-dirs:      src
+  exposed-modules:     TestModule
+                     , TestModule.Nested
+  c-sources:           inline-c/src/TestModule.c
+                     , inline-c/src/TestModule/Nested.c
+  ghc-options:         -Wall
+  cc-options:          -Wall
   build-depends:       base >=4 && <5
                      , inline-c
   default-language:    Haskell2010
 
-  -- Here the corresponding C sources must be listed for every module
-  -- that uses C snippets.  Presumably we could automatically generate
-  -- this.
-  c-sources:           src/Main.c
+executable sample-cabal-project
+  main-is:             sample-cabal-project.hs
+  build-depends:       base >=4 && <5
+                     , inline-c
+                     , sample-cabal-project
+  default-language:    Haskell2010
+
+  c-sources:           inline-c/sample-cabal-project.c
   cc-options:          -Wall
   ghc-options:         -Wall

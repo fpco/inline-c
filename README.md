@@ -304,11 +304,15 @@ declaration syntax.
 ## How to build
 
 Each module that uses at least one of the `inline-c` functions gets a C
-file associated to it, where the filename of said file will be the same
-as the module but with a C extension.  This C file must be built after
-the Haskell code and linked appropriately.  If you use cabal, all you
-have to do is declare each associated C file in the `.cabal` file and
-you are good.
+file associated to it.  If we're compiling with `cabal` said C file will
+be placed under the subdirectory `inline-c`, which is placed where the
+`.cabal` file is.  If the Haskell file is not compiled with `cabal`, the
+C file will be placed exactly where the Haskell file is, but with a `.c`
+extension.
+
+Obviously, this C file must be built after the Haskell code and linked
+appropriately.  If you use cabal, all you have to do is declare each
+associated C file in the `.cabal` file and you are good.
 
 For example we might have
 
@@ -319,7 +323,7 @@ executable foo
   -- Here the corresponding C sources must be listed for every module
   -- that uses C code.  In this example, Main.hs and Bar.hs do, but
   -- Foo.hs does not.
-  c-sources:           src/Main.c, src/Bar.c
+  c-sources:           inline-c/src/Main.c, inline-c/src/Bar.c
   -- These flags will be passed to the C compiler
   cc-options:          -Wall -O2
   -- Libraries to link the code with.

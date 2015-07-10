@@ -56,6 +56,7 @@ import           Control.Monad.Trans.Class (lift)
 import qualified Crypto.Hash as CryptoHash
 import qualified Data.Binary as Binary
 import           Data.Foldable (forM_)
+import           Data.List (isSuffixOf)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
 import           Data.Traversable (for)
@@ -63,8 +64,9 @@ import           Data.Typeable (Typeable, cast)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
-import           System.Directory (removeFile)
-import           System.FilePath (addExtension, dropExtension)
+import           System.Directory (removeFile, getDirectoryContents, createDirectoryIfMissing)
+import           System.Environment (lookupEnv, getArgs)
+import           System.FilePath (addExtension, dropExtension, takeDirectory, takeFileName, (</>))
 import           System.IO.Error (isDoesNotExistError)
 import           System.IO.Unsafe (unsafePerformIO)
 import qualified Text.Parsec as Parsec
@@ -85,6 +87,7 @@ import qualified Language.C.Types as C
 data ModuleState = ModuleState
   { msContext :: Context
   , msGeneratedNames :: Int
+  , msCSourceLoc :: Maybe FilePath
   }
 
 -- | Identifier for the current module.  Currently we use the file name.
@@ -105,37 +108,123 @@ getModuleId = TH.loc_filename <$> TH.location
 moduleStatesVar :: MVar (Map.Map ModuleId ModuleState)
 moduleStatesVar = unsafePerformIO $ newMVar Map.empty
 
+-- | Chooses the C file where we will output the C snippets for this module.
+-- It works like this:
+--
+-- * If cabal is compiling the current module, then we search for the
+-- cabal file, and put the C file mirroring the path to the Haskell
+-- file, but in a separate directory.  For example, if we're compiling
+-- @~/src/foo/src/Some/Module.hs@, and we have @~/src/foo/foo.cabal@,
+-- the C file will be placed in @~/src/foo/inline-c/src/Some/Module.hs@.
+-- The subdirectory (in this case @inline-c@) is configurable with the
+-- environmental variable @INLINE_C_CABAL_DIRECTORY@.
+--
+-- * If we're not compiling with cabal, we just use the path to the
+-- Haskell file, but with the extension replaced with .c.
+--
+-- See comment to 'cSourceLoc' for the reason of the 'Maybe'.
+identifyCSourceLoc
+  :: Maybe String
+  -- ^ The extension we want.
+  -> TH.Q (Maybe FilePath)
+identifyCSourceLoc ext0 = do
+  emitCode <- TH.runIO $ do
+    prog <- getProgName
+    -- Hard-code a common case for not generating code.  haddock just
+    -- type-checks, so we do not need to generate the C file again.
+    -- See issue #24.
+    return $ prog /= "haddock"
+  if not emitCode
+    then return Nothing
+    else do
+      cabalBuilding <- TH.runIO isCabalBuilding
+      if cabalBuilding
+        then do
+          (cabalRoot, hsFile) <- findCabalDirectory
+          inlineCSubdir <- TH.runIO getInlineCSubdir
+          let cFile = cabalRoot </> inlineCSubdir </> replaceExt hsFile
+          TH.runIO $ createDirectoryIfMissing True $ takeDirectory cFile
+          return $ Just cFile
+        else do
+          -- Otherwise, just pick the current filename, with @.c@
+          -- instead of @.hs@
+          thisFile <- TH.loc_filename <$> TH.location
+          return $ Just $ replaceExt thisFile
+  where
+    -- The extension is .c by default.
+    ext = fromMaybe "c" ext0
+
+    replaceExt f = dropExtension f `addExtension` ext
+
+    -- Returns the 'FilePath' where the .cabal file lives, and the
+    -- relative 'FilePath' to the current file.
+    findCabalDirectory :: TH.Q (FilePath, FilePath)
+    findCabalDirectory = do
+      thisFile <- TH.loc_filename <$> TH.location
+      let go fpL fpR = do
+            files <- getDirectoryContents fpL
+            if any (isSuffixOf ".cabal") files
+              then return (fpL, fpR)
+              else do
+                if fpL == "." || fpL == "/"
+                  then fail $ "You seem to be building with cabal, but I could not find\n" ++
+                              ".cabal file from Haskell file " ++ thisFile
+                  else go (takeDirectory fpL) (takeFileName fpL </> fpR)
+      TH.runIO $ go (takeDirectory thisFile) (takeFileName thisFile)
+
+    getInlineCSubdir = do
+      mbSubdir <- lookupEnv "INLINE_C_CABAL_DIRECTORY"
+      return $ case mbSubdir of
+        Nothing -> "inline-c"
+        Just subdir -> subdir
+
+    -- Check if we're running with cabal.  This will work with
+    -- GHC >= 6.11 and cabal, which is enough for us (we require GHC
+    -- 7.8 because of our TH version).  See
+    -- <https://mail.haskell.org/pipermail/cabal-devel/2009-July/005521.html>.
+    isCabalBuilding = do
+      args <- getArgs
+      return $ "-fbuilding-cabal-package" `elem` args
+
 -- | Make sure that 'moduleStatesVar' and the respective C file are up
 --   to date.
-initialiseModuleState
+initializeModuleState
   :: Maybe Context
-  -- ^ The 'Context' to use if we initialise the module.  If 'Nothing',
+  -- ^ The 'Context' to use if we initialize the module.  If 'Nothing',
   -- 'baseCtx' will be used.
-  -> TH.Q Context
-initialiseModuleState mbContext = do
-  mbcFile <- cSourceLoc context
+  -> TH.Q ModuleState
+initializeModuleState mbContext = do
+  mbCFile <- identifyCSourceLoc $ ctxFileExtension context
   thisModule <- getModuleId
   TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates -> do
     case Map.lookup thisModule moduleStates of
-      Just moduleState -> return (moduleStates, msContext moduleState)
+      Just moduleState -> return (moduleStates, moduleState)
       Nothing -> do
         -- If the file exists and this is the first time we write
         -- something from this module (in other words, if we are
         -- recompiling the module), kill the file first.
-        forM_ mbcFile $ \cFile -> removeIfExists cFile
+        forM_ mbCFile $ \cFile -> removeIfExists cFile
         let moduleState = ModuleState
               { msContext = context
               , msGeneratedNames = 0
+              , msCSourceLoc = mbCFile
               }
-        return (Map.insert thisModule moduleState moduleStates, context)
+        return (Map.insert thisModule moduleState moduleStates, moduleState)
   where
     context = fromMaybe baseCtx mbContext
 
 -- | Gets the current 'Context'.  Also makes sure that the current
--- module is initialised.
+-- module is initialized.
 getContext :: TH.Q Context
-getContext = initialiseModuleState Nothing
+getContext = msContext <$> initializeModuleState Nothing
 
+-- | Makes sure that the current module is initialized, and returns the
+-- 'ModuleState'.
+getModuleState :: TH.Q ModuleState
+getModuleState = initializeModuleState Nothing
+
+-- | Modifies the 'ModuleState' for the current module.  Fails if it's
+-- not present.
 modifyModuleState :: (ModuleState -> (ModuleState, a)) -> TH.Q a
 modifyModuleState f = do
   thisModule <- getModuleId
@@ -161,8 +250,8 @@ setContext ctx = do
   thisModule <- getModuleId
   moduleStates <- TH.runIO $ readMVar moduleStatesVar
   forM_ (Map.lookup thisModule moduleStates) $ \_ms ->
-    fail "inline-c: The module has already been initialised (setContext)."
-  void $ initialiseModuleState $ Just ctx
+    fail "inline-c: The module has already been initialized (setContext)."
+  void $ initializeModuleState $ Just ctx
 
 bumpGeneratedNames :: TH.Q Int
 bumpGeneratedNames = do
@@ -173,22 +262,10 @@ bumpGeneratedNames = do
 ------------------------------------------------------------------------
 -- Emitting
 
--- | Return the path in which to emit C code. Or 'Nothing' if emitting should be
--- inhibited, say because we're only type checking the module, not emitting code
--- (e.g. with @-fno-code@ or in @haddock@)
-cSourceLoc :: Context -> TH.Q (Maybe FilePath)
-cSourceLoc ctx = do
-    prog <- TH.runIO getProgName
-    -- Hard-code a common case for not generating code.  haddock just
-    -- type-checks, so we do not need to generate the C file again.
-    -- See issue #24.
-    let emitCode = prog /= "haddock"
-    if not emitCode
-      then return Nothing
-      else do
-        thisFile <- TH.loc_filename <$> TH.location
-        let ext = fromMaybe "c" $ ctxFileExtension ctx
-        return $ Just $ dropExtension thisFile `addExtension` ext
+cSourceLoc :: TH.Q (Maybe FilePath)
+cSourceLoc = do
+  fp <- msCSourceLoc <$> getModuleState
+  return fp
 
 removeIfExists :: FilePath -> IO ()
 removeIfExists fileName = removeFile fileName `catch` handleExists
@@ -198,11 +275,8 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 -- | Simply appends some string to the module's C file.  Use with care.
 emitVerbatim :: String -> TH.DecsQ
 emitVerbatim s = do
-  ctx <- getContext
-  mbCFile <- cSourceLoc ctx
-  case mbCFile of
-    Nothing -> return ()
-    Just cFile -> TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
+  mbCFile <- cSourceLoc
+  forM_ mbCFile $ \cFile -> TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
   return []
 
 ------------------------------------------------------------------------

@@ -1,5 +1,2 @@
 dist/
-*.c
-*.cpp
-*.d
-*.tix
+inline-c/

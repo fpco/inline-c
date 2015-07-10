@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+
+ghc -c TestModule.hs
+cc -c TestModule.c -o TestModule_c.o
+ghc -c TestModule/Nested.hs
+cc -c TestModule/Nested.c -o TestModule/Nested_c.o
+ghc -c sample-non-cabal.hs
+cc -c sample-non-cabal.c -o sample-non-cabal_c.o
+ghc sample-non-cabal.o sample-non-cabal_c.o TestModule.o TestModule_c.o TestModule/Nested.o TestModule/Nested_c.o -o sample-non-cabal
