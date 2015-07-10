@@ -25,6 +25,7 @@ script:
   - ./dist/build/gsl-ode/gsl-ode
   - cabal check
   - cabal test
+  - cabal haddock
   - cabal sdist
   # check that the generated source-distribution can be built & installed
   - export SRC_TGZ=$(cabal info . | awk '{print $2 ".tar.gz";exit}') ;
