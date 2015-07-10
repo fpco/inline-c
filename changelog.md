@@ -1,3 +1,4 @@
+- 0.5.4.3: Fix haddock docs.
 - 0.5.4.2: Generate unique C names by prefixing the already generated
   name with the Haskell module name.  See issue #25.
 - 0.5.4.1: Do not generate C code when haddock is type checking.  See
