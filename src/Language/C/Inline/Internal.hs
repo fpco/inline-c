@@ -283,10 +283,10 @@ uniqueCName x = do
   -- inline_c_MODULE_INDEX_HASH
   --
   -- Where:
-  -- * MODULE is the module name but with _s instead of .s;
-  -- * INDEX is a counter that keeps track of how many names we're generating
-  --   for each module;
-  -- * HASH is the SHA1 hash of the contents.
+  --  * MODULE is the module name but with _s instead of .s;
+  --  * INDEX is a counter that keeps track of how many names we're generating
+  --    for each module;
+  --  * HASH is the SHA1 hash of the contents.
   c' <- bumpGeneratedNames
   let unique :: CryptoHash.Digest CryptoHash.SHA1 = CryptoHash.hashlazy $ Binary.encode x
   module_ <- TH.loc_module <$> TH.location
