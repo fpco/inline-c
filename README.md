@@ -323,7 +323,7 @@ executable foo
   -- These flags will be passed to the C compiler
   cc-options:          -Wall -O2
   -- Libraries to link the code with.
-  extra-libraries:     -lm
+  extra-libraries:     m
   ...
 ```
 
