@@ -1,3 +1,5 @@
+- 0.5.5.1: Add support for Interruptible calls. The version skip is
+  simply because I forgot to update the changelog for 0.5.5.0.
 - 0.5.4.3: Fix haddock docs.
 - 0.5.4.2: Generate unique C names by prefixing the already generated
   name with the Haskell module name.  See issue #25.
