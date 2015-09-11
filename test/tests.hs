@@ -13,6 +13,7 @@ import           Text.RawString.QQ (r)
 
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Unsafe as CU
+import qualified Language.C.Inline.Interruptible as CI
 import qualified Language.C.Inline.Internal as C
 import qualified Language.C.Inline.ContextSpec
 import qualified Language.C.Inline.ParseSpec
@@ -82,6 +83,11 @@ main = Hspec.hspec $ do
       let x = 2
       let y = 10
       z <- [CU.exp| int{ 7 + $(int x) + $(int y) } |]
+      z `Hspec.shouldBe` x + y + 7
+    Hspec.it "interruptible exp" $ do
+      let x = 2
+      let y = 10
+      z <- [CI.exp| int{ 7 + $(int x) + $(int y) } |]
       z `Hspec.shouldBe` x + y + 7
     Hspec.it "void exp" $ do
       [C.exp| void { printf("Hello\n") } |]
