@@ -27,6 +27,7 @@ library
                      , Language.C.Inline.HaskellIdentifier
                      , Language.C.Inline.Internal
                      , Language.C.Inline.Unsafe
+                     , Language.C.Inline.Interruptible
                      , Language.C.Types
                      , Language.C.Types.Parse
   other-modules:       Language.C.Inline.FunPtr
