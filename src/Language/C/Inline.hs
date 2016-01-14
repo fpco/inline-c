@@ -228,7 +228,32 @@ import           Language.C.Inline.FunPtr
 --     }
 --   } |]
 --   'return' vec
+--
+-- == How it works
+--
+-- For each quasi-quotation of C code, a C function is generated in a C file
+-- corresponding to the current Haskell file. Every inline C expression will result
+-- in a corresponding C function.
+-- For example, if we define @c_cos@
+-- as in the example above in @CCos.hs@, we will get a file @CCos.c@ containing
+--
 -- @
+-- #include <math.h>
+--
+-- double inline_c_Main_0_a03fba228a6d8e36ea7d69381f87bade594c949d(double x_inline_c_0) {
+--   return cos(x_inline_c_0);
+-- }
+-- @
+--
+-- Every anti-quotation will correspond to an argument in the C function. If the same
+-- Haskell variable is anti-quoted twice, this will result in two arguments.
+--
+-- The C function is then invoked from Haskell with the correct arguments passed in.
+--
+-- == Known issues
+--
+-- * https://github.com/fpco/inline-c/issues/21
+-- * https://github.com/fpco/inline-c/issues/11
 
 -- | C expressions.
 exp :: TH.QuasiQuoter
