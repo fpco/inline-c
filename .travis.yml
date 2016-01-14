@@ -15,11 +15,11 @@ addons:
 # The different configurations we want to test. You could also do things like
 # change flags or use --stack-yaml to point to a different file.
 env:
-- ARGS=""
+- ARGS="--flag inline-c:gsl-example"
 - ARGS="--resolver lts-2"
-- ARGS="--resolver lts-3"
-- ARGS="--resolver lts"
-- ARGS="--resolver nightly"
+- ARGS="--resolver lts-3 --flag inline-c:gsl-example"
+- ARGS="--resolver lts --flag inline-c:gsl-example"
+- ARGS="--resolver nightly --flag inline-c:gsl-example"
 
 before_install:
 # Download and unpack the stack executable
@@ -30,7 +30,7 @@ before_install:
 # This line does all of the work: installs GHC if necessary, build the library,
 # executables, and test suites, and runs the test suites. --no-terminal works
 # around some quirks in Travis's terminal implementation.
-script: stack $ARGS --no-terminal --install-ghc test --haddock --flag inline-c:gsl-example
+script: stack --no-terminal --install-ghc test --haddock $ARGS
 
 # Caching so the next build will be fast too.
 cache:
