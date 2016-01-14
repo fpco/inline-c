@@ -2,4 +2,4 @@ packages:
 - '.'
 - sample-cabal-project/
 extra-deps: []
-resolver: lts-2.14
+resolver: lts-4.1
