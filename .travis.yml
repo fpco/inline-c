@@ -1,43 +1,38 @@
-# Travis script based on https://github.com/hvr/multi-ghc-travis
+# Use new container infrastructure to enable caching
+sudo: false
 
+# Choose a lightweight base image; we provide our own build tools.
+language: c
+
+# GHC depends on GMP. You can add other dependencies here as well.
+addons:
+  apt:
+    packages:
+    - libgmp-dev
+    - libgsl0-dev
+    - libcairo2-dev
+
+# The different configurations we want to test. You could also do things like
+# change flags or use --stack-yaml to point to a different file.
 env:
-  - CABALVER=1.18 GHCVER=7.8.4
-  - CABALVER=1.22 GHCVER=7.10.2
+- ARGS=""
+- ARGS="--resolver lts-2"
+- ARGS="--resolver lts-3"
+- ARGS="--resolver lts"
+- ARGS="--resolver nightly"
 
 before_install:
-  - travis_retry sudo add-apt-repository -y ppa:hvr/ghc
-  - travis_retry sudo apt-get update
-  - travis_retry sudo apt-get install cabal-install-$CABALVER ghc-$GHCVER
-  - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
-  - sudo apt-get install libgsl0-dev libcairo2-dev
+# Download and unpack the stack executable
+- mkdir -p ~/.local/bin
+- export PATH=$HOME/.local/bin:$PATH
+- travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 
-install:
-  - cabal --version
-  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
-  - travis_retry cabal update
-  - cabal install happy alex
-  - cabal install gtk2hs-buildtools
-  - cabal install --only-dependencies --enable-tests --enable-benchmarks -fgsl-example
+# This line does all of the work: installs GHC if necessary, build the library,
+# executables, and test suites, and runs the test suites. --no-terminal works
+# around some quirks in Travis's terminal implementation.
+script: stack $ARGS --no-terminal --install-ghc test --haddock --flag inline-c:gsl-example
 
-script:
-  - cabal configure -flib-Werror -v2 --enable-tests --enable-benchmarks -fgsl-example
-  - cabal build
-  - ./dist/build/gsl-ode/gsl-ode
-  - cabal check
-  - cabal test
-  - cabal haddock
-  - cabal sdist
-  # check that the generated source-distribution can be built & installed
-  - export SRC_TGZ=$(cabal info . | awk '{print $2 ".tar.gz";exit}') ;
-    cd dist/;
-    if [ -f "$SRC_TGZ" ]; then
-       cabal install --enable-tests --force-reinstalls "$SRC_TGZ";
-    else
-       echo "expected '$SRC_TGZ' not found";
-       exit 1;
-    fi;
-    cd ..
-  # check that the sample cabal project can be installed
-  - cd sample-cabal-project;
-    cabal configure;
-    cabal build
+# Caching so the next build will be fast too.
+cache:
+  directories:
+  - $HOME/.stack
