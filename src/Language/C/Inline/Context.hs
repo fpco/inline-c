@@ -422,7 +422,7 @@ bsPtrAntiQuoter = AntiQuoter
           hsExp' <- [| \cont -> BS.unsafeUseAsCString $(return hsExp) $ \ptr -> cont ptr  |]
           return (hsTy, hsExp')
         _ ->
-          fail "impossible: got type different from `unsigned char' (bsCtx)"
+          fail "impossible: got type different from `char *' (bsCtx)"
   }
 
 bsLenAntiQuoter :: AntiQuoter HaskellIdentifier

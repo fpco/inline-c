@@ -232,7 +232,7 @@ The `bs-len` and `bs-ptr` ant-quoters in the `C.bsCtx` context work
 exactly the same as the `vec-len` and `vec-ptr` counterparts, but with
 strict `ByteString`s.  The only difference is that it is no necessary to
 specify the type of the pointer from C -- it is always going to be
-`unsigned char *`:
+`char *`:
 
 ```
 {-# LANGUAGE TemplateHaskell #-}
@@ -250,7 +250,7 @@ countSetBits bs = [C.block|
     int {
       int i, bits = 0;
       for (i = 0; i < $bs-len:bs; i++) {
-        unsigned char ch = $bs-ptr:bs[i];
+        char ch = $bs-ptr:bs[i];
         bits += (ch * 01001001001ULL & 042104210421ULL) % 017;
       }
       return bits;
