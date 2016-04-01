@@ -85,7 +85,7 @@ main = do
       // Read and sum 5 integers
       int i, sum = 0, tmp;
       for (i = 0; i < 5; i++) {
-        scanf("%d ", &tmp);
+        scanf("%d", &tmp);
         sum += tmp;
       }
       return sum;
@@ -121,7 +121,7 @@ readAndSum n  = [C.block| int {
     // Read and sum n integers
     int i, sum = 0, tmp;
     for (i = 0; i < $(int n); i++) {
-      scanf("%d ", &tmp);
+      scanf("%d", &tmp);
       sum += tmp;
     }
     return sum;
