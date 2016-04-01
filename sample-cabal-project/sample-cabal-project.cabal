@@ -19,5 +19,6 @@ executable sample-cabal-project
   -- that uses C snippets.  Presumably we could automatically generate
   -- this.
   c-sources:           src/Main.c
-  cc-options:          -Wall
+  cc-options:          -Wall -fPIC
+                       -- -fPIC is needed for Main to be loaded in GHCi.
   ghc-options:         -Wall
