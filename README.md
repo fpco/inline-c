@@ -197,7 +197,8 @@ Haskell vectors in C:
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 import qualified Language.C.Inline as C
-import qualified Data.Vector.Storable.Mutable as V
+import qualified Data.Vector.Storable as V
+import qualified Data.Vector.Storable.Mutable as VM
 import           Data.Monoid ((<>))
 import           Foreign.C.Types
 
@@ -205,19 +206,19 @@ import           Foreign.C.Types
 -- 'C.baseCtx'.
 C.context (C.baseCtx <> C.vecCtx)
 
-sumVec :: V.IOVector CDouble -> IO CDouble
+sumVec :: VM.IOVector CDouble -> IO CDouble
 sumVec vec = [C.block| double {
     double sum = 0;
     int i;
     for (i = 0; i < $vec-len:vec; i++) {
       sum += $vec-ptr:(double *vec)[i];
     }
-    return sum
+    return sum;
   } |]
 
 main :: IO ()
 main = do
-  x <- sumVec =<< V.fromList [1,2,3]
+  x <- sumVec =<< V.thaw (V.fromList [1,2,3])
   print x
 ```
 
