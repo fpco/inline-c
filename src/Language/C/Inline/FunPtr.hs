@@ -13,10 +13,6 @@ import           Foreign.Ptr (FunPtr)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
 
-#ifndef MIN_VERSION_template_haskell
-#define MIN_VERSION_template_haskell(x,y,z) 1
-#endif
-
 ------------------------------------------------------------------------
 -- FFI wrappers
 

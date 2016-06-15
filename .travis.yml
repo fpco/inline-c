@@ -15,11 +15,9 @@ addons:
 # The different configurations we want to test. You could also do things like
 # change flags or use --stack-yaml to point to a different file.
 env:
-- ARGS="--flag inline-c:gsl-example"
 - ARGS="--resolver lts-2"
 - ARGS="--resolver lts-3 --flag inline-c:gsl-example"
 - ARGS="--resolver lts --flag inline-c:gsl-example"
-- ARGS="--resolver nightly --flag inline-c:gsl-example"
 - ARGS="--resolver nightly"
 
 before_install:
