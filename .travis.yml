@@ -20,6 +20,7 @@ env:
 - ARGS="--resolver lts-3 --flag inline-c:gsl-example"
 - ARGS="--resolver lts --flag inline-c:gsl-example"
 - ARGS="--resolver nightly --flag inline-c:gsl-example"
+- ARGS="--resolver nightly"
 
 before_install:
 # Download and unpack the stack executable
