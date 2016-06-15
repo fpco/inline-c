@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -37,7 +38,11 @@ mkFunPtrFromName :: TH.Name -> TH.ExpQ
 mkFunPtrFromName name = do
   i <- TH.reify name
   case i of
+#if MIN_VERSION_template_haskell(2,11,0)
+    TH.VarI _ ty _ -> [| $(mkFunPtr (return ty)) $(TH.varE name) |]
+#else
     TH.VarI _ ty _ _ -> [| $(mkFunPtr (return ty)) $(TH.varE name) |]
+#endif
     _ -> fail "mkFunPtrFromName: expecting a variable as argument."
 
 -- | @$('peekFunPtr' [t| 'CDouble' -> 'IO' 'CDouble' |])@ generates a foreign import
