@@ -228,6 +228,7 @@ import           Language.C.Inline.FunPtr
 --     }
 --   } |]
 --   'return' vec
+-- @
 --
 -- == How it works
 --
