@@ -302,6 +302,14 @@ convertType_ err purity cTypes cTy = do
 --
 -- Does not include the 'baseCtx', since most of the time it's going to
 -- be included as part of larger contexts.
+--
+-- IMPORTANT: When using the @fun@ anti quoter, one must be aware that
+-- the function pointer which is automatically generated is freed when
+-- the code contained in the block containing the anti quoter exits.
+-- Thus, if you need the function pointer to be longer-lived, you must
+-- allocate it and free it manually using 'freeHaskellFunPtr'.
+-- We provide utilities to easily
+-- allocate them (see 'Language.C.Inline.mkFunPtr').
 funCtx :: Context
 funCtx = mempty
   { ctxAntiQuoters = Map.fromList [("fun", SomeAntiQuoter funPtrAntiQuoter)]
