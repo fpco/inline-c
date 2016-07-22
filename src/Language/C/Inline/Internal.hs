@@ -302,7 +302,7 @@ uniqueCName x = do
 --   TH.Unsafe
 --   [t| Double -> Double |]
 --   (quickCParser_ \"double\" parseType)
---   [("x", quickCParser_ \"double\") parseType]
+--   [("x", quickCParser_ \"double\" parseType)]
 --   "cos(x)")
 -- @
 inlineExp
