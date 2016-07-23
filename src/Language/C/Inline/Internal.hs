@@ -532,14 +532,8 @@ genericQuote purity build = quoteCode $ \s -> do
       case parTy of
         Plain s' -> do
           hsTy <- cToHs ctx cTy
-          mbHsName <- TH.lookupValueName $ unHaskellIdentifier s'
-          hsExp <- case mbHsName of
-            Nothing -> do
-              fail $ "Cannot capture Haskell variable " ++ unHaskellIdentifier s' ++
-                     ", because it's not in scope. (genericQuote)"
-            Just hsName -> do
-              hsExp <- TH.varE hsName
-              [| \cont -> cont ($(return hsExp) :: $(return hsTy)) |]
+          let hsName = TH.mkName (unHaskellIdentifier s')
+          hsExp <- [| \cont -> cont ($(TH.varE hsName) :: $(return hsTy)) |]
           return (hsTy, hsExp)
         AntiQuote antiId dyn -> do
           case Map.lookup antiId (ctxAntiQuoters ctx) of
