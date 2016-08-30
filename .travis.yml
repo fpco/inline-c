@@ -18,9 +18,8 @@ env:
 - ARGS="--flag inline-c:gsl-example"
 - ARGS="--resolver lts-2"
 - ARGS="--resolver lts-3 --flag inline-c:gsl-example"
-- ARGS="--resolver lts --flag inline-c:gsl-example"
-# gsl-ode example does not build with nightly-2016-06-15 due to cairo : Failed to load interface for ‘Gtk2HsSetup’, so for now it is not included in these tests
-- ARGS="--resolver nightly"
+- ARGS="--resolver lts-6 --flag inline-c:gsl-example"
+- ARGS="--resolver nightly --flag inline-c:gsl-example"
 
 before_install:
 # Download and unpack the stack executable
