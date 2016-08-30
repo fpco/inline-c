@@ -85,25 +85,7 @@ import qualified Language.C.Types as C
 data ModuleState = ModuleState
   { msContext :: Context
   , msGeneratedNames :: Int
-  }
-
--- | Identifier for the current module.  Currently we use the file name.
--- Since we're pairing Haskell files with C files, it makes more sense
--- to use the file name.  I'm not sure if it's possible to compile two
--- modules with the same name in one run of GHC, but in this way we make
--- sure that we don't run into trouble even it is.
-type ModuleId = String
-
-getModuleId :: TH.Q ModuleId
-getModuleId = TH.loc_filename <$> TH.location
-
--- | 'MVar' storing the state for all the modules we visited.  Note that
--- currently we do not bother with cleaning up the state after we're
--- done compiling a module.  TODO if there is an easy way, clean up the
--- state.
-{-# NOINLINE moduleStatesVar #-}
-moduleStatesVar :: MVar (Map.Map ModuleId ModuleState)
-moduleStatesVar = unsafePerformIO $ newMVar Map.empty
+  } deriving (Typeable)
 
 -- | Make sure that 'moduleStatesVar' and the respective C file are up
 --   to date.
@@ -114,20 +96,20 @@ initialiseModuleState
   -> TH.Q Context
 initialiseModuleState mbContext = do
   mbcFile <- cSourceLoc context
-  thisModule <- getModuleId
-  TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates -> do
-    case Map.lookup thisModule moduleStates of
-      Just moduleState -> return (moduleStates, msContext moduleState)
-      Nothing -> do
-        -- If the file exists and this is the first time we write
-        -- something from this module (in other words, if we are
-        -- recompiling the module), kill the file first.
-        forM_ mbcFile $ \cFile -> removeIfExists cFile
-        let moduleState = ModuleState
-              { msContext = context
-              , msGeneratedNames = 0
-              }
-        return (Map.insert thisModule moduleState moduleStates, context)
+  mbModuleState <- TH.getQ
+  case mbModuleState of
+    Just moduleState -> return (msContext moduleState)
+    Nothing -> do
+      -- If the file exists and this is the first time we write
+      -- something from this module (in other words, if we are
+      -- recompiling the module), kill the file first.
+      TH.runIO $ forM_ mbcFile $ \cFile -> removeIfExists cFile
+      let moduleState = ModuleState
+            { msContext = context
+            , msGeneratedNames = 0
+            }
+      TH.putQ moduleState
+      return context
   where
     context = fromMaybe baseCtx mbContext
 
@@ -138,13 +120,13 @@ getContext = initialiseModuleState Nothing
 
 modifyModuleState :: (ModuleState -> (ModuleState, a)) -> TH.Q a
 modifyModuleState f = do
-  thisModule <- getModuleId
-  TH.runIO $ modifyMVar moduleStatesVar $ \moduleStates ->
-    case Map.lookup thisModule moduleStates of
-      Nothing -> fail "inline-c: ModuleState not present"
-      Just ms -> do
-        let (ms', x) = f ms
-        return (Map.insert thisModule ms' moduleStates, x)
+  mbModuleState <- TH.getQ
+  case mbModuleState of
+    Nothing -> fail "inline-c: ModuleState not present"
+    Just ms -> do
+      let (ms', x) = f ms
+      TH.putQ ms'
+      return x
 
 -- $context
 --
@@ -158,9 +140,8 @@ modifyModuleState f = do
 -- module.  Fails if that's not the case.
 setContext :: Context -> TH.Q ()
 setContext ctx = do
-  thisModule <- getModuleId
-  moduleStates <- TH.runIO $ readMVar moduleStatesVar
-  forM_ (Map.lookup thisModule moduleStates) $ \_ms ->
+  mbModuleState :: Maybe ModuleState <- TH.getQ
+  forM_ mbModuleState $ \_ms ->
     fail "inline-c: The module has already been initialised (setContext)."
   void $ initialiseModuleState $ Just ctx
 
