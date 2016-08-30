@@ -8,6 +8,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE CPP #-}
 
 module Language.C.Inline.Internal
     ( -- * Context handling
@@ -48,7 +49,6 @@ module Language.C.Inline.Internal
     ) where
 
 import           Control.Applicative
-import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar, readMVar)
 import           Control.Exception (catch, throwIO)
 import           Control.Monad (forM, void, msum, unless)
 import           Control.Monad.State (evalStateT, StateT, get, put)
@@ -77,6 +77,10 @@ import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           System.Environment (getProgName)
 
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar, readMVar)
+#endif
+
 import           Language.C.Inline.Context
 import           Language.C.Inline.FunPtr
 import           Language.C.Inline.HaskellIdentifier
@@ -87,6 +91,48 @@ data ModuleState = ModuleState
   , msGeneratedNames :: Int
   } deriving (Typeable)
 
+getModuleState :: TH.Q (Maybe ModuleState)
+putModuleState :: ModuleState -> TH.Q ()
+
+#if __GLASGOW_HASKELL__ >= 710
+
+-- We cannot use getQ/putQ before 7.10 because of <https://ghc.haskell.org/trac/ghc/ticket/10596>
+
+getModuleState = TH.getQ
+putModuleState = TH.putQ
+
+#else
+
+-- | Identifier for the current module.  Currently we use the file name.
+-- Since we're pairing Haskell files with C files, it makes more sense
+-- to use the file name.  I'm not sure if it's possible to compile two
+-- modules with the same name in one run of GHC, but in this way we make
+-- sure that we don't run into trouble even it is.
+type ModuleId = String
+
+getModuleId :: TH.Q ModuleId
+getModuleId = TH.loc_filename <$> TH.location
+
+-- | 'MVar' storing the state for all the modules we visited.  Note that
+-- currently we do not bother with cleaning up the state after we're
+-- done compiling a module.  TODO if there is an easy way, clean up the
+-- state.
+{-# NOINLINE moduleStatesVar #-}
+moduleStatesVar :: MVar (Map.Map ModuleId ModuleState)
+moduleStatesVar = unsafePerformIO $ newMVar Map.empty
+
+getModuleState = do
+  moduleStates <- readMVar moduleStatesVar
+  moduleId <- getModuleId
+  return (Map.lookup moduleId moduleStates)
+
+putModuleState ms = do
+  moduleId <- getModuleId
+  modifyMVar_ moduleStatesVar (Map.insert moduleId ms)
+
+#endif
+
+
 -- | Make sure that 'moduleStatesVar' and the respective C file are up
 --   to date.
 initialiseModuleState
@@ -96,7 +142,7 @@ initialiseModuleState
   -> TH.Q Context
 initialiseModuleState mbContext = do
   mbcFile <- cSourceLoc context
-  mbModuleState <- TH.getQ
+  mbModuleState <- getModuleState
   case mbModuleState of
     Just moduleState -> return (msContext moduleState)
     Nothing -> do
@@ -108,7 +154,7 @@ initialiseModuleState mbContext = do
             { msContext = context
             , msGeneratedNames = 0
             }
-      TH.putQ moduleState
+      putModuleState moduleState
       return context
   where
     context = fromMaybe baseCtx mbContext
@@ -120,12 +166,12 @@ getContext = initialiseModuleState Nothing
 
 modifyModuleState :: (ModuleState -> (ModuleState, a)) -> TH.Q a
 modifyModuleState f = do
-  mbModuleState <- TH.getQ
+  mbModuleState <- getModuleState
   case mbModuleState of
     Nothing -> fail "inline-c: ModuleState not present"
     Just ms -> do
       let (ms', x) = f ms
-      TH.putQ ms'
+      putModuleState ms'
       return x
 
 -- $context
@@ -140,7 +186,7 @@ modifyModuleState f = do
 -- module.  Fails if that's not the case.
 setContext :: Context -> TH.Q ()
 setContext ctx = do
-  mbModuleState :: Maybe ModuleState <- TH.getQ
+  mbModuleState <- getModuleState
   forM_ mbModuleState $ \_ms ->
     fail "inline-c: The module has already been initialised (setContext)."
   void $ initialiseModuleState $ Just ctx
