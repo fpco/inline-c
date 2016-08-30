@@ -9,6 +9,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module Language.C.Inline.Internal
     ( -- * Context handling
@@ -77,8 +78,11 @@ import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           System.Environment (getProgName)
 
-#if __GLASGOW_HASKELL__ < 710
-import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar, readMVar)
+-- We cannot use getQ/putQ before 7.10.3 because of <https://ghc.haskell.org/trac/ghc/ticket/10596>
+#define USE_GETQ (__GLASGOW_HASKELL__ >= 710 && defined(__GLASGOW_HASKELL_PATCHLEVEL1__) && __GLASGOW_HASKELL_PATCHLEVEL1__ >= 3)
+
+#if !USE_GETQ
+import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar_, readMVar)
 #endif
 
 import           Language.C.Inline.Context
@@ -94,9 +98,7 @@ data ModuleState = ModuleState
 getModuleState :: TH.Q (Maybe ModuleState)
 putModuleState :: ModuleState -> TH.Q ()
 
-#if __GLASGOW_HASKELL__ >= 710
-
--- We cannot use getQ/putQ before 7.10 because of <https://ghc.haskell.org/trac/ghc/ticket/10596>
+#if USE_GETQ
 
 getModuleState = TH.getQ
 putModuleState = TH.putQ
@@ -122,13 +124,13 @@ moduleStatesVar :: MVar (Map.Map ModuleId ModuleState)
 moduleStatesVar = unsafePerformIO $ newMVar Map.empty
 
 getModuleState = do
-  moduleStates <- readMVar moduleStatesVar
+  moduleStates <- TH.runIO (readMVar moduleStatesVar)
   moduleId <- getModuleId
   return (Map.lookup moduleId moduleStates)
 
 putModuleState ms = do
   moduleId <- getModuleId
-  modifyMVar_ moduleStatesVar (Map.insert moduleId ms)
+  TH.runIO (modifyMVar_ moduleStatesVar (return . Map.insert moduleId ms))
 
 #endif
 
