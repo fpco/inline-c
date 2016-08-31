@@ -79,7 +79,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           System.Environment (getProgName)
 
 -- We cannot use getQ/putQ before 7.10.3 because of <https://ghc.haskell.org/trac/ghc/ticket/10596>
-#define USE_GETQ (__GLASGOW_HASKELL__ > 710 || (__GLASGOW_HASKELL__ >= 710 && __GLASGOW_HASKELL_PATCHLEVEL1__ >= 3))
+#define USE_GETQ (__GLASGOW_HASKELL__ > 710 || (__GLASGOW_HASKELL__ == 710 && __GLASGOW_HASKELL_PATCHLEVEL1__ >= 3))
 
 #if !USE_GETQ
 import           Control.Concurrent.MVar (MVar, newMVar, modifyMVar_, readMVar)
