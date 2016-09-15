@@ -3,4 +3,3 @@ packages:
 - sample-cabal-project/
 extra-deps: []
 resolver: lts-6.7
-
