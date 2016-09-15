@@ -24,14 +24,14 @@ import Prelude -- Fix for 7.10 unused warnings.
 spec :: Hspec.SpecWith ()
 spec = do
   Hspec.it "parses everything which is pretty-printable (C)" $ do
-    QC.property $ do
+    QC.property $ QC.again $ do -- Work around <https://github.com/nick8325/quickcheck/issues/113>
       ParameterDeclarationWithTypeNames typeNames ty <-
         arbitraryParameterDeclarationWithTypeNames unCIdentifier
       return $ isGoodType ty QC.==>
         let ty' = assertParse (cCParserContext typeNames) parameter_declaration (prettyOneLine ty)
         in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
   Hspec.it "parses everything which is pretty-printable (Haskell)" $ do
-    QC.property $ do
+    QC.property $ QC.again $ do -- Work around <https://github.com/nick8325/quickcheck/issues/113>
       ParameterDeclarationWithTypeNames typeNames ty <-
         arbitraryParameterDeclarationWithTypeNames unHaskellIdentifier
       return $ isGoodType ty QC.==>
