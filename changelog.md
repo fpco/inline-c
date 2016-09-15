@@ -1,3 +1,4 @@
+- 0.5.5.7: Add workaround for QuickCheck-2.9 bug. See issue #51
 - 0.5.5.2: Add docs regarding internals. See issue #41.
 - 0.5.5.1: Add support for Interruptible calls. The version skip is
   simply because I forgot to update the changelog for 0.5.5.0.
