@@ -307,9 +307,10 @@ declaration syntax.
 Each module that uses at least one of the `inline-c` functions gets a C
 file associated to it, where the filename of said file will be the same
 as the module but with a C extension.  This C file must be built after
-the Haskell code and linked appropriately.  If you use cabal, all you
-have to do is declare each associated C file in the `.cabal` file and
-you are good.
+the Haskell code and linked appropriately.
+
+If you use cabal, you **must** manually declare each associated C file in
+the `c-sources` section of the `.cabal` file and you are good.
 
 For example we might have
 
@@ -317,10 +318,13 @@ For example we might have
 executable foo
   main-is:             Main.hs, Foo.hs, Bar.hs
   hs-source-dirs:      src
+
+  -- IMPORTANT!
   -- Here the corresponding C sources must be listed for every module
   -- that uses C code.  In this example, Main.hs and Bar.hs do, but
   -- Foo.hs does not.
   c-sources:           src/Main.c, src/Bar.c
+
   -- These flags will be passed to the C compiler
   cc-options:          -Wall -O2
   -- Libraries to link the code with.
