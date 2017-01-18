@@ -1,3 +1,4 @@
+- 0.5.6.0: Add `ForeignPtr` anti-quoter
 - 0.5.5.9: Make tests work with QuickCheck < 2.9
 - 0.5.5.8: Add workaround for QuickCheck-2.9 bug. See issue #51
 - 0.5.5.2: Add docs regarding internals. See issue #41.
