@@ -35,6 +35,7 @@ module Language.C.Inline.Context
     -- * 'Context'
   , Context(..)
   , baseCtx
+  , fptrCtx
   , funCtx
   , vecCtx
   , VecCtx(..)
@@ -55,6 +56,7 @@ import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
 import           Data.Word (Word8, Word16, Word32, Word64)
 import           Foreign.C.Types
+import           Foreign.ForeignPtr (withForeignPtr)
 import           Foreign.Ptr (Ptr, FunPtr, freeHaskellFunPtr)
 import           Foreign.Storable (Storable)
 import qualified Language.Haskell.TH as TH
@@ -289,6 +291,24 @@ convertType_ err purity cTypes cTy = do
   case mbHsType of
     Nothing -> fail $ "Cannot convert C type (" ++ err ++ ")"
     Just hsType -> return hsType
+
+-- | This 'Context' adds support for 'ForeignPtr' arguments. It adds a unique
+-- marshaller called @fptr-ptr@. For example, @$fptr-ptr:$(int *x)@ extracts the
+-- bare C pointer out of foreign pointer @x@.
+fptrCtx :: Context
+fptrCtx = mempty
+  { ctxAntiQuoters = Map.fromList [("fptr-ptr", SomeAntiQuoter fptrAntiQuoter)]
+  }
+
+fptrAntiQuoter :: AntiQuoter HaskellIdentifier
+fptrAntiQuoter = AntiQuoter
+  { aqParser = cDeclAqParser
+  , aqMarshaller = \purity cTypes cTy cId -> do
+      hsTy <- convertType_ "fptrCtx" purity cTypes cTy
+      hsExp <- getHsVariable "fptrCtx" cId
+      hsExp' <- [| withForeignPtr $(return hsExp) |]
+      return (hsTy, hsExp')
+  }
 
 -- | This 'Context' includes a 'AntiQuoter' that removes the need for
 -- explicitely creating 'FunPtr's, named @"fun"@.

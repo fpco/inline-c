@@ -6,6 +6,8 @@ import           Control.Monad (void)
 import           Data.Monoid ((<>))
 import qualified Data.Vector.Storable.Mutable as V
 import           Foreign.C.Types
+import           Foreign.ForeignPtr (mallocForeignPtrBytes)
+import           Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import qualified Language.Haskell.TH as TH
 import           Prelude
 import qualified Test.Hspec as Hspec
@@ -22,7 +24,7 @@ import qualified Language.C.Types.ParseSpec
 
 import           Dummy
 
-C.context (C.baseCtx <> C.funCtx <> C.vecCtx <> C.bsCtx)
+C.context (C.baseCtx <> C.fptrCtx <> C.funCtx <> C.vecCtx <> C.bsCtx)
 
 C.include "<math.h>"
 C.include "<stddef.h>"
@@ -106,6 +108,10 @@ main = Hspec.hspec $ do
       let y = 9
       u32 <- [C.exp| uint32_t { $(uint32_t y) * 7 } |]
       u32 `Hspec.shouldBe` 63
+    Hspec.it "foreign pointer argument" $ do
+      fptr <- mallocForeignPtrBytes 32
+      ptr <- [C.exp| int* { $fptr-ptr:(int *fptr) } |]
+      ptr `Hspec.shouldBe` unsafeForeignPtrToPtr fptr
     Hspec.it "function pointer argument" $ do
       let ackermann m n
             | m == 0 = n + 1

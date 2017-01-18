@@ -25,6 +25,7 @@ module Language.C.Inline
     -- * Contexts
     Context
   , baseCtx
+  , fptrCtx
   , funCtx
   , vecCtx
   , bsCtx
