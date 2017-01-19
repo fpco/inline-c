@@ -48,6 +48,7 @@ import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BS
+import           Data.Coerce
 import           Data.Int (Int8, Int16, Int32, Int64)
 import qualified Data.Map as Map
 import           Data.Monoid ((<>))
@@ -306,7 +307,7 @@ fptrAntiQuoter = AntiQuoter
   , aqMarshaller = \purity cTypes cTy cId -> do
       hsTy <- convertType_ "fptrCtx" purity cTypes cTy
       hsExp <- getHsVariable "fptrCtx" cId
-      hsExp' <- [| withForeignPtr $(return hsExp) |]
+      hsExp' <- [| withForeignPtr (coerce $(return hsExp)) |]
       return (hsTy, hsExp')
   }
 
