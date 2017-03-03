@@ -228,10 +228,7 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 emitVerbatim :: String -> TH.DecsQ
 emitVerbatim s = do
   ctx <- getContext
-  mbCFile <- cSourceLoc ctx
-  case mbCFile of
-    Nothing -> return ()
-    Just cFile -> TH.runIO $ appendFile cFile $ "\n" ++ s ++ "\n"
+  TH.addCStub ("\n" ++ s ++ "\n")
   return []
 
 ------------------------------------------------------------------------

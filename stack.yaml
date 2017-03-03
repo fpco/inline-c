@@ -1,5 +1,42 @@
+resolver: ghc-8.1.20170302
+setup-info:
+  ghc:
+    linux64-custom-addCStub:
+      8.1.20170302:
+        url: http://mazzo.li/dump/ghc-8.1.20170302-x86_64-unknown-linux.tar.xz
+        sha1: 8a183deb0ff14e30f512bbc26589144741c37a3e
+ghc-variant: addCStub
 packages:
 - '.'
 - sample-cabal-project/
-extra-deps: []
-resolver: lts-6.7
+- location:
+    git: https://github.com/bitonic/hashable.git
+    commit: 00b8b0a6008a649a99531b3de9556b7319144226
+  extra-dep: true
+- location:
+    git: https://github.com/ekmett/parsers.git
+    commit: a48736cf6b3190a1cbcaa9aba4b5aa9b7e418be5
+  extra-dep: true
+allow-newer: true
+extra-deps:
+- QuickCheck-2.9.2
+- ansi-wl-pprint-0.6.7.3
+- cryptohash-0.11.9
+- mtl-2.2.1
+- parsec-3.1.11
+- unordered-containers-0.2.7.2
+- vector-0.12.0.0
+- ansi-terminal-0.6.2.3
+- attoparsec-0.13.1.0
+- base-orphans-0.5.4
+- byteable-0.1.1
+- charset-0.3.7.1
+- cryptonite-0.22
+- memory-0.14.1
+- primitive-0.6.2.0
+- random-1.1
+- scientific-0.3.4.10
+- text-1.2.2.1
+- tf-random-0.5
+- integer-logarithms-1.0.1
+- semigroups-0.18.2
