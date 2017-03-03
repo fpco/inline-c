@@ -61,6 +61,7 @@ import           Foreign.ForeignPtr (withForeignPtr)
 import           Foreign.Ptr (Ptr, FunPtr, freeHaskellFunPtr)
 import           Foreign.Storable (Storable)
 import qualified Language.Haskell.TH as TH
+import qualified Language.Haskell.TH.Syntax as TH
 import qualified Text.Parser.Token as Parser
 import qualified Data.HashSet as HashSet
 
@@ -141,28 +142,30 @@ data Context = Context
     -- ^ Needed to convert C types to Haskell types.
   , ctxAntiQuoters :: AntiQuoters
     -- ^ Needed to parse and process antiquotations.
-  , ctxFileExtension :: Maybe String
-    -- ^ Will determine the extension of the file containing the inline
-    -- C snippets.
   , ctxOutput :: Maybe (String -> String)
     -- ^ This function is used to post-process the functions generated
     -- from the C snippets.  Currently just used to specify C linkage
     -- when generating C++ code.
+  , ctxAddFile :: Maybe (String -> TH.Q ())
+  , ctxForeignSrcLang :: Maybe TH.ForeignSrcLang
+    -- ^ TH.LangC by default
   }
 
 instance Monoid Context where
   mempty = Context
     { ctxTypesTable = mempty
     , ctxAntiQuoters = mempty
-    , ctxFileExtension = Nothing
     , ctxOutput = Nothing
+    , ctxAddFile = Nothing
+    , ctxForeignSrcLang = Nothing
     }
 
   mappend ctx2 ctx1 = Context
     { ctxTypesTable = ctxTypesTable ctx1 <> ctxTypesTable ctx2
     , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
-    , ctxFileExtension = ctxFileExtension ctx1 <|> ctxFileExtension ctx2
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
+    , ctxAddFile = ctxAddFile ctx1 <|> ctxAddFile ctx2
+    , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
     }
 
 -- | Context useful to work with vanilla C. Used by default.
