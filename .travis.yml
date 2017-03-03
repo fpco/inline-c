@@ -15,12 +15,10 @@ addons:
 # The different configurations we want to test. You could also do things like
 # change flags or use --stack-yaml to point to a different file.
 env:
-- ARGS="--flag inline-c:gsl-example"
-- ARGS="--resolver lts-2" # The required cairo stuff is not present in lts-2
-- ARGS="--resolver lts-3 --flag inline-c:gsl-example"
-- ARGS="--resolver lts-6 --flag inline-c:gsl-example"
-# gsl-ode example does not build with nightly-2016-06-15 due to cairo : Failed to load interface for ‘Gtk2HsSetup’, so for now it is not included in these tests
-- ARGS="--resolver nightly"
+# right now the gsl example does not work, because gtk2hs-buildtools does
+# not seem to work with the latest cabal lib
+# TODO test this again
+- ARGS=""
 
 before_install:
 # Download and unpack the stack executable

@@ -39,13 +39,11 @@ library
                      , bytestring
                      , containers
                      , cryptohash
-                     , directory
-                     , filepath
                      , hashable
                      , mtl
                      , parsec >= 3
                      , parsers
-                     , template-haskell >= 2.9
+                     , template-haskell >= 2.12.0.0
                      , transformers >= 0.1.3.0
                      , unordered-containers
                      , vector
@@ -56,7 +54,6 @@ test-suite tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             tests.hs
-  c-sources:           test/tests.c
   other-modules:       Dummy
                      , Language.C.Inline.ContextSpec
                      , Language.C.Inline.ParseSpec
@@ -81,7 +78,6 @@ test-suite tests
 executable gsl-ode
   hs-source-dirs:      examples
   main-is:             gsl-ode.hs
-  c-sources:           examples/gsl-ode.c
   default-language:    Haskell2010
   extra-libraries:     gsl gslcblas m
   ghc-options:         -Wall
