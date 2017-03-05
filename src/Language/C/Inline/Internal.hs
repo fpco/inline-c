@@ -77,6 +77,7 @@ import qualified Text.Parser.Token as Parser
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           System.Environment (getProgName)
+import qualified Data.DList as DList
 
 -- We cannot use getQ/putQ before 7.10.3 because of <https://ghc.haskell.org/trac/ghc/ticket/10596>
 #define USE_GETQ (__GLASGOW_HASKELL__ > 710 || (__GLASGOW_HASKELL__ == 710 && __GLASGOW_HASKELL_PATCHLEVEL1__ >= 3))
@@ -93,6 +94,7 @@ import qualified Language.C.Types as C
 data ModuleState = ModuleState
   { msContext :: Context
   , msGeneratedNames :: Int
+  , msFileChunks :: DList.DList String
   } deriving (Typeable)
 
 getModuleState :: TH.Q (Maybe ModuleState)
@@ -143,18 +145,24 @@ initialiseModuleState
   -- 'baseCtx' will be used.
   -> TH.Q Context
 initialiseModuleState mbContext = do
-  mbcFile <- cSourceLoc context
   mbModuleState <- getModuleState
   case mbModuleState of
     Just moduleState -> return (msContext moduleState)
     Nothing -> do
-      -- If the file exists and this is the first time we write
-      -- something from this module (in other words, if we are
-      -- recompiling the module), kill the file first.
-      TH.runIO $ forM_ mbcFile $ \cFile -> removeIfExists cFile
+      -- Add hook to add the file
+      TH.addModFinalizer $ do
+        mbMs <- getModuleState
+        ms <- case mbMs of
+          Nothing -> fail "inline-c: ModuleState not present (initialiseModuleState)"
+          Just ms -> return ms
+        let addFile = case ctxAddFile context of
+              Nothing -> TH.addCFile
+              Just x -> x
+        addFile (concat (DList.toList (msFileChunks ms)))
       let moduleState = ModuleState
             { msContext = context
             , msGeneratedNames = 0
+            , msFileChunks = mempty
             }
       putModuleState moduleState
       return context
@@ -170,7 +178,7 @@ modifyModuleState :: (ModuleState -> (ModuleState, a)) -> TH.Q a
 modifyModuleState f = do
   mbModuleState <- getModuleState
   case mbModuleState of
-    Nothing -> fail "inline-c: ModuleState not present"
+    Nothing -> fail "inline-c: ModuleState not present (modifyModuleState)"
     Just ms -> do
       let (ms', x) = f ms
       putModuleState ms'
@@ -202,33 +210,14 @@ bumpGeneratedNames = do
 ------------------------------------------------------------------------
 -- Emitting
 
--- | Return the path in which to emit C code. Or 'Nothing' if emitting should be
--- inhibited, say because we're only type checking the module, not emitting code
--- (e.g. with @-fno-code@ or in @haddock@)
-cSourceLoc :: Context -> TH.Q (Maybe FilePath)
-cSourceLoc ctx = do
-    prog <- TH.runIO getProgName
-    -- Hard-code a common case for not generating code.  haddock just
-    -- type-checks, so we do not need to generate the C file again.
-    -- See issue #24.
-    let emitCode = prog /= "haddock"
-    if not emitCode
-      then return Nothing
-      else do
-        thisFile <- TH.loc_filename <$> TH.location
-        let ext = fromMaybe "c" $ ctxFileExtension ctx
-        return $ Just $ dropExtension thisFile `addExtension` ext
-
-removeIfExists :: FilePath -> IO ()
-removeIfExists fileName = removeFile fileName `catch` handleExists
-  where
-    handleExists e = unless (isDoesNotExistError e) $ throwIO e
-
 -- | Simply appends some string to the module's C file.  Use with care.
 emitVerbatim :: String -> TH.DecsQ
 emitVerbatim s = do
-  ctx <- getContext
-  TH.addCStub ("\n" ++ s ++ "\n")
+  -- Make sure that the 'ModuleState' is initialized
+  void (initialiseModuleState Nothing)
+  let chunk = "\n" ++ s ++ "\n"
+  modifyModuleState $ \ms ->
+    (ms{msFileChunks = DList.snoc (msFileChunks ms) chunk}, ())
   return []
 
 ------------------------------------------------------------------------

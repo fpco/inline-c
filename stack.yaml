@@ -1,10 +1,13 @@
-resolver: ghc-8.1.20170302
+resolver: ghc-8.1.20170304
 setup-info:
   ghc:
     linux64-custom-addCStub:
       8.1.20170302:
         url: http://mazzo.li/dump/ghc-8.1.20170302-x86_64-unknown-linux.tar.xz
         sha1: 8a183deb0ff14e30f512bbc26589144741c37a3e
+      8.1.20170304:
+        url: http://mazzo.li/dump/ghc-8.1.20170304-x86_64-unknown-linux.tar.xz
+        sha1: 688ba9843b8856c591c1e1346b7a242da16cb5e6
 ghc-variant: addCStub
 packages:
 - '.'
@@ -40,3 +43,4 @@ extra-deps:
 - tf-random-0.5
 - integer-logarithms-1.0.1
 - semigroups-0.18.2
+- dlist-0.8.0.2

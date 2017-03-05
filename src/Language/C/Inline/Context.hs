@@ -141,9 +141,7 @@ data Context = Context
     -- ^ Needed to convert C types to Haskell types.
   , ctxAntiQuoters :: AntiQuoters
     -- ^ Needed to parse and process antiquotations.
-  , ctxFileExtension :: Maybe String
-    -- ^ Will determine the extension of the file containing the inline
-    -- C snippets.
+  , ctxAddFile :: Maybe (String -> TH.Q ())
   , ctxOutput :: Maybe (String -> String)
     -- ^ This function is used to post-process the functions generated
     -- from the C snippets.  Currently just used to specify C linkage
@@ -154,14 +152,14 @@ instance Monoid Context where
   mempty = Context
     { ctxTypesTable = mempty
     , ctxAntiQuoters = mempty
-    , ctxFileExtension = Nothing
+    , ctxAddFile = Nothing
     , ctxOutput = Nothing
     }
 
   mappend ctx2 ctx1 = Context
     { ctxTypesTable = ctxTypesTable ctx1 <> ctxTypesTable ctx2
     , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
-    , ctxFileExtension = ctxFileExtension ctx1 <|> ctxFileExtension ctx2
+    , ctxAddFile = ctxAddFile ctx1 <|> ctxAddFile ctx2
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     }
 
