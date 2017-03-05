@@ -9,6 +9,7 @@ module Language.C.Inline.Cpp
 
 import           Data.Monoid ((<>), mempty)
 import qualified Language.Haskell.TH as TH
+import qualified Language.Haskell.TH.Syntax as TH
 
 import           Language.C.Inline
 import           Language.C.Inline.Context
@@ -19,7 +20,7 @@ import           Language.C.Inline.Context
 -- build.
 cppCtx :: Context
 cppCtx = baseCtx <> mempty
-  { ctxFileExtension = Just "cpp"
+  { ctxForeignSrcLang = Just TH.LangCxx
   , ctxOutput = Just $ \s -> "extern \"C\" {\n" ++ s ++ "\n}"
   }
 

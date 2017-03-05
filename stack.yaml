@@ -1,0 +1,15 @@
+resolver: lts-8.8
+setup-info:
+  ghc:
+    linux64-custom-addForeignFile-backport:
+      8.0.2:
+        url: https://github.com/nh2/ghc/releases/download/ghc-8.0.2-foreignfiles-backport-release/ghc-8.0.2-foreignfiles-backport-x86_64-unknown-linux.tar.xz
+        sha1: e74e82ab5061c1bab0b9e1635a8e5e2c7c697ba3
+ghc-variant: addForeignFile-backport
+packages:
+- '.'
+- location:
+    git: https://github.com/fpco/inline-c.git
+    commit: 93f2bc64faf20871c9385bbbbd038f7a7e6e4699
+  extra-dep: true
+extra-deps: []
