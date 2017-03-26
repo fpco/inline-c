@@ -294,7 +294,7 @@ convertType_ err purity cTypes cTy = do
     Just hsType -> return hsType
 
 -- | This 'Context' adds support for 'ForeignPtr' arguments. It adds a unique
--- marshaller called @fptr-ptr@. For example, @$fptr-ptr:$(int *x)@ extracts the
+-- marshaller called @fptr-ptr@. For example, @$fptr-ptr:(int *x)@ extracts the
 -- bare C pointer out of foreign pointer @x@.
 fptrCtx :: Context
 fptrCtx = mempty
