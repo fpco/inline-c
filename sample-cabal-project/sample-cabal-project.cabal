@@ -1,6 +1,6 @@
 name:                sample-cabal-project
 version:             0.1.0.0
-license:             AllRightsReserved
+license:             MIT
 license-file:        LICENSE
 author:              Francesco Mazzoli
 maintainer:          francesco@fpcomplete.com

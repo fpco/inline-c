@@ -1,3 +1,5 @@
+- 0.6.0.2: Update haddock
+- 0.6.0.0: Use `addDependentFile` so separate compilation is not needed.
 - 0.5.6.0: Add `ForeignPtr` anti-quoter
 - 0.5.5.9: Make tests work with QuickCheck < 2.9
 - 0.5.5.8: Add workaround for QuickCheck-2.9 bug. See issue #51

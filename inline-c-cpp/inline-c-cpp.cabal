@@ -1,5 +1,5 @@
 name:                inline-c-cpp
-version:             0.2.0.0
+version:             0.2.0.2
 synopsis:            Lets you embed C++ code into Haskell.
 description:         Utilities to inline C++ code into Haskell using inline-c.  See
                      tests for example on how to build.
@@ -9,13 +9,13 @@ author:              Francesco Mazzoli
 maintainer:          francesco@fpcomplete.com
 copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017 Francesco Mazzoli
 category:            FFI
-tested-with:         GHC == 7.8.4, GHC == 7.10.1
+tested-with:         GHC == 8.2.1
 build-type:          Simple
 cabal-version:       >=1.10
 
 source-repository head
   type:     git
-  location: https://github.com/fpco/inline-c-cpp
+  location: https://github.com/fpco/inline-c
 
 library
   exposed-modules:     Language.C.Inline.Cpp

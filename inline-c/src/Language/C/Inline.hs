@@ -19,7 +19,7 @@
 -- @
 
 module Language.C.Inline
-  ( -- * Build process
+  ( -- * GHCi
     -- $building
 
     -- * Contexts
@@ -81,41 +81,18 @@ import           Language.C.Inline.FunPtr
 
 -- $building
 --
--- Each module that uses at least one of the TH functions in this module gets
--- a C file associated to it, where the filename of said file will be the same
--- as the module but with a `.c` extension. This C file must be built after the
--- Haskell code and linked appropriately. If you use cabal, all you have to do
--- is declare each associated C file in the @.cabal@ file.
---
--- For example:
+-- Currently @inline-c@ does not work in interpreted mode. However, GHCi
+-- can still be used using the @-fobject-code@ flag. For speed, we
+-- reccomend passing @-fobject-code -O0@, for example
 --
 -- @
--- executable foo
---   main-is:             Main.hs, Foo.hs, Bar.hs
---   hs-source-dirs:      src
---   -- Here the corresponding C sources must be listed for every module
---   -- that uses C code.  In this example, Main.hs and Bar.hs do, but
---   -- Foo.hs does not.
---   c-sources:           src\/Main.c, src\/Bar.c
---   -- These flags will be passed to the C compiler
---   cc-options:          -Wall -O2
---   -- Libraries to link the code with.
---   extra-libraries:     -lm
---   ...
+-- stack ghci --ghci-options='-fobject-code -O0'
 -- @
 --
--- Note that currently @cabal repl@ is not supported, because the C code is not
--- compiled and linked appropriately.
---
--- If we were to compile the above manually, we could:
+-- or
 --
 -- @
--- $ ghc -c Main.hs
--- $ cc -c Main.c -o Main_c.o
--- $ ghc Foo.hs
--- $ ghc Bar.hs
--- $ cc -c Bar.c -o Bar_c.o
--- $ ghc Main.o Foo.o Bar.o Main_c.o Bar_c.o -lm -o Main
+-- cabal repl --ghc-options='-fobject-code -O0'
 -- @
 
 ------------------------------------------------------------------------
@@ -237,7 +214,7 @@ import           Language.C.Inline.FunPtr
 -- corresponding to the current Haskell file. Every inline C expression will result
 -- in a corresponding C function.
 -- For example, if we define @c_cos@
--- as in the example above in @CCos.hs@, we will get a file @CCos.c@ containing
+-- as in the example above in @CCos.hs@, we will get a file containing
 --
 -- @
 -- #include <math.h>
@@ -250,12 +227,7 @@ import           Language.C.Inline.FunPtr
 -- Every anti-quotation will correspond to an argument in the C function. If the same
 -- Haskell variable is anti-quoted twice, this will result in two arguments.
 --
--- The C function is then invoked from Haskell with the correct arguments passed in.
---
--- == Known issues
---
--- * https://github.com/fpco/inline-c/issues/21
--- * https://github.com/fpco/inline-c/issues/11
+-- The C function is then automatically compiled and invoked from Haskell with the correct arguments passed in.
 
 -- | C expressions.
 exp :: TH.QuasiQuoter
