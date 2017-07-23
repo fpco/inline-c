@@ -1,11 +1,4 @@
 resolver: ghc-8.2.1
-setup-info:
-  ghc:
-    linux64-custom-new:
-      8.2.1:
-        url: https://downloads.haskell.org/~ghc/8.2.1/ghc-8.2.1-x86_64-deb7-linux.tar.xz
-        sha1: 510c37cb5e285a1720c3ba705867b637ca5de001
-ghc-variant: new
 packages:
 - inline-c
 - inline-c-cpp
