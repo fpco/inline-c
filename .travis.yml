@@ -35,3 +35,7 @@ script: stack --no-terminal --install-ghc test --haddock $ARGS
 cache:
   directories:
   - $HOME/.stack
+  - .stack-work
+  - inline-c/.stack-work/
+  - inline-c-cpp/.stack-work/
+  - sample-cabal-project/.stack-work/

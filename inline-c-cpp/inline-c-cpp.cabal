@@ -1,5 +1,5 @@
 name:                inline-c-cpp
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            Lets you embed C++ code into Haskell.
 description:         Utilities to inline C++ code into Haskell using inline-c.  See
                      tests for example on how to build.
@@ -7,7 +7,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Francesco Mazzoli
 maintainer:          francesco@fpcomplete.com
-copyright:           (c) 2015 FP Complete Corporation
+copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017 Francesco Mazzoli
 category:            FFI
 tested-with:         GHC == 7.8.4, GHC == 7.10.1
 build-type:          Simple

@@ -1,7 +1,5 @@
 # inline-c
 
-[![Build Status](https://travis-ci.org/fpco/inline-c.svg)](https://travis-ci.org/fpco/inline-c)
-
 `inline-c` lets you seamlessly call C libraries and embed
 high-performance inline C code in Haskell modules. Haskell and C can
 be freely intermixed in the same source file, and data passed to and

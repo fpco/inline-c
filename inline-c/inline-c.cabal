@@ -1,12 +1,12 @@
 name:                inline-c
-version:             0.5.6.1
+version:             0.6.0.0
 synopsis:            Write Haskell source files including C code inline. No FFI required.
 description:         See <https://github.com/fpco/inline-c/blob/master/README.md>.
 license:             MIT
 license-file:        LICENSE
 author:              Francesco Mazzoli, Mathieu Boespflug
 maintainer:          francesco@fpcomplete.com
-copyright:           (c) 2015 FP Complete Corporation
+copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017 Francesco Mazzoli
 category:            FFI
 tested-with:         GHC == 7.8.4, GHC == 7.10.1
 build-type:          Simple

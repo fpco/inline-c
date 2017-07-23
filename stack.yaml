@@ -8,6 +8,7 @@ setup-info:
 ghc-variant: new
 packages:
 - inline-c
+- inline-c-cpp
 - sample-cabal-project
 extra-deps:
 - QuickCheck-2.10.0.1
