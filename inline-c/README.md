@@ -300,51 +300,20 @@ case of `vec-len`), only the Haskell identifier appears.  If it can't,
 the target C type and the Haskell identifier are mentioned using C
 declaration syntax.
 
-## How to build
+## GHCi
 
-Each module that uses at least one of the `inline-c` functions gets a C
-file associated to it, where the filename of said file will be the same
-as the module but with a C extension.  This C file must be built after
-the Haskell code and linked appropriately.
-
-If you use cabal, you **must** manually declare each associated C file in
-the `c-sources` section of the `.cabal` file and you are good.
-
-For example we might have
+Currently `inline-c` does not work in interpreted mode. However, GHCi
+can still be used using the `-fobject-code` flag. For speed, we
+reccomend passing `-fobject-code -O0`, for example
 
 ```
-executable foo
-  main-is:             Main.hs, Foo.hs, Bar.hs
-  hs-source-dirs:      src
-
-  -- IMPORTANT!
-  -- Here the corresponding C sources must be listed for every module
-  -- that uses C code.  In this example, Main.hs and Bar.hs do, but
-  -- Foo.hs does not.
-  c-sources:           src/Main.c, src/Bar.c
-
-  -- These flags will be passed to the C compiler
-  cc-options:          -Wall -O2
-  -- Libraries to link the code with.
-  extra-libraries:     m
-  ...
+stack ghci --ghci-options='-fobject-code -O0'
 ```
 
-Note that currently `cabal repl` is not supported, because the C code is
-not compiled and linked appropriately.  Type-checking will still be
-performed, so `cabal repl` can still be used to develop.
-
-See `sample-cabal-project` for a working example.
-
-If we were to compile the above manually we could do:
+or
 
 ```
-$ ghc -c Main.hs
-$ cc -c Main.c -o Main_c.o
-$ ghc Foo.hs
-$ ghc Bar.hs
-$ cc -c Bar.c -o Bar_c.o
-$ ghc Main.o Foo.o Bar.o Main_c.o Bar_c.o -lm -o Main
+cabal repl --ghc-options='-fobject-code -O0'
 ```
 
 [ghc-manual-quasiquotation]:
