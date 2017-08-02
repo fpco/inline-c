@@ -54,8 +54,6 @@ import           Control.Applicative
 import           Control.Monad (forM, void, msum)
 import           Control.Monad.State (evalStateT, StateT, get, put)
 import           Control.Monad.Trans.Class (lift)
-import qualified Crypto.Hash as CryptoHash
-import qualified Data.Binary as Binary
 import           Data.Foldable (forM_)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
@@ -278,29 +276,25 @@ inlineCode Code{..} = do
   TH.addTopDecls [dec]
   TH.varE ffiImportName
 
-uniqueCName
-  :: String
-  -- ^ Some string identifying the body of the symbol the name will
-  -- refer too -- e.g. the function arguments + body.  This is used to
-  -- generate persistent names: we do not want completely random names
-  -- since this causes issues when cabal builds things repeatedly, for
-  -- example when building with profiling.
-  -> TH.Q String
-uniqueCName x = do
+uniqueCName :: TH.Q String
+uniqueCName = do
   -- The name looks like this:
-  -- inline_c_MODULE_INDEX_HASH
+  -- inline_c_MODULE_INDEX
   --
   -- Where:
   --  * MODULE is the module name but with _s instead of .s;
   --  * INDEX is a counter that keeps track of how many names we're generating
-  --    for each module;
-  --  * HASH is the SHA1 hash of the contents.
+  --    for each module.
+  --
+  -- we previously also generated a hash from the contents of the
+  -- C code because of problems when cabal recompiled but now this
+  -- is not needed anymore since we use 'addDependentFile' to compile
+  -- the C code.
   c' <- bumpGeneratedNames
-  let unique :: CryptoHash.Digest CryptoHash.SHA1 = CryptoHash.hashlazy $ Binary.encode x
   module_ <- TH.loc_module <$> TH.location
   let replaceDot '.' = '_'
       replaceDot c = c
-  return $ "inline_c_" ++ map replaceDot module_ ++ "_" ++ show c' ++ "_" ++ show unique
+  return $ "inline_c_" ++ map replaceDot module_ ++ "_" ++ show c'
 
 -- | Same as 'inlineCItems', but with a single expression.
 --
@@ -360,7 +354,7 @@ inlineItems
 inlineItems callSafety type_ cRetType cParams cItems = do
   let mkParam (id', paramTy) = C.ParameterDeclaration (Just id') paramTy
   let proto = C.Proto cRetType (map mkParam cParams)
-  funName <- uniqueCName $ show proto ++ cItems
+  funName <- uniqueCName
   cFunName <- case C.cIdentifierFromString funName of
     Left err -> fail $ "inlineItems: impossible, generated bad C identifier " ++
                        "funName:\n" ++ err
