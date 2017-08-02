@@ -24,3 +24,17 @@ extra-deps:
 - tf-random-0.5
 - integer-logarithms-1.0.2
 - semigroups-0.18.3
+# for tests
+- hspec-2.4.4
+- raw-strings-qq-1.1
+- regex-posix-0.95.2
+- HUnit-1.6.0.0
+- call-stack-0.1.0
+- hspec-core-2.4.4
+- hspec-discover-2.4.4
+- hspec-expectations-0.8.2
+- regex-base-0.93.2
+- async-2.1.1.1
+- quickcheck-io-0.2.0
+- setenv-0.1.1.3
+- stm-2.4.4.1
