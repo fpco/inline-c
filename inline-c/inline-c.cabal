@@ -33,7 +33,6 @@ library
   other-modules:       Language.C.Inline.FunPtr
   ghc-options:         -Wall
   build-depends:       base >=4.7 && <5
-                     , QuickCheck
                      , ansi-wl-pprint
                      , bytestring
                      , containers
@@ -57,6 +56,7 @@ test-suite tests
                      , Language.C.Inline.ParseSpec
                      , Language.C.Types.ParseSpec
   build-depends:       base >=4 && <5
+                     , QuickCheck
                      , ansi-wl-pprint
                      , containers
                      , hashable

@@ -11,6 +11,9 @@ module Language.C.Inline.HaskellIdentifier
   , haskellCParserContext
   , parseHaskellIdentifier
   , mangleHaskellIdentifier
+
+    -- * for testing
+  , haskellReservedWords
   ) where
 
 import           Control.Applicative ((<|>))
@@ -23,7 +26,6 @@ import           Data.Monoid ((<>))
 import           Data.String (IsString(..))
 import           Data.Typeable (Typeable)
 import           Numeric (showHex)
-import qualified Test.QuickCheck as QC
 import           Text.Parser.Char (upper, lower, digit, char)
 import           Text.Parser.Combinators (many, eof, try, unexpected, (<?>))
 import           Text.Parser.Token (IdentifierStyle(..), highlight, TokenParsing)
@@ -145,26 +147,3 @@ identNoLex s = fmap fromString $ try $ do
   when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
   return name
 
--- Arbitrary instance
-------------------------------------------------------------------------
-
-instance QC.Arbitrary HaskellIdentifier where
-  arbitrary = do
-    modIds <- QC.listOf arbitraryModId
-    id_ <- QC.oneof [arbitraryConId, arbitraryVarId]
-    if null modIds && HashSet.member id_ haskellReservedWords
-      then QC.arbitrary
-      else return $ HaskellIdentifier $ intercalate "." $ modIds ++ [id_]
-    where
-      arbitraryModId = arbitraryConId
-
-      arbitraryConId =
-        ((:) <$> QC.elements large <*> QC.listOf (QC.elements (small ++ large ++ digit' ++ ['\''])))
-
-      arbitraryVarId =
-        ((:) <$> QC.elements small <*> QC.listOf (QC.elements (small ++ large ++ digit' ++ ['\''])))
-
-      -- We currently do not generate unicode identifiers.
-      large = ['A'..'Z']
-      small = ['a'..'z'] ++ ['_']
-      digit' = ['0'..'9']
