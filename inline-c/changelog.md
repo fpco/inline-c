@@ -1,3 +1,4 @@
+- 0.6.0.4: Remove QuickCheck dependency
 - 0.6.0.3: Remove cryptohash dependencies
 - 0.6.0.2: Update haddock
 - 0.6.0.0: Use `addDependentFile` so separate compilation is not needed.
