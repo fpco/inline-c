@@ -1,5 +1,5 @@
 name:                inline-c-cpp
-version:             0.2.0.2
+version:             0.2.1.0
 synopsis:            Lets you embed C++ code into Haskell.
 description:         Utilities to inline C++ code into Haskell using inline-c.  See
                      tests for example on how to build.
