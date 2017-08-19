@@ -12,8 +12,8 @@ what inline Assembly is to C — a convenient means to eke out a little
 bit of extra performance in those rare cases where C still beats
 Haskell.
 
-Build instructions are reserved for the [last section](#how-to-build).
-You'll need to compile the examples below and try them out.
+GHCi support is currently limited to using `-fobject-code`, see
+the [last section](#ghci) for more info.
 
 ## Getting started
 
