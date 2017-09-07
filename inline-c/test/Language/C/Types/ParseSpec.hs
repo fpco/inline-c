@@ -247,7 +247,7 @@ instance QC.Arbitrary HaskellIdentifier where
   arbitrary = do
     modIds <- QC.listOf arbitraryModId
     id_ <- QC.oneof [arbitraryConId, arbitraryVarId]
-    if null modIds && HashSet.member id_ haskellReservedWords
+    if HashSet.member id_ haskellReservedWords
       then QC.arbitrary
       else return $ fromString $ intercalate "." $ modIds ++ [id_]
     where
