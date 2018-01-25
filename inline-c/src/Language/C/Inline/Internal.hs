@@ -45,6 +45,7 @@ module Language.C.Inline.Internal
     , ParseTypedC(..)
     , parseTypedC
     , runParserInQ
+    , splitTypedC
 
       -- * Utility functions for writing quasiquoters
     , genericQuote
@@ -71,6 +72,8 @@ import qualified Text.Parser.LookAhead as Parser
 import qualified Text.Parser.Token as Parser
 import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import qualified Data.List as L
+import qualified Data.Char as C
 
 -- We cannot use getQ/putQ before 7.10.3 because of <https://ghc.haskell.org/trac/ghc/ticket/10596>
 #define USE_GETQ (__GLASGOW_HASKELL__ > 710 || (__GLASGOW_HASKELL__ == 710 && __GLASGOW_HASKELL_PATCHLEVEL1__ >= 3))
@@ -579,6 +582,14 @@ genericQuote purity build = quoteCode $ \s -> do
           [t| IO $(return retType) |]
         go (paramType : params) = do
           [t| $(return paramType) -> $(go params) |]
+
+splitTypedC :: String -> (String, String)
+  -- ^ Returns the type and the body separately
+splitTypedC s = (trim ty, case body of
+                            [] -> []
+                            r  -> r)
+  where (ty, body) = span (/= '{') s
+        trim x = L.dropWhileEnd C.isSpace (dropWhile C.isSpace x)
 
 ------------------------------------------------------------------------
 -- Utils
