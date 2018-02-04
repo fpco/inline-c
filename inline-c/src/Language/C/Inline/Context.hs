@@ -51,7 +51,6 @@ import qualified Data.ByteString.Unsafe as BS
 import           Data.Coerce
 import           Data.Int (Int8, Int16, Int32, Int64)
 import qualified Data.Map as Map
-import           Data.Monoid ((<>))
 import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -68,6 +67,10 @@ import qualified Data.HashSet as HashSet
 #if __GLASGOW_HASKELL__ < 710
 import           Data.Monoid (Monoid(..))
 import           Data.Traversable (traverse)
+#endif
+
+#if !(MIN_VERSION_base(4,11,0))
+import           Data.Semigroup (Semigroup(..))
 #endif
 
 import           Language.C.Inline.FunPtr
@@ -150,6 +153,14 @@ data Context = Context
     -- ^ TH.LangC by default
   }
 
+instance Semigroup Context where
+  ctx2 <> ctx1 = Context
+    { ctxTypesTable = ctxTypesTable ctx1 <> ctxTypesTable ctx2
+    , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
+    , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
+    , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
+    }
+
 instance Monoid Context where
   mempty = Context
     { ctxTypesTable = mempty
@@ -158,12 +169,9 @@ instance Monoid Context where
     , ctxForeignSrcLang = Nothing
     }
 
-  mappend ctx2 ctx1 = Context
-    { ctxTypesTable = ctxTypesTable ctx1 <> ctxTypesTable ctx2
-    , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
-    , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
-    , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
-    }
+#if !(MIN_VERSION_base(4,11,0))
+  mappend = (<>)
+#endif
 
 -- | Context useful to work with vanilla C. Used by default.
 --

@@ -33,13 +33,14 @@ library
   other-modules:       Language.C.Inline.FunPtr
   ghc-options:         -Wall
   build-depends:       base >=4.7 && <5
-                     , ansi-wl-pprint
+                     , ansi-wl-pprint >= 0.6.8
                      , bytestring
                      , containers
                      , hashable
                      , mtl
                      , parsec >= 3
                      , parsers
+                     , semigroups >= 0.16
                      , template-haskell >= 2.12.0.0
                      , transformers >= 0.1.3.0
                      , unordered-containers
