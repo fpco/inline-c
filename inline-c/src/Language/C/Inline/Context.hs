@@ -429,11 +429,13 @@ vecLenAntiQuoter = AntiQuoter
 -- 'BS.ByteString'.  @vec-ptr@ becomes @bs-ptr@, and @vec-len@ becomes
 -- @bs-len@.  You don't need to specify the type of the pointer in
 -- @bs-ptr@, it will always be @char*@.
+-- @bs-cstr@, it will always be null terminated @char*@.
 bsCtx :: Context
 bsCtx = mempty
   { ctxAntiQuoters = Map.fromList
       [ ("bs-ptr", SomeAntiQuoter bsPtrAntiQuoter)
       , ("bs-len", SomeAntiQuoter bsLenAntiQuoter)
+      , ("bs-cstr", SomeAntiQuoter bsCStrAntiQuoter)
       ]
   }
 
@@ -471,6 +473,24 @@ bsLenAntiQuoter = AntiQuoter
         _ -> do
           fail "impossible: got type different from `long' (bsCtx)"
   }
+
+bsCStrAntiQuoter :: AntiQuoter HaskellIdentifier
+bsCStrAntiQuoter = AntiQuoter
+  { aqParser = do
+      hId <- C.parseIdentifier
+      let cId = mangleHaskellIdentifier hId
+      return (cId, C.Ptr [] (C.TypeSpecifier mempty (C.Char Nothing)), hId)
+  , aqMarshaller = \_purity _cTypes cTy cId -> do
+      case cTy of
+        C.Ptr _ (C.TypeSpecifier _ (C.Char Nothing)) -> do
+          hsTy <- [t| Ptr CChar |]
+          hsExp <- getHsVariable "bsCtx" cId
+          hsExp' <- [| \cont -> BS.useAsCString $(return hsExp) $ \ptr -> cont ptr  |]
+          return (hsTy, hsExp')
+        _ ->
+          fail "impossible: got type different from `char *' (bsCtx)"
+  }
+
 
 -- Utils
 ------------------------------------------------------------------------
