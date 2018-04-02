@@ -65,10 +65,15 @@ import           Control.Monad (when, unless, forM_)
 import           Control.Monad.State (execState, modify)
 import           Data.List (partition)
 import           Data.Maybe (fromMaybe)
-import           Data.Monoid ((<>))
 import           Data.Typeable (Typeable)
 import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
+
+#if MIN_VERSION_base(4,9,0)
+import           Data.Semigroup (Semigroup, (<>))
+#else
+import           Data.Monoid ((<>))
+#endif
 
 #if __GLASGOW_HASKELL__ < 710
 import           Data.Foldable (Foldable)
@@ -103,11 +108,19 @@ data Specifiers = Specifiers
   , functionSpecifiers :: [P.FunctionSpecifier]
   } deriving (Typeable, Show, Eq)
 
+#if MIN_VERSION_base(4,9,0)
+instance Semigroup Specifiers where
+  Specifiers x1 y1 z1 <> Specifiers x2 y2 z2 =
+    Specifiers (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
+#endif
+
 instance Monoid Specifiers where
   mempty = Specifiers [] [] []
 
+#if !MIN_VERSION_base(4,11,0)
   mappend (Specifiers x1 y1 z1) (Specifiers x2 y2 z2) =
     Specifiers (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
+#endif
 
 data Type i
   = TypeSpecifier Specifiers TypeSpecifier
