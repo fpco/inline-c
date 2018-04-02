@@ -51,7 +51,6 @@ import qualified Data.ByteString.Unsafe as BS
 import           Data.Coerce
 import           Data.Int (Int8, Int16, Int32, Int64)
 import qualified Data.Map as Map
-import           Data.Monoid ((<>))
 import           Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -64,6 +63,12 @@ import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
 import qualified Text.Parser.Token as Parser
 import qualified Data.HashSet as HashSet
+
+#if MIN_VERSION_base(4,9,0)
+import           Data.Semigroup (Semigroup, (<>))
+#else
+import           Data.Monoid ((<>))
+#endif
 
 #if __GLASGOW_HASKELL__ < 710
 import           Data.Monoid (Monoid(..))
@@ -150,6 +155,17 @@ data Context = Context
     -- ^ TH.LangC by default
   }
 
+
+#if MIN_VERSION_base(4,9,0)
+instance Semigroup Context where
+  ctx2 <> ctx1 = Context
+    { ctxTypesTable = ctxTypesTable ctx1 <> ctxTypesTable ctx2
+    , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
+    , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
+    , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
+    }
+#endif
+
 instance Monoid Context where
   mempty = Context
     { ctxTypesTable = mempty
@@ -158,12 +174,14 @@ instance Monoid Context where
     , ctxForeignSrcLang = Nothing
     }
 
+#if !MIN_VERSION_base(4,11,0)
   mappend ctx2 ctx1 = Context
     { ctxTypesTable = ctxTypesTable ctx1 <> ctxTypesTable ctx2
     , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
     }
+#endif
 
 -- | Context useful to work with vanilla C. Used by default.
 --

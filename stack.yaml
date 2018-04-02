@@ -5,7 +5,7 @@ packages:
 - sample-cabal-project
 extra-deps:
 - QuickCheck-2.10.0.1
-- ansi-wl-pprint-0.6.7.3
+- ansi-wl-pprint-0.6.8
 - hashable-1.2.6.1
 - mtl-2.2.1
 - parsec-3.1.11
