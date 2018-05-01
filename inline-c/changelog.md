@@ -1,3 +1,4 @@
+- 0.6.0.6: Support GHC 8.4
 - 0.6.0.5: Update readme
 - 0.6.0.4: Remove QuickCheck dependency
 - 0.6.0.3: Remove cryptohash dependencies
