@@ -331,7 +331,7 @@ fptrAntiQuoter = AntiQuoter
 
 -- | This 'Context' includes a 'AntiQuoter' that removes the need for
 -- explicitely creating 'FunPtr's, named @"fun"@ along with one which
--- allocates new memory which must be manually freed named @"funAlloc"@.
+-- allocates new memory which must be manually freed named @"fun-alloc"@.
 --
 -- For example, we can capture function @f@ of type @CInt -> CInt -> IO
 -- CInt@ in C code using @$fun:(int (*f)(int, int))@.
@@ -351,14 +351,14 @@ fptrAntiQuoter = AntiQuoter
 -- We provide utilities to easily
 -- allocate them (see 'Language.C.Inline.mkFunPtr').
 --
--- IMPORTANT: When using the @funAlloc@ anti quoter, one must free the allocated
+-- IMPORTANT: When using the @fun-alloc@ anti quoter, one must free the allocated
 -- function pointer. The GHC runtime provides a function to do this,
 -- 'hs_free_fun_ptr' available in the 'HsFFI.h' header.
 
 funCtx :: Context
 funCtx = mempty
   { ctxAntiQuoters = Map.fromList [("fun", SomeAntiQuoter funPtrAntiQuoter)
-                                  ,("funAlloc", SomeAntiQuoter funAllocPtrAntiQuoter)]
+                                  ,("fun-alloc", SomeAntiQuoter funAllocPtrAntiQuoter)]
   }
 
 funPtrAntiQuoter :: AntiQuoter HaskellIdentifier
@@ -392,7 +392,7 @@ funAllocPtrAntiQuoter = AntiQuoter
               cont funPtr
             |]
           return (hsTy, hsExp')
-        _ -> fail "The `funAlloc' marshaller captures function pointers only"
+        _ -> fail "The `fun-alloc' marshaller captures function pointers only"
   }
 
 -- | This 'Context' includes two 'AntiQuoter's that allow to easily use
