@@ -5,8 +5,9 @@
 
 module Language.C.Inline.Cpp.Exceptions
   ( CppException(..)
-  , catchBlock
+  , throwBlock
   , tryBlock
+  , catchBlock
   ) where
 
 import           Control.Exception.Safe
@@ -35,110 +36,84 @@ pattern ExTypeStdException = 1
 pattern ExTypeOtherException :: CInt
 pattern ExTypeOtherException = 2
 
-handleForeign :: (Ptr CInt -> Ptr CString -> IO ()) -> IO ()
-handleForeign cont =
+handleForeignCatch :: (Ptr CInt -> Ptr CString -> IO a) -> IO (Either CppException a)
+handleForeignCatch cont =
   alloca $ \exTypePtr ->
   alloca $ \msgPtrPtr -> do
     poke exTypePtr ExTypeNoException
-    cont exTypePtr msgPtrPtr `finally` do
+    -- we need to mask this entire block because the C++ allocates the
+    -- string for the exception message and we need to make sure that
+    -- we free it (see the @free@ below). The foreign code would not be
+    -- preemptable anyway, so I do not think this loses us anything.
+    mask_ $ do
+      res <- cont exTypePtr msgPtrPtr
       exType <- peek exTypePtr
       case exType of
-        ExTypeNoException -> return ()
+        ExTypeNoException -> return (Right res)
         ExTypeStdException -> do
           msgPtr <- peek msgPtrPtr
           errMsg <- peekCString msgPtr
           free msgPtr
-          throwM $ CppStdException errMsg
+          return (Left (CppStdException errMsg))
         ExTypeOtherException ->
-          throwM CppOtherException
+          return (Left CppOtherException)
         _ -> error "Unexpected C++ exception type."
 
--- | Similar to `C.block`, but C++ exceptions will be caught and rethrown as `ForeignException`s.
--- Unlike `C.block`, the return type can only be @void@ (and doesn't need to be specified), but you can use `C.withPtr_` to extract a result yourself.
---
--- Using this will automatically include @exception@, @cstring@ and @cstdlib@.
-catchBlock :: QuasiQuoter
-catchBlock = QuasiQuoter
+-- | Like 'tryBlock', but will throw 'CppException's rather than returning
+-- them in an 'Either'
+throwBlock :: QuasiQuoter
+throwBlock = QuasiQuoter
   { quoteExp = \blockStr -> do
-      _ <- C.include "<exception>"
-      _ <- C.include "<cstring>"
-      _ <- C.include "<cstdlib>"
-      typePtrVarName <- newName "exTypePtr"
-      msgPtrVarName <- newName "msgPtr"
-      let inlineCStr = unlines
-            [ "void {"
-            , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
-            , "  char** __inline_c_cpp_error_message__ = $(char** " ++ nameBase msgPtrVarName ++ ");"
-            , "  try {"
-            , blockStr
-            , "  } catch (std::exception &e) {"
-            , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeStdException ++ ";"
-            , "    size_t whatLen = std::strlen(e.what()) + 1;"
-            , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(whatLen));"
-            , "    std::memcpy(*__inline_c_cpp_error_message__, e.what(), whatLen);"
-            , "  } catch (...) {"
-            , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeOtherException ++ ";"
-            , "  }"
-            , "}"
-            ]
-      [e| handleForeign $ \ $(varP typePtrVarName) $(varP msgPtrVarName) -> $(quoteExp C.block inlineCStr) |]
-
+      [e| either throwIO return =<< $(tryBlockQuoteExp blockStr) |]
   , quotePat = unsupported
   , quoteType = unsupported
   , quoteDec = unsupported
   } where
       unsupported _ = fail "Unsupported quasiquotation."
 
-handleForeign' :: (Ptr CInt -> Ptr CString -> IO a) -> IO (Either CppException a)
-handleForeign' cont =
-  alloca $ \exTypePtr ->
-  alloca $ \msgPtrPtr -> do
-    poke exTypePtr ExTypeNoException
-    bracket
-      (cont exTypePtr msgPtrPtr)
-      pure
-      (\ret -> do
-        exType <- peek exTypePtr
-        case exType of
-          ExTypeNoException -> return $ Right ret
-          ExTypeStdException -> do
-            msgPtr <- peek msgPtrPtr
-            errMsg <- peekCString msgPtr
-            free msgPtr
-            return $ Left (CppStdException errMsg)
-          ExTypeOtherException ->
-            return $ Left CppOtherException
-          _ -> error "Unexpected C++ exception type.")
+-- | Variant of 'throwBlock' for blocks which return 'void'.
+catchBlock :: QuasiQuoter
+catchBlock = QuasiQuoter
+  { quoteExp = \blockStr -> quoteExp throwBlock ("void {" ++ blockStr ++ "}")
+  , quotePat = unsupported
+  , quoteType = unsupported
+  , quoteDec = unsupported
+  } where
+      unsupported _ = fail "Unsupported quasiquotation."
+      
 
+tryBlockQuoteExp :: String -> Q Exp
+tryBlockQuoteExp blockStr = do
+  let (ty, body) = C.splitTypedC blockStr
+  _ <- C.include "<exception>"
+  _ <- C.include "<cstring>"
+  _ <- C.include "<cstdlib>"
+  typePtrVarName <- newName "exTypePtr"
+  msgPtrVarName <- newName "msgPtr"
+  let inlineCStr = unlines
+        [ ty ++ " {"
+        , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
+        , "  char** __inline_c_cpp_error_message__ = $(char** " ++ nameBase msgPtrVarName ++ ");"
+        , "  try {"
+        , body
+        , "  } catch (std::exception &e) {"
+        , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeStdException ++ ";"
+        , "    size_t whatLen = std::strlen(e.what()) + 1;"
+        , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(whatLen));"
+        , "    std::memcpy(*__inline_c_cpp_error_message__, e.what(), whatLen);"
+        , "  } catch (...) {"
+        , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeOtherException ++ ";"
+        , "  }"
+        , if ty == "void" then "return;" else "return {};"
+        , "}"
+        ]
+  [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) -> $(quoteExp C.block inlineCStr) |]
+ 
 -- | Similar to `C.block`, but C++ exceptions will be caught and the result is (Either CppException value). The return type must be void or constructible with @{}@.
 -- Using this will automatically include @exception@, @cstring@ and @cstdlib@.
 tryBlock :: QuasiQuoter
 tryBlock = QuasiQuoter
-  { quoteExp = \blockStr -> do
-      let (ty, body) = C.splitTypedC blockStr
-      _ <- C.include "<exception>"
-      _ <- C.include "<cstring>"
-      _ <- C.include "<cstdlib>"
-      typePtrVarName <- newName "exTypePtr"
-      msgPtrVarName <- newName "msgPtr"
-      let inlineCStr = unlines
-            [ ty ++ " {"
-            , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
-            , "  char** __inline_c_cpp_error_message__ = $(char** " ++ nameBase msgPtrVarName ++ ");"
-            , "  try {"
-            , body
-            , "  } catch (std::exception &e) {"
-            , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeStdException ++ ";"
-            , "    size_t whatLen = std::strlen(e.what()) + 1;"
-            , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(whatLen));"
-            , "    std::memcpy(*__inline_c_cpp_error_message__, e.what(), whatLen);"
-            , "  } catch (...) {"
-            , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeOtherException ++ ";"
-            , "  }"
-            , if ty == "void" then "return;" else "return {};"
-            , "}"
-            ]
-      [e| handleForeign' $ \ $(varP typePtrVarName) $(varP msgPtrVarName) -> $(quoteExp C.block inlineCStr) |]
+  { quoteExp = tryBlockQuoteExp
   , quotePat = unsupported
   , quoteType = unsupported
   , quoteDec = unsupported
