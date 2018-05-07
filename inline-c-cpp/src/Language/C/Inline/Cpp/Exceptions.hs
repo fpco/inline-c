@@ -101,10 +101,11 @@ tryBlockQuoteExp blockStr = do
         , "    size_t whatLen = std::strlen(e.what()) + 1;"
         , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(whatLen));"
         , "    std::memcpy(*__inline_c_cpp_error_message__, e.what(), whatLen);"
+        , if ty == "void" then "return;" else "return {};"
         , "  } catch (...) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeOtherException ++ ";"
-        , "  }"
         , if ty == "void" then "return;" else "return {};"
+        , "  }"
         , "}"
         ]
   [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) -> $(quoteExp C.block inlineCStr) |]
