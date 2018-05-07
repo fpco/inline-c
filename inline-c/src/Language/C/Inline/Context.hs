@@ -470,7 +470,9 @@ vecLenAntiQuoter = AntiQuoter
 -- 'BS.ByteString'.  @vec-ptr@ becomes @bs-ptr@, and @vec-len@ becomes
 -- @bs-len@.  You don't need to specify the type of the pointer in
 -- @bs-ptr@, it will always be @char*@.
--- @bs-cstr@, it will always be null terminated @char*@. please note that @bs-cstr@ will perform a copy.
+--
+-- Moreover, @bs-cstr@ works as @bs-ptr@ but it provides a null-terminated
+-- copy of the given 'BS.ByteString'.
 bsCtx :: Context
 bsCtx = mempty
   { ctxAntiQuoters = Map.fromList
