@@ -27,6 +27,7 @@ library
                      , safe-exceptions
   hs-source-dirs:      src
   default-language:    Haskell2010
+  cc-options:          -Wall -Werror
 
 test-suite tests
   type:                exitcode-stdio-1.0
@@ -39,3 +40,4 @@ test-suite tests
                      , hspec
   default-language:    Haskell2010
   extra-libraries:     stdc++
+  cc-options:          -Wall -Werror
