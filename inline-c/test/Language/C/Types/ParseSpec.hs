@@ -104,7 +104,7 @@ data ParameterDeclarationWithTypeNames i = ParameterDeclarationWithTypeNames
   , _pdwtnParameterDeclaration :: (ParameterDeclaration i)
   } deriving (Typeable, Eq, Show)
 
-data (QC.Arbitrary i) => ArbitraryContext i = ArbitraryContext
+data ArbitraryContext i = ArbitraryContext
   { acTypeNames :: TypeNames
   , acIdentToString :: i -> String
   }
