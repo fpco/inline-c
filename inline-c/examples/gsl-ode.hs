@@ -17,10 +17,6 @@ import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Unsafe as CU
 import           System.IO.Unsafe (unsafePerformIO)
 
-#if __GLASGOW_HASKELL__ < 710
-import           Data.Functor ((<$>))
-#endif
-
 C.context (C.baseCtx <> C.vecCtx <> C.funCtx)
 
 C.include "<gsl/gsl_errno.h>"

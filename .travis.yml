@@ -12,13 +12,12 @@ addons:
     - libgsl0-dev
     - libcairo2-dev
 
-# The different configurations we want to test. You could also do things like
-# change flags or use --stack-yaml to point to a different file.
 env:
-# right now the gsl example does not work, because gtk2hs-buildtools does
-# not seem to work with the latest cabal lib
-# TODO test this again
-- ARGS=""
+- ARGS="--flag inline-c:gsl-example"
+- ARGS="--stack-yaml stack-lts-12.14.yaml --flag inline-c:gsl-example"
+# gtk2hs-buildtools is not present in nightly a bit of a pain to install,
+# skip it for now
+- ARGS="--stack-yaml stack-nightly-2018-10-24.yaml"
 
 before_install:
 # Download and unpack the stack executable
