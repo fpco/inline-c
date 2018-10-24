@@ -7,6 +7,7 @@ import           Control.Monad
 import qualified Language.C.Inline.Cpp as C
 import qualified Language.C.Inline.Cpp.Exceptions as C
 import qualified Test.Hspec as Hspec
+import           Data.List (isInfixOf)
 
 C.context C.cppCtx
 
@@ -42,7 +43,9 @@ main = Hspec.hspec $ do
         throw std::string("FOOBAR");
         |]
 
-      result `Hspec.shouldBe` Left (C.CppOtherException (Just "std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >"))
+      case result of
+        Left (C.CppOtherException (Just ty)) | "string" `isInfixOf` ty -> return ()
+        _ -> error ("Expected Left CppOtherException with string type, but got " ++ show result)
 
     Hspec.it "catch without return (pure)" $ do
       result <- [C.tryBlock| void {

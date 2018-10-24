@@ -101,7 +101,7 @@ tryBlockQuoteExp blockStr = do
   --
   -- the defined(__clang__) should actually be redundant, since apparently it also
   -- defines GNUC, but but let's be safe.
-  C.verbatim $ unlines
+  _ <- C.verbatim $ unlines
     [ "#if defined(__GNUC__) || defined(__clang__)"
     , "#include <cxxabi.h>"
     , "#include <string>"
