@@ -21,7 +21,7 @@ import           Foreign.C
 -- | An exception thrown in C++ code.
 data CppException
   = CppStdException String
-  | CppOtherException
+  | CppOtherException (Maybe String) -- contains the exception type, if available.
   deriving (Eq, Ord, Show)
 
 instance Exception CppException
@@ -55,8 +55,15 @@ handleForeignCatch cont =
           errMsg <- peekCString msgPtr
           free msgPtr
           return (Left (CppStdException errMsg))
-        ExTypeOtherException ->
-          return (Left CppOtherException)
+        ExTypeOtherException -> do
+          msgPtr <- peek msgPtrPtr
+          mbExcType <- if msgPtr == nullPtr
+            then return Nothing
+            else do
+              excType <- peekCString msgPtr
+              free msgPtr
+              return (Just excType)
+          return (Left (CppOtherException mbExcType))
         _ -> error "Unexpected C++ exception type."
 
 -- | Like 'tryBlock', but will throw 'CppException's rather than returning
@@ -88,8 +95,23 @@ tryBlockQuoteExp blockStr = do
   _ <- C.include "<exception>"
   _ <- C.include "<cstring>"
   _ <- C.include "<cstdlib>"
+  -- see
+  -- <https://stackoverflow.com/questions/28166565/detect-gcc-as-opposed-to-msvc-clang-with-macro>
+  -- regarding how to detect g++ or clang.
+  --
+  -- the defined(__clang__) should actually be redundant, since apparently it also
+  -- defines GNUC, but but let's be safe.
+  C.verbatim $ unlines
+    [ "#if defined(__GNUC__) || defined(__clang__)"
+    , "#include <cxxabi.h>"
+    , "#include <string>"
+    , "#endif"
+    ]
   typePtrVarName <- newName "exTypePtr"
   msgPtrVarName <- newName "msgPtr"
+  -- see
+  -- <https://stackoverflow.com/questions/561997/determining-exception-type-after-the-exception-is-caught/47164539#47164539>
+  -- regarding how to show the type of an exception.
   let inlineCStr = unlines
         [ ty ++ " {"
         , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
@@ -98,12 +120,28 @@ tryBlockQuoteExp blockStr = do
         , body
         , "  } catch (std::exception &e) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeStdException ++ ";"
-        , "    size_t whatLen = std::strlen(e.what()) + 1;"
-        , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(whatLen));"
-        , "    std::memcpy(*__inline_c_cpp_error_message__, e.what(), whatLen);"
+        , "#if defined(__GNUC__) || defined(__clang__)"
+        , "    int demangle_status;"
+        , "    const char* demangle_result = abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &demangle_status);"
+        , "    std::string message = \"Exception: \" + std::string(e.what()) + \"; type: \" + std::string(demangle_result);"
+        , "#else"
+        , "    std::string message = \"Exception: \" + std::string(e.what()) + \"; type: not available (please use g++ or clang)\";"
+        , "#endif"
+        , "    size_t message_len = message.size() + 1;"
+        , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(message_len));"
+        , "    std::memcpy(*__inline_c_cpp_error_message__, message.c_str(), message_len);"
         , if ty == "void" then "return;" else "return {};"
         , "  } catch (...) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeOtherException ++ ";"
+        , "#if defined(__GNUC__) || defined(__clang__)"
+        , "    int demangle_status;"
+        , "    const char* message = abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &demangle_status);"
+        , "    size_t message_len = strlen(message) + 1;"
+        , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(message_len));"
+        , "    std::memcpy(*__inline_c_cpp_error_message__, message, message_len);"
+        , "#else"
+        , "    *__inline_c_cpp_error_message__ = NULL;"
+        , "#endif"
         , if ty == "void" then "return;" else "return {};"
         , "  }"
         , "}"

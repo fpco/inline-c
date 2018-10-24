@@ -28,14 +28,21 @@ main = Hspec.hspec $ do
         throw std::runtime_error("C++ error message");
         |]
 
-      result `Hspec.shouldBe` Left (C.CppStdException "C++ error message")
+      result `Hspec.shouldBe` Left (C.CppStdException "Exception: C++ error message; type: std::runtime_error")
 
-    Hspec.it "non-exceptions are caught" $ do
+    Hspec.it "non-exceptions are caught (unsigned int)" $ do
       result <- try [C.catchBlock|
         throw 0xDEADBEEF;
         |]
 
-      result `Hspec.shouldBe` Left C.CppOtherException
+      result `Hspec.shouldBe` Left (C.CppOtherException (Just "unsigned int"))
+
+    Hspec.it "non-exceptions are caught (std::string)" $ do
+      result <- try [C.catchBlock|
+        throw std::string("FOOBAR");
+        |]
+
+      result `Hspec.shouldBe` Left (C.CppOtherException (Just "std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >"))
 
     Hspec.it "catch without return (pure)" $ do
       result <- [C.tryBlock| void {
@@ -43,7 +50,7 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `Hspec.shouldBe` Left (C.CppStdException "C++ error message")
+      result `Hspec.shouldBe` Left (C.CppStdException "Exception: C++ error message; type: std::runtime_error")
 
     Hspec.it "try and return without throwing (pure)" $ do
       result <- [C.tryBlock| int {
@@ -69,7 +76,7 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `Hspec.shouldBe` Left (C.CppStdException "C++ error message")
+      result `Hspec.shouldBe` Left (C.CppStdException "Exception: C++ error message; type: std::runtime_error")
 
     Hspec.it "catch without return (pure)" $ do
       result <- [C.tryBlock| void {
@@ -77,7 +84,7 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `Hspec.shouldBe` Left (C.CppStdException "C++ error message")
+      result `Hspec.shouldBe` Left (C.CppStdException "Exception: C++ error message; type: std::runtime_error")
 
     Hspec.it "try and return without throwing (throw)" $ do
       result :: Either C.CppException C.CInt <- try [C.throwBlock| int {
@@ -103,7 +110,7 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `Hspec.shouldBe` Left (C.CppStdException "C++ error message")
+      result `Hspec.shouldBe` Left (C.CppStdException "Exception: C++ error message; type: std::runtime_error")
 
     Hspec.it "catch without return (throw)" $ do
       result <- try [C.throwBlock| void {
@@ -111,7 +118,7 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `Hspec.shouldBe` Left (C.CppStdException "C++ error message")
+      result `Hspec.shouldBe` Left (C.CppStdException "Exception: C++ error message; type: std::runtime_error")
 
     Hspec.it "code without exceptions works normally" $ do
       result :: Either C.CppException C.CInt <- try $ C.withPtr_ $ \resPtr -> [C.catchBlock|
