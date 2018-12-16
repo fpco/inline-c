@@ -36,7 +36,6 @@ module Language.C.Inline
   , exp
   , pure
   , block
-  , funPtr
   , include
   , verbatim
 
@@ -46,6 +45,8 @@ module Language.C.Inline
   , WithPtrs(..)
 
     -- * 'FunPtr' utils
+  , funPtr
+    -- ** 'FunPtr' conversion
     --
     -- Functions to quickly convert from/to 'FunPtr's. They're provided here
     -- since they can be useful to work with Haskell functions in C, and
@@ -250,7 +251,7 @@ block = genericQuote IO $ inlineItems TH.Safe False Nothing
 -- | Easily get a 'FunPtr':
 --
 -- @
--- let fp: FunPtr (Ptr CInt -> IO ()) = [C.funPtr| void poke42(int *ptr) { *ptr = 42; } |]
+-- let fp :: FunPtr (Ptr CInt -> IO ()) = [C.funPtr| void poke42(int *ptr) { *ptr = 42; } |]
 -- @
 --
 -- Especially useful to generate finalizers that require C code.
