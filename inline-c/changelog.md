@@ -1,3 +1,4 @@
+- 0.7.0.1: Add more docs for `funPtr`
 - 0.7.0.0: Add `funPtr` quasi-quoter
 - 0.6.0.6: Support GHC 8.4
 - 0.6.0.5: Update readme
