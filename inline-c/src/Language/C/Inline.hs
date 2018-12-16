@@ -36,6 +36,7 @@ module Language.C.Inline
   , exp
   , pure
   , block
+  , funPtr
   , include
   , verbatim
 
@@ -244,7 +245,17 @@ pure = genericQuote Pure $ inlineExp TH.Safe
 
 -- | C code blocks (i.e. statements).
 block :: TH.QuasiQuoter
-block = genericQuote IO $ inlineItems TH.Safe
+block = genericQuote IO $ inlineItems TH.Safe False Nothing
+
+-- | Easily get a 'FunPtr':
+--
+-- @
+-- let fp: FunPtr (Ptr CInt -> IO ()) = [C.funPtr| void poke42(int *ptr) { *ptr = 42; } |]
+-- @
+--
+-- Especially useful to generate finalizers that require C code.
+funPtr :: TH.QuasiQuoter
+funPtr = funPtrQuote TH.Unsafe -- doesn't make much sense for this to be "safe", but it'd be good to verify what this means
 
 -- | Emits a CPP include directive for C code associated with the current
 -- module. To avoid having to escape quotes, the function itself adds them when
