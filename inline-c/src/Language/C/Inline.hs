@@ -255,6 +255,31 @@ block = genericQuote IO $ inlineItems TH.Safe False Nothing
 -- @
 --
 -- Especially useful to generate finalizers that require C code.
+--
+-- Most importantly, this allows you to write `Foreign.ForeignPtr.newForeignPtr` invocations conveniently:
+--
+-- @
+-- do
+--   let c_finalizer_funPtr =
+--         [C.funPtr| void myfree(char * ptr) { free(ptr); } |]
+--   fp <- newForeignPtr c_finalizer_funPtr objPtr
+-- @
+--
+-- Using where possible `Foreign.ForeignPtr.newForeignPtr` is superior to
+-- resorting to its delayed-by-a-thread alternative `Foreign.Concurrent.newForeignPtr`
+-- from "Foreign.Concurrent" which takes an @IO ()@ Haskell finaliser action:
+-- With the non-concurrent `newForeignPtr` you can guarantee that the finaliser
+-- will actually be run
+--
+-- * when a GC is executed under memory pressure, because it can point directly
+--   to a C function that doesn't have to run any Haskell code (which is
+--   problematic when you're out of memory)
+-- * when the program terminates (`Foreign.Concurrent.newForeignPtr`'s finaliser
+--   will likely NOT be called if your main thread exits, making your program
+--   e.g. not Valgrind-clean if your finaliser is @free@ or C++'s @delete@).
+--
+-- `funPtr` makes the normal `newForeignPtr` as convenient as its concurrent
+-- counterpart.
 funPtr :: TH.QuasiQuoter
 funPtr = funPtrQuote TH.Unsafe -- doesn't make much sense for this to be "safe", but it'd be good to verify what this means
 
