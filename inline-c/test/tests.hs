@@ -12,6 +12,8 @@ import qualified Language.Haskell.TH as TH
 import           Prelude
 import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
+import           Foreign.Marshal.Alloc (alloca)
+import           Foreign.Storable (peek, poke)
 
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Unsafe as CU
@@ -51,11 +53,14 @@ main = Hspec.hspec $ do
             [t| Int -> Int -> Int |]    -- Call type
             "francescos_add"            -- Call name
             -- C Code
-            [r| int francescos_add(int x, int y) { int z = x + y; return z; } |])
+            [r| int francescos_add(int x, int y) { int z = x + y; return z; } |]
+            False) -- not a function pointer
       c_add 3 4 `Hspec.shouldBe` 7
     Hspec.it "inlineItems" $ do
       let c_add3 = $(C.inlineItems
             TH.Unsafe
+            False                       -- not a function pointer
+            Nothing                     -- no postfix
             [t| CInt -> CInt |]
             (C.quickCParser_ "int" C.parseType)
             [("x", C.quickCParser_ "int" C.parseType)]
@@ -204,3 +209,10 @@ main = Hspec.hspec $ do
       let ä = 3
       void $ [C.exp| int { $(int ä) } |]
       void $ [C.exp| int { $(int Prelude.maxBound) } |]
+    Hspec.it "Function pointers" $ do
+      alloca $ \x_ptr -> do
+        poke x_ptr 7
+        let fp = [C.funPtr| void poke42(int *ptr) { *ptr = 42; } |]
+        [C.exp| void { $(void (*fp)(int *))($(int *x_ptr)) } |]
+        x <- peek x_ptr
+        x `Hspec.shouldBe` 42

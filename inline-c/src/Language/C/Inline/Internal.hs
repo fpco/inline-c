@@ -49,6 +49,7 @@ module Language.C.Inline.Internal
 
       -- * Utility functions for writing quasiquoters
     , genericQuote
+    , funPtrQuote
     ) where
 
 import           Control.Applicative
@@ -74,6 +75,8 @@ import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import qualified Data.List as L
 import qualified Data.Char as C
+import           Data.Hashable (Hashable)
+import           Foreign.Ptr (FunPtr)
 
 -- We cannot use getQ/putQ before 7.10.3 because of <https://ghc.haskell.org/trac/ghc/ticket/10596>
 #define USE_GETQ (__GLASGOW_HASKELL__ > 710 || (__GLASGOW_HASKELL__ == 710 && __GLASGOW_HASKELL_PATCHLEVEL1__ >= 3))
@@ -242,6 +245,9 @@ data Code = Code
     -- ^ Name of the function to call in the code below.
   , codeDefs :: String
     -- ^ The C code.
+  , codeFunPtr :: Bool
+    -- ^ If 'True', the type will be wrapped in 'FunPtr', and
+    -- the call will be static (e.g. prefixed by &).
   }
 
 -- TODO use the #line CPP macro to have the functions in the C file
@@ -275,19 +281,23 @@ inlineCode Code{..} = do
   void $ emitVerbatim $ out codeDefs
   -- Create and add the FFI declaration.
   ffiImportName <- uniqueFfiImportName
-  dec <- TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType
+  dec <- if codeFunPtr
+    then
+      TH.forImpD TH.CCall codeCallSafety ("&" ++ codeFunName) ffiImportName [t| FunPtr $(codeType) |]
+    else TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType
   TH.addTopDecls [dec]
   TH.varE ffiImportName
 
-uniqueCName :: TH.Q String
-uniqueCName = do
+uniqueCName :: Maybe String -> TH.Q String
+uniqueCName mbPostfix = do
   -- The name looks like this:
-  -- inline_c_MODULE_INDEX
+  -- inline_c_MODULE_INDEX_POSTFIX
   --
   -- Where:
   --  * MODULE is the module name but with _s instead of .s;
   --  * INDEX is a counter that keeps track of how many names we're generating
   --    for each module.
+  --  * POSTFIX is an optional postfix to ease debuggability
   --
   -- we previously also generated a hash from the contents of the
   -- C code because of problems when cabal recompiled but now this
@@ -297,7 +307,10 @@ uniqueCName = do
   module_ <- TH.loc_module <$> TH.location
   let replaceDot '.' = '_'
       replaceDot c = c
-  return $ "inline_c_" ++ map replaceDot module_ ++ "_" ++ show c'
+  let postfix = case mbPostfix of
+        Nothing -> ""
+        Just s -> "_" ++ s ++ "_"
+  return $ "inline_c_" ++ map replaceDot module_ ++ "_" ++ show c' ++ postfix
 
 -- | Same as 'inlineCItems', but with a single expression.
 --
@@ -323,7 +336,7 @@ inlineExp
   -- ^ The C expression
   -> TH.ExpQ
 inlineExp callSafety type_ cRetType cParams cExp =
-  inlineItems callSafety type_ cRetType cParams cItems
+  inlineItems callSafety False Nothing type_ cRetType cParams cItems
   where
     cItems = case cRetType of
       C.TypeSpecifier _quals C.Void -> cExp ++ ";"
@@ -337,6 +350,7 @@ inlineExp callSafety type_ cRetType cParams cExp =
 -- c_cos :: Double -> Double
 -- c_cos = $(inlineItems
 --   TH.Unsafe
+--   False
 --   [t| Double -> Double |]
 --   (quickCParser_ \"double\" parseType)
 --   [("x", quickCParser_ \"double\" parseType)]
@@ -345,6 +359,10 @@ inlineExp callSafety type_ cRetType cParams cExp =
 inlineItems
   :: TH.Safety
   -- ^ Safety of the foreign call
+  -> Bool
+  -- ^ Whether to return as a FunPtr or not
+  -> Maybe String
+  -- ^ Optional postfix for the generated name
   -> TH.TypeQ
   -- ^ Type of the foreign call
   -> C.Type C.CIdentifier
@@ -354,10 +372,10 @@ inlineItems
   -> String
   -- ^ The C items
   -> TH.ExpQ
-inlineItems callSafety type_ cRetType cParams cItems = do
+inlineItems callSafety funPtr mbPostfix type_ cRetType cParams cItems = do
   let mkParam (id', paramTy) = C.ParameterDeclaration (Just id') paramTy
   let proto = C.Proto cRetType (map mkParam cParams)
-  funName <- uniqueCName
+  funName <- uniqueCName mbPostfix
   cFunName <- case C.cIdentifierFromString funName of
     Left err -> fail $ "inlineItems: impossible, generated bad C identifier " ++
                        "funName:\n" ++ err
@@ -371,19 +389,23 @@ inlineItems callSafety type_ cRetType cParams cItems = do
     , codeType = type_
     , codeFunName = funName
     , codeDefs = defs
+    , codeFunPtr = funPtr
     }
 
 ------------------------------------------------------------------------
 -- Parsing
 
 runParserInQ
-  :: String -> C.TypeNames -> (forall m. C.CParser HaskellIdentifier m => m a) -> TH.Q a
-runParserInQ s typeNames' p = do
+  :: (Hashable ident)
+  => String
+  -> C.CParserContext ident
+  -> (forall m. C.CParser ident m => m a) -> TH.Q a
+runParserInQ s ctx p = do
   loc <- TH.location
   let (line, col) = TH.loc_start loc
   let parsecLoc = Parsec.newPos (TH.loc_filename loc) line col
   let p' = lift (Parsec.setPosition parsecLoc) *> p <* lift Parser.eof
-  case C.runCParser (haskellCParserContext typeNames') (TH.loc_filename loc) s p' of
+  case C.runCParser ctx (TH.loc_filename loc) s p' of
     Left err -> do
       -- TODO consider prefixing with "error while parsing C" or similar
       fail $ show err
@@ -531,7 +553,9 @@ genericQuote
 genericQuote purity build = quoteCode $ \s -> do
     ctx <- getContext
     ParseTypedC cType cParams cExp <-
-      runParserInQ s (typeNamesFromTypesTable (ctxTypesTable ctx)) $ parseTypedC $ ctxAntiQuoters ctx
+      runParserInQ s
+        (haskellCParserContext (typeNamesFromTypesTable (ctxTypesTable ctx)))
+        (parseTypedC (ctxAntiQuoters ctx))
     hsType <- cToHs ctx cType
     hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
       case parTy of
@@ -590,6 +614,78 @@ splitTypedC s = (trim ty, case body of
                             r  -> r)
   where (ty, body) = span (/= '{') s
         trim x = L.dropWhileEnd C.isSpace (dropWhile C.isSpace x)
+
+-- | Data to parse for the 'funPtr' quasi-quoter.
+data FunPtrDecl = FunPtrDecl
+  { funPtrReturnType :: C.Type C.CIdentifier
+  , funPtrParameters :: [(C.CIdentifier, C.Type C.CIdentifier)]
+  , funPtrBody :: String
+  , funPtrName :: Maybe String
+  } deriving (Eq, Show)
+
+funPtrQuote :: TH.Safety -> TH.QuasiQuoter
+funPtrQuote callSafety = quoteCode $ \code -> do
+  ctx <- getContext
+  FunPtrDecl{..} <- runParserInQ code (C.cCParserContext (typeNamesFromTypesTable (ctxTypesTable ctx))) parse
+  hsRetType <- cToHs ctx funPtrReturnType
+  hsParams <- forM funPtrParameters (\(_ident, typ_) -> cToHs ctx typ_)
+  let hsFunType = convertCFunSig hsRetType hsParams
+  inlineItems callSafety True funPtrName hsFunType funPtrReturnType funPtrParameters funPtrBody
+  where
+    cToHs :: Context -> C.Type C.CIdentifier -> TH.TypeQ
+    cToHs ctx cTy = do
+      mbHsTy <- convertType IO (ctxTypesTable ctx) cTy
+      case mbHsTy of
+        Nothing -> fail $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
+        Just hsTy -> return hsTy
+
+    convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
+    convertCFunSig retType params0 = do
+      go params0
+      where
+        go [] =
+          [t| IO $(return retType) |]
+        go (paramType : params) = do
+          [t| $(return paramType) -> $(go params) |]
+
+    parse :: C.CParser C.CIdentifier m => m FunPtrDecl
+    parse = do
+      -- skip spaces
+      Parser.spaces
+      -- parse a proto
+      C.ParameterDeclaration mbName protoTyp <- C.parseParameterDeclaration
+      case protoTyp of
+        C.Proto retType paramList -> do
+          args <- forM paramList $ \decl -> case C.parameterDeclarationId decl of
+            Nothing -> fail $ pretty80 $
+              "Un-named captured variable in decl" <+> PP.pretty decl
+            Just declId -> return (declId, C.parameterDeclarationType decl)
+          -- get the rest of the body
+          void (Parser.symbolic '{')
+          body <- parseBody
+          return FunPtrDecl
+            { funPtrReturnType = retType
+            , funPtrParameters = args
+            , funPtrBody = body
+            , funPtrName = fmap C.unCIdentifier mbName
+            }
+        _ -> fail $ "Expecting function declaration"
+
+    parseBody :: C.CParser C.CIdentifier m => m String
+    parseBody = do
+      s <- Parser.manyTill Parser.anyChar $
+           Parser.lookAhead (Parser.char '}')
+      s' <- msum
+        [ do Parser.try $ do -- Try because we might fail to parse the 'eof'
+                -- 'symbolic' because we want to consume whitespace
+               void $ Parser.symbolic '}'
+               Parser.eof
+             return ""
+        , do void $ Parser.char '}'
+             s' <- parseBody
+             return ("}" ++ s')
+        ]
+      return (s ++ s')
 
 ------------------------------------------------------------------------
 -- Utils
