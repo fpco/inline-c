@@ -85,7 +85,7 @@ spec = do
       -> IO (C.Type C.CIdentifier, [(C.CIdentifier, C.Type C.CIdentifier, ParameterType)], String)
     strictParse s = do
       let ParseTypedC retType pars body =
-            assertParse haskellCParserContext (parseTypedC (ctxAntiQuoters ctx)) s
+            assertParse (haskellCParserContext True) (parseTypedC True (ctxAntiQuoters ctx)) s
       void $ evaluate $ length $ show (retType, pars, body)
       return (retType, pars, body)
 
@@ -94,7 +94,7 @@ spec = do
 
     cty :: String -> C.Type C.CIdentifier
     cty s = C.parameterDeclarationType $
-      assertParse C.cCParserContext C.parseParameterDeclaration s
+      assertParse (C.cCParserContext True) C.parseParameterDeclaration s
 
     shouldMatchParameters
       :: [(C.CIdentifier, C.Type C.CIdentifier, ParameterType)]

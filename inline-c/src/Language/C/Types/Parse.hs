@@ -89,6 +89,7 @@ module Language.C.Types.Parse
 import           Control.Applicative
 import           Control.Monad (msum, void, MonadPlus, unless, when)
 import           Control.Monad.Reader (MonadReader, runReaderT, ReaderT, asks, ask)
+import           Data.List (intersperse)
 import           Data.Functor.Identity (Identity)
 import qualified Data.HashSet as HashSet
 import           Data.Hashable (Hashable)
@@ -122,36 +123,38 @@ data CParserContext i = CParserContext
   , cpcParseIdent :: forall m. CParser i m => m i
     -- ^ Parses an identifier, *without consuming whitespace afterwards*.
   , cpcIdentToString :: i -> String
+  , cpcEnableCpp :: Bool
   }
 
 -- | A type for C identifiers.
 newtype CIdentifier = CIdentifier {unCIdentifier :: String}
   deriving (Typeable, Eq, Ord, Show, Hashable)
 
-cIdentifierFromString :: String -> Either String CIdentifier
-cIdentifierFromString s =
+cIdentifierFromString :: Bool -> String -> Either String CIdentifier
+cIdentifierFromString useCpp s =
   -- Note: it's important not to use 'cidentifier_raw' here, otherwise
   -- we go in a loop:
   --
   -- @
   -- cIdentifierFromString => fromString => cIdentifierFromString => ...
   -- @
-  case Parsec.parse (identNoLex cIdentStyle <* eof) "cIdentifierFromString" s of
+  case Parsec.parse (identNoLex useCpp cIdentStyle <* eof) "cIdentifierFromString" s of
     Left err -> Left $ show err
     Right x -> Right $ CIdentifier x
 
 instance IsString CIdentifier where
   fromString s =
-    case cIdentifierFromString s of
+    case cIdentifierFromString True s of
       Left err -> error $ "CIdentifier fromString: invalid string " ++ show s ++ "\n" ++ err
       Right x -> x
 
-cCParserContext :: TypeNames -> CParserContext CIdentifier
-cCParserContext typeNames = CParserContext
+cCParserContext :: Bool -> TypeNames -> CParserContext CIdentifier
+cCParserContext useCpp typeNames = CParserContext
   { cpcTypeNames = typeNames
   , cpcParseIdent = cidentifier_no_lex
   , cpcIdentToString = unCIdentifier
   , cpcIdentName = "C identifier"
+  , cpcEnableCpp = useCpp
   }
 
 ------------------------------------------------------------------------
@@ -212,13 +215,14 @@ quickCParser typeNames s p = case runCParser typeNames "quickCParser" s p of
 -- | Like 'quickCParser', but uses @'cCParserContext' ('const' 'False')@ as
 -- 'CParserContext'.
 quickCParser_
-  :: String
+  :: Bool
+  -> String
   -- ^ String to parse.
   -> (ReaderT (CParserContext CIdentifier) (Parsec.Parsec String ()) a)
   -- ^ Parser.  Anything with type @forall m. CParser i m => m a@ is a
   -- valid argument.
   -> a
-quickCParser_ = quickCParser (cCParserContext HashSet.empty)
+quickCParser_ useCpp = quickCParser (cCParserContext useCpp HashSet.empty)
 
 cReservedWords :: HashSet.HashSet String
 cReservedWords = HashSet.fromList
@@ -294,6 +298,8 @@ data TypeSpecifier
   | Struct CIdentifier
   | Enum CIdentifier
   | TypeName CIdentifier
+  | Template CIdentifier [TypeSpecifier]
+  | TemplateConst String
   deriving (Typeable, Eq, Show)
 
 type_specifier :: CParser i m => m TypeSpecifier
@@ -310,15 +316,16 @@ type_specifier = msum
   , UNSIGNED <$ reserve cIdentStyle "unsigned"
   , Struct <$> (reserve cIdentStyle "struct" >> cidentifier)
   , Enum <$> (reserve cIdentStyle "enum" >> cidentifier)
+  , template_parser
   , TypeName <$> type_name
   ]
 
 identifier :: CParser i m => m i
 identifier = token identifier_no_lex
 
-isTypeName :: TypeNames -> String -> Bool
-isTypeName typeNames id_ =
-  case cIdentifierFromString id_ of
+isTypeName :: Bool -> TypeNames -> String -> Bool
+isTypeName useCpp typeNames id_ =
+  case cIdentifierFromString useCpp id_ of
     -- If it's not a valid C identifier, then it's definitely not a C type name.
     Left _err -> False
     Right s -> HashSet.member s typeNames
@@ -327,20 +334,21 @@ identifier_no_lex :: CParser i m => m i
 identifier_no_lex = try $ do
   ctx <- ask
   id_ <- cpcParseIdent ctx <?> cpcIdentName ctx
-  when (isTypeName (cpcTypeNames ctx) (cpcIdentToString ctx id_)) $
+  when (isTypeName (cpcEnableCpp ctx) (cpcTypeNames ctx) (cpcIdentToString ctx id_)) $
     unexpected $ "type name " ++ cpcIdentToString ctx id_
   return id_
 
 -- | Same as 'cidentifier_no_lex', but does not check that the
 -- identifier is not a type name.
-cidentifier_raw :: (TokenParsing m, Monad m) => m CIdentifier
-cidentifier_raw = identNoLex cIdentStyle
+cidentifier_raw :: (TokenParsing m, Monad m) => Bool -> m CIdentifier
+cidentifier_raw useCpp = identNoLex useCpp cIdentStyle
 
 -- | This parser parses a 'CIdentifier' and nothing else -- it does not consume
 -- trailing spaces and the like.
 cidentifier_no_lex :: CParser i m => m CIdentifier
 cidentifier_no_lex = try $ do
-  s <- cidentifier_raw
+  ctx <- ask
+  s <- cidentifier_raw (cpcEnableCpp ctx)
   typeNames <- asks cpcTypeNames
   when (HashSet.member s typeNames) $
     unexpected $ "type name " ++ unCIdentifier s
@@ -351,11 +359,37 @@ cidentifier = token cidentifier_no_lex
 
 type_name :: CParser i m => m CIdentifier
 type_name = try $ do
-  s <- ident cIdentStyle <?> "type name"
+  ctx <- ask
+  s <- ident' (cpcEnableCpp ctx) cIdentStyle <?> "type name"
   typeNames <- asks cpcTypeNames
   unless (HashSet.member s typeNames) $
     unexpected $ "identifier  " ++ unCIdentifier s
   return s
+
+templateParser :: (Monad m, CharParsing m, CParser i m) => IdentifierStyle m -> m TypeSpecifier
+templateParser s = parse'
+  where
+    parse' = do
+      id' <- cidentParserWithNamespace
+      _ <- string "<"
+      args <- templateArgParser
+      _ <- string ">"
+      return $ Template (CIdentifier id') args
+    cidentParser = ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
+    cidentParserWithNamespace =
+      try (concat <$> sequence [cidentParser, (string "::"), cidentParserWithNamespace]) <|>
+      cidentParser
+    templateArgType = try type_specifier <|> (TemplateConst <$> (many $ oneOf ['0'..'9']))
+    templateArgParser' = do
+      t <- templateArgType
+      _ <- string ","
+      tt <- templateArgParser
+      return $ t:tt
+    templateArgParser =
+      try (templateArgParser') <|> ((:) <$> templateArgType <*> return [])
+
+template_parser :: CParser i m => m TypeSpecifier
+template_parser = try $ templateParser cIdentStyle <?> "template name"
 
 data TypeQualifier
   = CONST
@@ -528,6 +562,8 @@ instance Pretty TypeSpecifier where
    Struct x -> "struct" <+> pretty x
    Enum x -> "enum" <+> pretty x
    TypeName x -> pretty x
+   Template x args -> pretty x <+> "<" <+> mconcat (intersperse "," (map pretty args))  <+> ">"
+   TemplateConst x -> pretty x
 
 instance Pretty TypeQualifier where
   pretty tyQual = case tyQual of
@@ -749,9 +785,26 @@ many1 p = (:) <$> p <*> many p
 -- Utils
 ------------------------------------------------------------------------
 
-identNoLex :: (TokenParsing m, Monad m, IsString s) => IdentifierStyle m -> m s
-identNoLex s = fmap fromString $ try $ do
-  name <- highlight (_styleHighlight s)
-          ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
+cppIdentParser :: (Monad m, CharParsing m) => Bool -> IdentifierStyle m -> m [Char]
+cppIdentParser useCpp s = cidentParserWithNamespace
+  where
+    cidentParser = ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
+    cidentParserWithNamespace =
+      if useCpp
+      then
+        try (concat <$> sequence [cidentParser, (string "::"), cidentParserWithNamespace]) <|>
+        cidentParser
+      else
+        cidentParser
+
+identNoLex :: (TokenParsing m, Monad m, IsString s) => Bool -> IdentifierStyle m -> m s
+identNoLex useCpp s = fmap fromString $ try $ do
+  name <- highlight (_styleHighlight s) (cppIdentParser useCpp s)
+  when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
+  return name
+
+ident' :: (TokenParsing m, Monad m, IsString s) => Bool -> IdentifierStyle m -> m s
+ident' useCpp s = fmap fromString $ token $ try $ do
+  name <- highlight (_styleHighlight s) (cppIdentParser useCpp s)
   when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
   return name

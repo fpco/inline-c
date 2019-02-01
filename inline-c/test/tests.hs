@@ -66,8 +66,8 @@ main = Hspec.hspec $ do
               Nothing                     -- no postfix
               here
               [t| CInt -> CInt |]
-              (C.quickCParser_ "int" C.parseType)
-              [("x", C.quickCParser_ "int" C.parseType)]
+              (C.quickCParser_ True "int" C.parseType)
+              [("x", C.quickCParser_ True "int" C.parseType)]
               [r| return x + 3; |])
       c_add3 1 `Hspec.shouldBe` 1 + 3
     Hspec.it "inlineExp" $ do
@@ -77,7 +77,7 @@ main = Hspec.hspec $ do
               TH.Safe
               here
               [t| CInt |]
-              (C.quickCParser_ "int" C.parseType)
+              (C.quickCParser_ True "int" C.parseType)
               []
               [r| 1 + 4 |])
       x `Hspec.shouldBe` 1 + 4
@@ -223,3 +223,7 @@ main = Hspec.hspec $ do
         [C.exp| void { $(void (*fp)(int *))($(int *x_ptr)) } |]
         x <- peek x_ptr
         x `Hspec.shouldBe` 42
+    Hspec.it "cpp namespace identifiers" $ do
+      C.cIdentifierFromString True "Test::Test"  `Hspec.shouldBe`  Right "Test::Test"
+    Hspec.it "cpp template identifiers" $ do
+      C.cIdentifierFromString True "std::vector"  `Hspec.shouldBe`  Right "std::vector"

@@ -397,8 +397,9 @@ inlineItems
 inlineItems callSafety funPtr mbPostfix loc type_ cRetType cParams cItems = do
   let mkParam (id', paramTy) = C.ParameterDeclaration (Just id') paramTy
   let proto = C.Proto cRetType (map mkParam cParams)
+  ctx <- getContext
   funName <- uniqueCName mbPostfix
-  cFunName <- case C.cIdentifierFromString funName of
+  cFunName <- case C.cIdentifierFromString (ctxEnableCpp ctx) funName of
     Left err -> fail $ "inlineItems: impossible, generated bad C identifier " ++
                        "funName:\n" ++ err
     Right x -> return x
@@ -468,9 +469,9 @@ data ParseTypedC = ParseTypedC
 -- the root.
 parseTypedC
   :: forall m. C.CParser HaskellIdentifier m
-  => AntiQuoters -> m ParseTypedC
+  => Bool -> AntiQuoters -> m ParseTypedC
   -- ^ Returns the return type, the captured variables, and the body.
-parseTypedC antiQs = do
+parseTypedC useCpp antiQs = do
   -- Parse return type (consume spaces first)
   Parser.spaces
   cRetType <- purgeHaskellIdentifiers =<< C.parseType
@@ -530,14 +531,14 @@ parseTypedC antiQs = do
         Nothing -> fail $ pretty80 $
           "Un-named captured variable in decl" <+> PP.pretty decl
         Just hId -> return hId
-      id' <- freshId $ mangleHaskellIdentifier hId
+      id' <- freshId $ mangleHaskellIdentifier useCpp hId
       void $ Parser.char ')'
       return ([(id', declType, Plain hId)], C.unCIdentifier id')
 
     freshId s = do
       c <- get
       put $ c + 1
-      case C.cIdentifierFromString (C.unCIdentifier s ++ "_inline_c_" ++ show c) of
+      case C.cIdentifierFromString useCpp (C.unCIdentifier s ++ "_inline_c_" ++ show c) of
         Left _err -> error "freshId: The impossible happened"
         Right x -> return x
 
@@ -552,7 +553,7 @@ parseTypedC antiQs = do
       => C.Type HaskellIdentifier -> n (C.Type C.CIdentifier)
     purgeHaskellIdentifiers cTy = for cTy $ \hsIdent -> do
       let hsIdentS = unHaskellIdentifier hsIdent
-      case C.cIdentifierFromString hsIdentS of
+      case C.cIdentifierFromString useCpp hsIdentS of
         Left err -> fail $ "Haskell identifier " ++ hsIdentS ++ " in illegal position" ++
                            "in C type\n" ++ pretty80 cTy ++ "\n" ++
                            "A C identifier was expected, but:\n" ++ err
@@ -580,8 +581,8 @@ genericQuote purity build = quoteCode $ \s -> do
     here <- TH.location
     ParseTypedC cType cParams cExp <-
       runParserInQ s
-        (haskellCParserContext (typeNamesFromTypesTable (ctxTypesTable ctx)))
-        (parseTypedC (ctxAntiQuoters ctx))
+        (haskellCParserContext (ctxEnableCpp ctx) (typeNamesFromTypesTable (ctxTypesTable ctx)))
+        (parseTypedC (ctxEnableCpp ctx) (ctxAntiQuoters ctx))
     hsType <- cToHs ctx cType
     hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
       case parTy of
@@ -653,7 +654,7 @@ funPtrQuote :: TH.Safety -> TH.QuasiQuoter
 funPtrQuote callSafety = quoteCode $ \code -> do
   loc <- TH.location
   ctx <- getContext
-  FunPtrDecl{..} <- runParserInQ code (C.cCParserContext (typeNamesFromTypesTable (ctxTypesTable ctx))) parse
+  FunPtrDecl{..} <- runParserInQ code (C.cCParserContext (ctxEnableCpp ctx) (typeNamesFromTypesTable (ctxTypesTable ctx))) parse
   hsRetType <- cToHs ctx funPtrReturnType
   hsParams <- forM funPtrParameters (\(_ident, typ_) -> cToHs ctx typ_)
   let hsFunType = convertCFunSig hsRetType hsParams
