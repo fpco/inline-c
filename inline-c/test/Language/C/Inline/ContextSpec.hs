@@ -6,10 +6,12 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DataKinds #-}
 module Language.C.Inline.ContextSpec (spec) where
 
 import           Control.Monad.Trans.Class (lift)
 import           Data.Word
+import qualified Data.Map as Map
 import qualified Test.Hspec as Hspec
 import           Text.Parser.Char
 import           Text.Parser.Combinators
@@ -22,7 +24,12 @@ import           Control.Applicative ((<*), (*>))
 #endif
 
 import qualified Language.C.Types as C
+import qualified Language.C.Types.Parse as P
 import           Language.C.Inline.Context
+import GHC.Exts( IsString(..) )
+
+data Vec a
+data Ary a
 
 spec :: Hspec.SpecWith ()
 spec = do
@@ -79,6 +86,16 @@ spec = do
     shouldBeType
       (cty "char *(*(**foo [])(int x))[]")
       [t| CArray (Ptr (FunPtr (CInt -> IO (Ptr (CArray (Ptr CChar)))))) |]
+  Hspec.it "converts vector" $ do
+    shouldBeType (cty "vector<int>") [t| Vec CInt |]
+  Hspec.it "converts std::vector" $ do
+    shouldBeType (cty "std::vector<int>") [t| Vec CInt |]
+  Hspec.it "converts std::vector*" $ do
+    shouldBeType (cty "std::vector<int>*") [t| Ptr (Vec CInt) |]
+  Hspec.it "converts array" $ do
+    shouldBeType (cty "array<int,10>") [t| Ary '(CInt,10) |]
+  Hspec.it "converts array*" $ do
+    shouldBeType (cty "array<int,10>*") [t| Ptr (Ary '(CInt,10)) |]
   where
     goodConvert cTy = do
       mbHsTy <- TH.runQ $ convertType IO baseTypes cTy
@@ -92,10 +109,14 @@ spec = do
       x `Hspec.shouldBe` y
 
     assertParse p s =
-      case C.runCParser (C.cCParserContext (typeNamesFromTypesTable baseTypes)) "spec" s (lift spaces *> p <* lift eof) of
+      case C.runCParser (C.cCParserContext True (typeNamesFromTypesTable baseTypes)) "spec" s (lift spaces *> p <* lift eof) of
         Left err -> error $ "Parse error (assertParse): " ++ show err
         Right x -> x
 
     cty s = C.parameterDeclarationType $ assertParse C.parseParameterDeclaration s
 
-    baseTypes = ctxTypesTable baseCtx
+    baseTypes = ctxTypesTable baseCtx `mappend` Map.fromList [
+                 (C.TypeName (fromString "vector" :: P.CIdentifier), [t|Vec|]),
+                 (C.TypeName (fromString "std::vector" :: P.CIdentifier), [t|Vec|]),
+                 (C.TypeName (fromString "array" :: P.CIdentifier), [t|Ary|])
+                 ]

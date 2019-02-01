@@ -4,6 +4,7 @@
 module Language.C.Inline.Cpp
   ( module Language.C.Inline
   , cppCtx
+  , cppTypePairs
   , using
   ) where
 
@@ -13,6 +14,9 @@ import qualified Language.Haskell.TH.Syntax as TH
 
 import           Language.C.Inline
 import           Language.C.Inline.Context
+import qualified Language.C.Types as CT
+
+import qualified Data.Map as Map
 
 -- | The equivalent of 'C.baseCtx' for C++.  It specifies the @.cpp@
 -- file extension for the C file, so that g++ will decide to build C++
@@ -22,6 +26,7 @@ cppCtx :: Context
 cppCtx = baseCtx <> mempty
   { ctxForeignSrcLang = Just TH.LangCxx
   , ctxOutput = Just $ \s -> "extern \"C\" {\n" ++ s ++ "\n}"
+  , ctxEnableCpp = True
   }
 
 -- | Emits an @using@ directive, e.g.
@@ -31,3 +36,9 @@ cppCtx = baseCtx <> mempty
 -- @
 using :: String -> TH.DecsQ
 using s = verbatim $ "using " ++ s ++ ";"
+
+
+cppTypePairs :: [(CT.CIdentifier, TH.TypeQ)] -> Context
+cppTypePairs typePairs =  mempty {
+  ctxTypesTable = Map.fromList $ map (\(cpp_sym, haskell_sym) -> (CT.TypeName cpp_sym, haskell_sym)) typePairs
+  }

@@ -1,18 +1,48 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeInType #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 import           Control.Exception.Safe
 import           Control.Monad
 import qualified Language.C.Inline.Cpp as C
+import qualified Language.C.Inline.Context as CC
+import qualified Language.C.Types as CT
 import qualified Language.C.Inline.Cpp.Exceptions as C
 import qualified Test.Hspec as Hspec
+import           Foreign.Ptr (Ptr)
 import           Data.List (isInfixOf)
 
-C.context C.cppCtx
+data Test
+data Vector a
+data Array a
+
+C.context $ C.cppCtx `mappend` C.cppTypePairs [
+  ("Test::Test", [t|Test|]),
+  ("std::vector", [t|Vector|]),
+  ("std::array", [t|Array|])
+  ]
 
 C.include "<iostream>"
+C.include "<vector>"
+C.include "<array>"
+C.include "<tuple>"
 C.include "<stdexcept>"
+C.include "test.h"
 
 main :: IO ()
 main = Hspec.hspec $ do
@@ -21,6 +51,41 @@ main = Hspec.hspec $ do
       let x = 3
       [C.block| void {
           std::cout << "Hello, world!" << $(int x) << std::endl;
+        } |]
+
+  Hspec.describe "C++ Types" $ do
+    Hspec.it "Hello Namespace" $ do
+      pt <- [C.block| Test::Test* {
+          return new Test::Test();
+        } |] :: IO (Ptr Test)
+      [C.block| void {
+          std::cout << $(Test::Test* pt)->get() << std::endl;
+        } |]
+
+    Hspec.it "Hello Template" $ do
+      pt <- [C.block| std::vector<int>* {
+          return new std::vector<int>();
+        } |] :: IO (Ptr (Vector C.CInt))
+      [C.block| void {
+          $(std::vector<int>* pt)->push_back(100);
+          std::cout << (*$(std::vector<int>* pt))[0] << std::endl;
+        } |]
+
+    Hspec.it "Template + Namespace" $ do
+      pt <- [C.block| std::vector<Test::Test>* {
+          return new std::vector<Test::Test>();
+        } |] :: IO (Ptr (Vector Test))
+      [C.block| void {
+          $(std::vector<Test::Test>* pt)->push_back(Test::Test());
+        } |]
+
+    Hspec.it "Template with 2 arguments" $ do
+      pt <- [C.block| std::array<int,10>* {
+          return new std::array<int,10>();
+        } |] :: IO (Ptr (Array '(C.CInt,10)))
+      [C.block| void {
+          (*$(std::array<int,10>* pt))[0]=true;
+          std::cout << (*$(std::array<int,10>* pt))[0] << std::endl;
         } |]
 
   Hspec.describe "Exception handling" $ do

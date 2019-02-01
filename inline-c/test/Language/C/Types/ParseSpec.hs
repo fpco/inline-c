@@ -39,7 +39,7 @@ spec = do
       ParameterDeclarationWithTypeNames typeNames ty <-
         arbitraryParameterDeclarationWithTypeNames unCIdentifier
       return $ isGoodType ty QC.==>
-        let ty' = assertParse (cCParserContext typeNames) parameter_declaration (prettyOneLine ty)
+        let ty' = assertParse (cCParserContext True typeNames) parameter_declaration (prettyOneLine ty)
         in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
   Hspec.it "parses everything which is pretty-printable (Haskell)" $ do
 #if MIN_VERSION_QuickCheck(2,9,0)
@@ -50,7 +50,7 @@ spec = do
       ParameterDeclarationWithTypeNames typeNames ty <-
         arbitraryParameterDeclarationWithTypeNames unHaskellIdentifier
       return $ isGoodHaskellIdentifierType typeNames ty QC.==>
-        let ty' = assertParse (haskellCParserContext typeNames) parameter_declaration (prettyOneLine ty)
+        let ty' = assertParse (haskellCParserContext True typeNames) parameter_declaration (prettyOneLine ty)
         in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
 
 ------------------------------------------------------------------------
@@ -83,7 +83,7 @@ isGoodHaskellIdentifierType typeNames ty0 =
         Just i -> let
           -- see <https://github.com/fpco/inline-c/pull/97#issuecomment-538648101>
           leadingSegment : _ = splitOn "." (unHaskellIdentifier i)
-          in case cIdentifierFromString leadingSegment of
+          in case cIdentifierFromString True leadingSegment of
            Left{} -> True
            Right seg -> not (seg `HashSet.member` typeNames)
 
@@ -195,7 +195,7 @@ arbitraryIdentifierFrom
   :: (Hashable i, QC.Arbitrary i) => ArbitraryContext i -> QC.Gen i
 arbitraryIdentifierFrom ctx = do
   id' <- QC.arbitrary
-  if isTypeName (acTypeNames ctx) (acIdentToString ctx id')
+  if isTypeName True (acTypeNames ctx) (acIdentToString ctx id')
     then arbitraryIdentifierFrom ctx
     else return id'
 

@@ -1,14 +1,20 @@
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | A 'Context' is used to define the capabilities of the Template Haskell code
 -- that handles the inline C code. See the documentation of the data type for
@@ -43,7 +49,7 @@ module Language.C.Inline.Context
   ) where
 
 import           Control.Applicative ((<|>))
-import           Control.Monad (mzero)
+import           Control.Monad (mzero, forM)
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import qualified Data.ByteString as BS
@@ -63,6 +69,7 @@ import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
 import qualified Text.Parser.Token as Parser
 import qualified Data.HashSet as HashSet
+
 
 #if MIN_VERSION_base(4,9,0)
 import           Data.Semigroup (Semigroup, (<>))
@@ -153,6 +160,7 @@ data Context = Context
     -- when generating C++ code.
   , ctxForeignSrcLang :: Maybe TH.ForeignSrcLang
     -- ^ TH.LangC by default
+  , ctxEnableCpp :: Bool
   }
 
 
@@ -163,6 +171,7 @@ instance Semigroup Context where
     , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
+    , ctxEnableCpp = ctxEnableCpp ctx1 || ctxEnableCpp ctx2
     }
 #endif
 
@@ -172,6 +181,7 @@ instance Monoid Context where
     , ctxAntiQuoters = mempty
     , ctxOutput = Nothing
     , ctxForeignSrcLang = Nothing
+    , ctxEnableCpp = False
     }
 
 #if !MIN_VERSION_base(4,11,0)
@@ -180,6 +190,7 @@ instance Monoid Context where
     , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
+    , ctxEnableCpp = ctxEnableCpp ctx1 || ctxEnableCpp ctx2
     }
 #endif
 
@@ -264,7 +275,30 @@ convertType purity cTypes = runMaybeT . go
     goDecl = go . C.parameterDeclarationType
 
     go :: C.Type C.CIdentifier -> MaybeT TH.Q TH.Type
-    go cTy = case cTy of
+    go cTy = do
+     case cTy of
+      C.TypeSpecifier _specs (C.Template ident' cTys) -> do
+--        let symbol = TH.LitT (TH.StrTyLit (C.unCIdentifier ident'))
+        symbol <- case Map.lookup (C.TypeName ident') cTypes of
+          Nothing -> mzero
+          Just ty -> return ty
+        hsTy <- forM cTys $ \cTys'  -> go (C.TypeSpecifier undefined cTys')
+        case hsTy of
+          (a:[]) ->
+            lift [t| $(symbol) $(return a) |]
+          (a:b:[]) ->
+            lift [t| $(symbol) '($(return a),$(return b))|]
+          (a:b:c:[]) ->
+            lift [t| $(symbol) '($(return a),$(return b),$(return c))|]
+          (a:b:c:d:[]) ->
+            lift [t| $(symbol) '($(return a),$(return b),$(return c),$(return d))|]
+          (a:b:c:d:e:[]) ->
+            lift [t| $(symbol) '($(return a),$(return b),$(return c),$(return d),$(return e))|]
+          [] -> fail $ "Can not find template parameters."
+          _ -> fail $ "Find too many template parameters. num = " ++ show (length hsTy)
+      C.TypeSpecifier _specs (C.TemplateConst num) -> do
+        let n = (TH.LitT (TH.NumTyLit (read num)))
+        lift [t| $(return n) |]
       C.TypeSpecifier _specs cSpec ->
         case Map.lookup cSpec cTypes of
           Nothing -> mzero
@@ -452,7 +486,8 @@ vecLenAntiQuoter :: AntiQuoter HaskellIdentifier
 vecLenAntiQuoter = AntiQuoter
   { aqParser = do
       hId <- C.parseIdentifier
-      let cId = mangleHaskellIdentifier hId
+      useCpp <- C.parseEnableCpp
+      let cId = mangleHaskellIdentifier useCpp hId
       return (cId, C.TypeSpecifier mempty (C.Long C.Signed), hId)
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
@@ -487,7 +522,8 @@ bsPtrAntiQuoter :: AntiQuoter HaskellIdentifier
 bsPtrAntiQuoter = AntiQuoter
   { aqParser = do
       hId <- C.parseIdentifier
-      let cId = mangleHaskellIdentifier hId
+      useCpp <- C.parseEnableCpp
+      let cId = mangleHaskellIdentifier useCpp hId
       return (cId, C.Ptr [] (C.TypeSpecifier mempty (C.Char Nothing)), hId)
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
@@ -504,7 +540,8 @@ bsLenAntiQuoter :: AntiQuoter HaskellIdentifier
 bsLenAntiQuoter = AntiQuoter
   { aqParser = do
       hId <- C.parseIdentifier
-      let cId = mangleHaskellIdentifier hId
+      useCpp <- C.parseEnableCpp
+      let cId = mangleHaskellIdentifier useCpp hId
       return (cId, C.TypeSpecifier mempty (C.Long C.Signed), hId)
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
@@ -522,7 +559,8 @@ bsCStrAntiQuoter :: AntiQuoter HaskellIdentifier
 bsCStrAntiQuoter = AntiQuoter
   { aqParser = do
       hId <- C.parseIdentifier
-      let cId = mangleHaskellIdentifier hId
+      useCpp <- C.parseEnableCpp
+      let cId = mangleHaskellIdentifier useCpp hId
       return (cId, C.Ptr [] (C.TypeSpecifier mempty (C.Char Nothing)), hId)
   , aqMarshaller = \_purity _cTypes cTy cId -> do
       case cTy of
@@ -544,10 +582,11 @@ cDeclAqParser
   => m (C.CIdentifier, C.Type C.CIdentifier, HaskellIdentifier)
 cDeclAqParser = do
   cTy <- Parser.parens C.parseParameterDeclaration
+  useCpp <- C.parseEnableCpp
   case C.parameterDeclarationId cTy of
     Nothing -> fail "Every captured function must be named (funCtx)"
     Just hId -> do
-     let cId = mangleHaskellIdentifier hId
+     let cId = mangleHaskellIdentifier useCpp hId
      cTy' <- deHaskellifyCType $ C.parameterDeclarationType cTy
      return (cId, cTy', hId)
 
@@ -555,7 +594,8 @@ deHaskellifyCType
   :: C.CParser HaskellIdentifier m
   => C.Type HaskellIdentifier -> m (C.Type C.CIdentifier)
 deHaskellifyCType = traverse $ \hId -> do
-  case C.cIdentifierFromString (unHaskellIdentifier hId) of
+  useCpp <- C.parseEnableCpp
+  case C.cIdentifierFromString useCpp (unHaskellIdentifier hId) of
     Left err -> fail $ "Illegal Haskell identifier " ++ unHaskellIdentifier hId ++
                        " in C type:\n" ++ err
     Right x -> return x

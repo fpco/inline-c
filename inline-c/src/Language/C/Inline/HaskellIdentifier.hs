@@ -44,27 +44,28 @@ newtype HaskellIdentifier = HaskellIdentifier {unHaskellIdentifier :: String}
 
 instance IsString HaskellIdentifier where
   fromString s =
-    case haskellIdentifierFromString s of
+    case haskellIdentifierFromString True s of
       Left err -> error $ "HaskellIdentifier fromString: invalid string " ++ s ++ ":\n" ++ err
       Right x -> x
 
 instance PP.Pretty HaskellIdentifier where
   pretty = PP.text . unHaskellIdentifier
 
-haskellIdentifierFromString :: String -> Either String HaskellIdentifier
-haskellIdentifierFromString s =
+haskellIdentifierFromString :: Bool -> String -> Either String HaskellIdentifier
+haskellIdentifierFromString useCpp s =
   case C.runCParser cpc "haskellIdentifierFromString" s (parseHaskellIdentifier <* eof) of
     Left err -> Left $ show err
     Right x -> Right x
   where
-    cpc = haskellCParserContext HashSet.empty
+    cpc = haskellCParserContext useCpp HashSet.empty
 
-haskellCParserContext :: C.TypeNames -> C.CParserContext HaskellIdentifier
-haskellCParserContext typeNames = C.CParserContext
+haskellCParserContext :: Bool -> C.TypeNames -> C.CParserContext HaskellIdentifier
+haskellCParserContext useCpp typeNames = C.CParserContext
   { C.cpcTypeNames = typeNames
   , C.cpcParseIdent = parseHaskellIdentifier
   , C.cpcIdentName = "Haskell identifier"
   , C.cpcIdentToString = unHaskellIdentifier
+  , C.cpcEnableCpp = useCpp
   }
 
 -- | See
@@ -121,15 +122,15 @@ parseHaskellIdentifier = do
 
 -- | Mangles an 'HaskellIdentifier' to produce a valid 'C.CIdentifier'
 -- which still sort of resembles the 'HaskellIdentifier'.
-mangleHaskellIdentifier :: HaskellIdentifier -> C.CIdentifier
-mangleHaskellIdentifier (HaskellIdentifier hs) =
+mangleHaskellIdentifier :: Bool -> HaskellIdentifier -> C.CIdentifier
+mangleHaskellIdentifier useCpp (HaskellIdentifier hs) =
   -- The leading underscore if we have no valid chars is because then
   -- we'd have an identifier starting with numbers.
   let cs = (if null valid then "_" else "") ++
            valid ++
            (if null mangled || null valid then "" else "_") ++
            mangled
-  in case C.cIdentifierFromString cs of
+  in case C.cIdentifierFromString useCpp cs of
     Left err -> error $ "mangleHaskellIdentifier: produced bad C identifier\n" ++ err
     Right x -> x
   where

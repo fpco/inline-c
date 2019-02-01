@@ -48,6 +48,7 @@ module Language.C.Types
   , parseParameterDeclaration
   , parseParameterList
   , parseIdentifier
+  , parseEnableCpp
   , parseType
 
     -- * Convert to and from high-level views
@@ -61,9 +62,10 @@ module Language.C.Types
   ) where
 
 import           Control.Arrow (second)
-import           Control.Monad (when, unless, forM_)
+import           Control.Monad (when, unless, forM_, forM)
 import           Control.Monad.State (execState, modify)
-import           Data.List (partition)
+import           Control.Monad.Reader (ask)
+import           Data.List (partition, intersperse)
 import           Data.Maybe (fromMaybe)
 import           Data.Typeable (Typeable)
 import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
@@ -101,6 +103,8 @@ data TypeSpecifier
   | TypeName P.CIdentifier
   | Struct P.CIdentifier
   | Enum P.CIdentifier
+  | Template P.CIdentifier [TypeSpecifier]
+  | TemplateConst String
   deriving (Typeable, Show, Eq, Ord)
 
 data Specifiers = Specifiers
@@ -204,46 +208,54 @@ untangleDeclarationSpecifiers declSpecs = do
         unless (null specs) $ illegalSpecifiers "expecting no specifiers"
   let checkNoLength =
         when (longs > 0 || shorts > 0) $ illegalSpecifiers "unexpected long/short"
-  tySpec <- case dataType of
-    P.TypeName s -> do
-      checkNoSpecs
-      return $ TypeName s
-    P.Struct s -> do
-      checkNoSpecs
-      return $ Struct s
-    P.Enum s -> do
-      checkNoSpecs
-      return $ Enum s
-    P.VOID -> do
-      checkNoSpecs
-      return Void
-    P.BOOL -> do
-      checkNoLength
-      return $ Bool
-    P.CHAR -> do
-      checkNoLength
-      return $ Char mbSign
-    P.INT | longs == 0 && shorts == 0 -> do
-      return $ Int sign
-    P.INT | longs == 1 -> do
-      return $ Long sign
-    P.INT | longs == 2 -> do
-      return $ LLong sign
-    P.INT | shorts == 1 -> do
-      return $ Short sign
-    P.INT -> do
-      illegalSpecifiers "too many long/short"
-    P.FLOAT -> do
-      checkNoLength
-      return Float
-    P.DOUBLE -> do
-      if longs == 1
-        then return LDouble
-        else do
+  let type2type dat = case dat of
+        P.Template s args -> do
+          checkNoSpecs
+          args' <- forM args type2type
+          return $ Template s args'
+        P.TemplateConst s -> do
+          checkNoSpecs
+          return $ TemplateConst s
+        P.TypeName s -> do
+          checkNoSpecs
+          return $ TypeName s
+        P.Struct s -> do
+          checkNoSpecs
+          return $ Struct s
+        P.Enum s -> do
+          checkNoSpecs
+          return $ Enum s
+        P.VOID -> do
+          checkNoSpecs
+          return Void
+        P.BOOL -> do
           checkNoLength
-          return Double
-    _ -> do
-      error $ "untangleDeclarationSpecifiers impossible: " ++ show dataType
+          return $ Bool
+        P.CHAR -> do
+          checkNoLength
+          return $ Char mbSign
+        P.INT | longs == 0 && shorts == 0 -> do
+          return $ Int sign
+        P.INT | longs == 1 -> do
+          return $ Long sign
+        P.INT | longs == 2 -> do
+          return $ LLong sign
+        P.INT | shorts == 1 -> do
+          return $ Short sign
+        P.INT -> do
+          illegalSpecifiers "too many long/short"
+        P.FLOAT -> do
+          checkNoLength
+          return Float
+        P.DOUBLE -> do
+          if longs == 1
+            then return LDouble
+            else do
+              checkNoLength
+              return Double
+        _ -> do
+          error $ "untangleDeclarationSpecifiers impossible: " ++ show dataType
+  tySpec <- type2type dataType
   return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
 
 untangleDeclarator
@@ -372,7 +384,7 @@ tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
 
 tangleTypeSpecifier :: Specifiers -> TypeSpecifier -> [P.DeclarationSpecifier]
 tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
-  let pTySpecs = case tySpec of
+  let pTySpecs ty = case ty of
         Void -> [P.VOID]
         Bool -> [P.BOOL]
         Char Nothing -> [P.CHAR]
@@ -392,10 +404,12 @@ tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
         TypeName s -> [P.TypeName s]
         Struct s -> [P.Struct s]
         Enum s -> [P.Enum s]
+        Template s types -> [P.Template s (concat (map pTySpecs types))]
+        TemplateConst s -> [P.TemplateConst s]
   in map P.StorageClassSpecifier storages ++
      map P.TypeQualifier tyQuals ++
      map P.FunctionSpecifier funSpecs ++
-     map P.TypeSpecifier pTySpecs
+     map P.TypeSpecifier (pTySpecs tySpec)
 
 ------------------------------------------------------------------------
 -- To english
@@ -463,6 +477,11 @@ parseParameterList =
 parseIdentifier :: P.CParser i m => m i
 parseIdentifier = P.identifier_no_lex
 
+parseEnableCpp :: P.CParser i m => m Bool
+parseEnableCpp = do
+  ctx <- ask
+  return (P.cpcEnableCpp ctx)
+
 parseType :: (P.CParser i m, PP.Pretty i) => m (Type i)
 parseType = parameterDeclarationType <$> parseParameterDeclaration
 
@@ -490,6 +509,8 @@ instance PP.Pretty TypeSpecifier where
     TypeName s -> PP.pretty s
     Struct s -> "struct" <+> PP.pretty s
     Enum s -> "enum" <+> PP.pretty s
+    Template s args -> PP.pretty s <+> "<"  <+>  mconcat (intersperse "," (map PP.pretty args))  <+> ">"
+    TemplateConst s -> PP.pretty s
 
 instance PP.Pretty UntangleErr where
   pretty err = case err of
