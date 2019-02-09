@@ -304,7 +304,7 @@ declaration syntax.
 
 Currently `inline-c` does not work in interpreted mode. However, GHCi
 can still be used using the `-fobject-code` flag. For speed, we
-reccomend passing `-fobject-code -O0`, for example
+recommend passing `-fobject-code -O0`, for example
 
 ```
 stack ghci --ghci-options='-fobject-code -O0'
