@@ -201,6 +201,7 @@ baseTypesTable = Map.fromList
   -- along with its documentation's section headers.
   --
   -- Integral types
+  , (C.Bool, [t| CBool |])
   , (C.Char Nothing, [t| CChar |])
   , (C.Char (Just C.Signed), [t| CSChar |])
   , (C.Char (Just C.Unsigned), [t| CUChar |])

@@ -30,6 +30,8 @@ spec = do
     shouldBeType (cty "int") [t| CInt |]
   Hspec.it "converts simple type correctly (2)" $ do
     shouldBeType (cty "char") [t| CChar |]
+  Hspec.it "converts bool" $ do
+    shouldBeType (cty "bool") [t| CBool |]
   Hspec.it "converts void" $ do
     shouldBeType (cty "void") [t| () |]
   Hspec.it "converts standard library types (1)" $ do
