@@ -89,6 +89,7 @@ import qualified Language.C.Types.Parse as P
 
 data TypeSpecifier
   = Void
+  | Bool
   | Char (Maybe Sign)
   | Short Sign
   | Int Sign
@@ -216,6 +217,9 @@ untangleDeclarationSpecifiers declSpecs = do
     P.VOID -> do
       checkNoSpecs
       return Void
+    P.BOOL -> do
+      checkNoLength
+      return $ Bool
     P.CHAR -> do
       checkNoLength
       return $ Char mbSign
@@ -370,6 +374,7 @@ tangleTypeSpecifier :: Specifiers -> TypeSpecifier -> [P.DeclarationSpecifier]
 tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
   let pTySpecs = case tySpec of
         Void -> [P.VOID]
+        Bool -> [P.BOOL]
         Char Nothing -> [P.CHAR]
         Char (Just Signed) -> [P.SIGNED, P.CHAR]
         Char (Just Unsigned) -> [P.UNSIGNED, P.CHAR]
@@ -467,6 +472,7 @@ parseType = parameterDeclarationType <$> parseParameterDeclaration
 instance PP.Pretty TypeSpecifier where
   pretty tySpec = case tySpec of
     Void -> "void"
+    Bool -> "bool"
     Char Nothing -> "char"
     Char (Just Signed) -> "signed char"
     Char (Just Unsigned) -> "unsigned char"
