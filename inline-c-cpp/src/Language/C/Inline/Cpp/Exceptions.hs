@@ -10,7 +10,7 @@ module Language.C.Inline.Cpp.Exceptions
   , catchBlock
   ) where
 
-import           Control.Exception.Safe
+import           Control.Exception (Exception, mask_, throwIO)
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Internal as C
 import           Language.Haskell.TH
@@ -87,7 +87,7 @@ catchBlock = QuasiQuoter
   , quoteDec = unsupported
   } where
       unsupported _ = fail "Unsupported quasiquotation."
-      
+
 
 tryBlockQuoteExp :: String -> Q Exp
 tryBlockQuoteExp blockStr = do
@@ -147,7 +147,7 @@ tryBlockQuoteExp blockStr = do
         , "}"
         ]
   [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) -> $(quoteExp C.block inlineCStr) |]
- 
+
 -- | Similar to `C.block`, but C++ exceptions will be caught and the result is (Either CppException value). The return type must be void or constructible with @{}@.
 -- Using this will automatically include @exception@, @cstring@ and @cstdlib@.
 tryBlock :: QuasiQuoter
