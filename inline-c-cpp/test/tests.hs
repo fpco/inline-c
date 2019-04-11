@@ -3,7 +3,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Exception.Safe
-import           Control.Monad
 import qualified Language.C.Inline.Cpp as C
 import qualified Language.C.Inline.Cpp.Exceptions as C
 import qualified Test.Hspec as Hspec
@@ -16,7 +15,7 @@ C.include "<stdexcept>"
 
 main :: IO ()
 main = Hspec.hspec $ do
-  Hspec.describe "Basic C++" $ do
+  Hspec.describe "Basic C++" $
     Hspec.it "Hello World" $ do
       let x = 3
       [C.block| void {

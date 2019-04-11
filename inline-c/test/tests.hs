@@ -74,7 +74,7 @@ main = Hspec.hspec $ do
             []
             [r| 1 + 4 |])
       x `Hspec.shouldBe` 1 + 4
-    Hspec.it "inlineCode" $ do
+    Hspec.it "inlineCode" $
       francescos_mul 3 4 `Hspec.shouldBe` 12
     Hspec.it "exp" $ do
       let x = 3
@@ -96,7 +96,7 @@ main = Hspec.hspec $ do
       let y = 10
       z <- [CI.exp| int{ 7 + $(int x) + $(int y) } |]
       z `Hspec.shouldBe` x + y + 7
-    Hspec.it "void exp" $ do
+    Hspec.it "void exp"
       [C.exp| void { printf("Hello\n") } |]
     Hspec.it "Foreign.C.Types library types" $ do
       let x = 1
@@ -205,11 +205,11 @@ main = Hspec.hspec $ do
       bits `Hspec.shouldBe` 16
     Hspec.it "Haskell identifiers" $ do
       let x' = 3
-      void $ [C.exp| int { $(int x') } |]
+      void [C.exp| int { $(int x') } |]
       let ä = 3
-      void $ [C.exp| int { $(int ä) } |]
-      void $ [C.exp| int { $(int Prelude.maxBound) } |]
-    Hspec.it "Function pointers" $ do
+      void [C.exp| int { $(int ä) } |]
+      void [C.exp| int { $(int Prelude.maxBound) } |]
+    Hspec.it "Function pointers" $
       alloca $ \x_ptr -> do
         poke x_ptr 7
         let fp = [C.funPtr| void poke42(int *ptr) { *ptr = 42; } |]

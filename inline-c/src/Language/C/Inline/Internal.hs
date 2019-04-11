@@ -425,7 +425,7 @@ instance Show SomeEq where
 toSomeEq :: (Eq a, Typeable a) => a -> SomeEq
 toSomeEq x = SomeEq x
 
-fromSomeEq :: (Eq a, Typeable a) => SomeEq -> Maybe a
+fromSomeEq :: Typeable a => SomeEq -> Maybe a
 fromSomeEq (SomeEq x) = cast x
 
 data ParameterType
@@ -523,7 +523,7 @@ parseTypedC antiQs = do
     -- The @m@ is polymorphic because we use this both for the plain
     -- parser and the StateT parser we use above.  We only need 'fail'.
     purgeHaskellIdentifiers
-      :: forall n. (Applicative n, Monad n)
+      :: forall n. Monad n
       => C.Type HaskellIdentifier -> n (C.Type C.CIdentifier)
     purgeHaskellIdentifiers cTy = for cTy $ \hsIdent -> do
       let hsIdentS = unHaskellIdentifier hsIdent

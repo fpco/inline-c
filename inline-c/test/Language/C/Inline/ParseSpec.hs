@@ -5,7 +5,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Language.C.Inline.ParseSpec (spec) where
 
@@ -30,45 +29,45 @@ import           Language.C.Inline.Internal
 import qualified Language.C.Types as C
 
 spec :: Hspec.SpecWith ()
-spec = do
+spec =
   Hspec.describe "parsing" $ do
     Hspec.it "parses simple C expression" $ do
       (retType, params, cExp) <- goodParse [r|
           int { (int) ceil($(double x) + ((double) $(float y))) }
         |]
-      retType `Hspec.shouldBe` (cty "int")
+      retType `Hspec.shouldBe` cty "int"
       params `shouldMatchParameters` [(cty "double", Plain "x"), (cty "float", Plain "y")]
       cExp `shouldMatchBody` " (int) ceil(x[a-z0-9_]+ \\+ ((double) y[a-z0-9_]+)) "
-    Hspec.it "accepts anti quotes" $ do
+    Hspec.it "accepts anti quotes" $
       void $ goodParse [r| int { $(int x) } |]
-    Hspec.it "rejects if bad braces (1)" $ do
+    Hspec.it "rejects if bad braces (1)" $
       badParse [r| int x |]
-    Hspec.it "rejects if bad braces (2)" $ do
+    Hspec.it "rejects if bad braces (2)" $
       badParse [r| int { x |]
-    Hspec.it "parses function pointers" $ do
+    Hspec.it "parses function pointers" $
       void $ goodParse [r| int(int (*add)(int, int)) { add(3, 4) } |]
     Hspec.it "parses returning function pointers" $ do
       (retType, params, cExp) <-
         goodParse [r| double (*)(double) { &cos } |]
-      retType `Hspec.shouldBe` (cty "double (*)(double)")
+      retType `Hspec.shouldBe` cty "double (*)(double)"
       params `shouldMatchParameters` []
       cExp `shouldMatchBody` " &cos "
     Hspec.it "parses Haskell identifier (1)" $ do
       (retType, params, cExp) <- goodParse [r| double { $(double x') } |]
-      retType `Hspec.shouldBe` (cty "double")
+      retType `Hspec.shouldBe` cty "double"
       params `shouldMatchParameters` [(cty "double", Plain "x'")]
       cExp `shouldMatchBody` " x[a-z0-9_]+ "
     Hspec.it "parses Haskell identifier (2)" $ do
       (retType, params, cExp) <- goodParse [r| double { $(double ä') } |]
-      retType `Hspec.shouldBe` (cty "double")
+      retType `Hspec.shouldBe` cty "double"
       params `shouldMatchParameters` [(cty "double", Plain "ä'")]
       cExp `shouldMatchBody` " [a-z0-9_]+ "
     Hspec.it "parses Haskell identifier (3)" $ do
       (retType, params, cExp) <- goodParse [r| int { $(int Foo.bar) } |]
-      retType `Hspec.shouldBe` (cty "int")
+      retType `Hspec.shouldBe` cty "int"
       params `shouldMatchParameters` [(cty "int", Plain "Foo.bar")]
       cExp `shouldMatchBody` " Foobar[a-z0-9_]+ "
-    Hspec.it "does not parse Haskell identifier in bad position" $ do
+    Hspec.it "does not parse Haskell identifier in bad position" $
       badParse [r| double (*)(double Foo.bar) { 3.0 } |]
   where
     ctx = baseCtx <> funCtx

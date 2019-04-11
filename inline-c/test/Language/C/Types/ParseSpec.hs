@@ -29,7 +29,7 @@ import Prelude -- Fix for 7.10 unused warnings.
 
 spec :: Hspec.SpecWith ()
 spec = do
-  Hspec.it "parses everything which is pretty-printable (C)" $ do
+  Hspec.it "parses everything which is pretty-printable (C)" $
 #if MIN_VERSION_QuickCheck(2,9,0)
     QC.property $ QC.again $ do -- Work around <https://github.com/nick8325/quickcheck/issues/113>
 #else
@@ -40,7 +40,7 @@ spec = do
       return $ isGoodType ty QC.==>
         let ty' = assertParse (cCParserContext typeNames) parameter_declaration (prettyOneLine ty)
         in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
-  Hspec.it "parses everything which is pretty-printable (Haskell)" $ do
+  Hspec.it "parses everything which is pretty-printable (Haskell)" $
 #if MIN_VERSION_QuickCheck(2,9,0)
     QC.property $ QC.again $ do -- Work around <https://github.com/nick8325/quickcheck/issues/113>
 #else
@@ -92,7 +92,7 @@ halveSize m = QC.sized $ \n -> QC.resize (n `div` 2) m
 
 instance QC.Arbitrary CIdentifier where
   arbitrary = do
-    s <- ((:) <$> QC.elements cIdentStart <*> QC.listOf (QC.elements cIdentLetter))
+    s <- (:) <$> QC.elements cIdentStart <*> QC.listOf (QC.elements cIdentLetter)
     if HashSet.member s cReservedWords
       then QC.arbitrary
       else return $ fromString s
@@ -101,7 +101,7 @@ instance QC.Arbitrary CIdentifier where
 -- arbitrary allowed type names.
 data ParameterDeclarationWithTypeNames i = ParameterDeclarationWithTypeNames
   { _pdwtnTypeNames :: HashSet.HashSet CIdentifier
-  , _pdwtnParameterDeclaration :: (ParameterDeclaration i)
+  , _pdwtnParameterDeclaration :: ParameterDeclaration i
   } deriving (Typeable, Eq, Show)
 
 data ArbitraryContext i = ArbitraryContext
@@ -120,8 +120,8 @@ arbitraryParameterDeclarationWithTypeNames identToString = do
     return $ ParameterDeclarationWithTypeNames names decl
 
 arbitraryDeclarationSpecifierFrom
-  :: (QC.Arbitrary i, Hashable i) => ArbitraryContext i -> QC.Gen DeclarationSpecifier
-arbitraryDeclarationSpecifierFrom typeNames = QC.oneof $
+  :: ArbitraryContext i -> QC.Gen DeclarationSpecifier
+arbitraryDeclarationSpecifierFrom typeNames = QC.oneof
   [ StorageClassSpecifier <$> QC.arbitrary
   , TypeQualifier <$> QC.arbitrary
   , FunctionSpecifier <$> QC.arbitrary
@@ -137,7 +137,7 @@ instance QC.Arbitrary StorageClassSpecifier where
     , return REGISTER
     ]
 
-arbitraryTypeSpecifierFrom :: (Hashable i, QC.Arbitrary i) => ArbitraryContext i -> QC.Gen TypeSpecifier
+arbitraryTypeSpecifierFrom :: ArbitraryContext i -> QC.Gen TypeSpecifier
 arbitraryTypeSpecifierFrom ctx = QC.oneof $
   [ return VOID
   , return CHAR
@@ -170,8 +170,7 @@ arbitraryDeclaratorFrom
 arbitraryDeclaratorFrom typeNames = halveSize $
   Declarator <$> QC.arbitrary <*> arbitraryDirectDeclaratorFrom typeNames
 
-arbitraryCIdentifierFrom
-  :: (Hashable i, QC.Arbitrary i) => ArbitraryContext i -> QC.Gen CIdentifier
+arbitraryCIdentifierFrom :: ArbitraryContext i -> QC.Gen CIdentifier
 arbitraryCIdentifierFrom ctx =
   arbitraryIdentifierFrom ctx{acIdentToString = unCIdentifier}
 
@@ -185,7 +184,7 @@ arbitraryIdentifierFrom ctx = do
 
 arbitraryDirectDeclaratorFrom
   :: (Hashable i, QC.Arbitrary i) => ArbitraryContext i -> QC.Gen (DirectDeclarator i)
-arbitraryDirectDeclaratorFrom typeNames = halveSize $ oneOfSized $
+arbitraryDirectDeclaratorFrom typeNames = halveSize $ oneOfSized
   [ Anyhow $ DeclaratorRoot <$> arbitraryIdentifierFrom typeNames
   , IfPositive $ DeclaratorParens <$> arbitraryDeclaratorFrom typeNames
   , IfPositive $ ArrayOrProto
@@ -195,7 +194,7 @@ arbitraryDirectDeclaratorFrom typeNames = halveSize $ oneOfSized $
 
 arbitraryArrayOrProtoFrom
   :: (Hashable i, QC.Arbitrary i) => ArbitraryContext i -> QC.Gen (ArrayOrProto i)
-arbitraryArrayOrProtoFrom typeNames = halveSize $ oneOfSized $
+arbitraryArrayOrProtoFrom typeNames = halveSize $ oneOfSized
   [ Anyhow $ Array <$> arbitraryArrayTypeFrom typeNames
   , IfPositive $ Proto <$> QC.listOf (arbitraryParameterDeclarationFrom typeNames)
   ]
@@ -235,7 +234,7 @@ arbitraryAbstractDeclaratorFrom typeNames = halveSize $ do
 
 arbitraryDirectAbstractDeclaratorFrom
   :: (Hashable i, QC.Arbitrary i) => ArbitraryContext i -> QC.Gen (DirectAbstractDeclarator i)
-arbitraryDirectAbstractDeclaratorFrom typeNames = halveSize $ oneOfSized $
+arbitraryDirectAbstractDeclaratorFrom typeNames = halveSize $ oneOfSized
   [ Anyhow $ ArrayOrProtoHere <$> arbitraryArrayOrProtoFrom typeNames
   , IfPositive $ AbstractDeclaratorParens <$> arbitraryAbstractDeclaratorFrom typeNames
   , IfPositive $ ArrayOrProtoThere
@@ -254,10 +253,10 @@ instance QC.Arbitrary HaskellIdentifier where
       arbitraryModId = arbitraryConId
 
       arbitraryConId =
-        ((:) <$> QC.elements large <*> QC.listOf (QC.elements (small ++ large ++ digit' ++ ['\''])))
+        (:) <$> QC.elements large <*> QC.listOf (QC.elements (small ++ large ++ digit' ++ ['\'']))
 
       arbitraryVarId =
-        ((:) <$> QC.elements small <*> QC.listOf (QC.elements (small ++ large ++ digit' ++ ['\''])))
+        (:) <$> QC.elements small <*> QC.listOf (QC.elements (small ++ large ++ digit' ++ ['\'']))
 
       -- We currently do not generate unicode identifiers.
       large = ['A'..'Z']

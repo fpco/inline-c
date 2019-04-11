@@ -174,7 +174,9 @@ instance Monoid Context where
     , ctxForeignSrcLang = Nothing
     }
 
-#if !MIN_VERSION_base(4,11,0)
+#if MIN_VERSION_base(4,9,0)
+  mappend = (<>)
+#else
   mappend ctx2 ctx1 = Context
     { ctxTypesTable = ctxTypesTable ctx1 <> ctxTypesTable ctx2
     , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
@@ -278,7 +280,7 @@ convertType purity cTypes = runMaybeT . go
       C.Array _mbSize cTy' -> do
         hsTy <- go cTy'
         lift [t| CArray $(return hsTy) |]
-      C.Proto _retType _pars -> do
+      C.Proto _retType _pars ->
         -- We cannot convert standalone prototypes
         mzero
 
@@ -453,7 +455,7 @@ vecLenAntiQuoter = AntiQuoter
       hId <- C.parseIdentifier
       let cId = mangleHaskellIdentifier hId
       return (cId, C.TypeSpecifier mempty (C.Long C.Signed), hId)
-  , aqMarshaller = \_purity _cTypes cTy cId -> do
+  , aqMarshaller = \_purity _cTypes cTy cId ->
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "vecCtx" cId
@@ -461,7 +463,7 @@ vecLenAntiQuoter = AntiQuoter
           hsTy <- [t| CLong |]
           hsExp'' <- [| \cont -> cont $(return hsExp') |]
           return (hsTy, hsExp'')
-        _ -> do
+        _ ->
           fail "impossible: got type different from `long' (vecCtx)"
   }
 
@@ -488,7 +490,7 @@ bsPtrAntiQuoter = AntiQuoter
       hId <- C.parseIdentifier
       let cId = mangleHaskellIdentifier hId
       return (cId, C.Ptr [] (C.TypeSpecifier mempty (C.Char Nothing)), hId)
-  , aqMarshaller = \_purity _cTypes cTy cId -> do
+  , aqMarshaller = \_purity _cTypes cTy cId ->
       case cTy of
         C.Ptr _ (C.TypeSpecifier _ (C.Char Nothing)) -> do
           hsTy <- [t| Ptr CChar |]
@@ -505,7 +507,7 @@ bsLenAntiQuoter = AntiQuoter
       hId <- C.parseIdentifier
       let cId = mangleHaskellIdentifier hId
       return (cId, C.TypeSpecifier mempty (C.Long C.Signed), hId)
-  , aqMarshaller = \_purity _cTypes cTy cId -> do
+  , aqMarshaller = \_purity _cTypes cTy cId ->
       case cTy of
         C.TypeSpecifier _ (C.Long C.Signed) -> do
           hsExp <- getHsVariable "bsCtx" cId
@@ -513,7 +515,7 @@ bsLenAntiQuoter = AntiQuoter
           hsTy <- [t| CLong |]
           hsExp'' <- [| \cont -> cont $(return hsExp') |]
           return (hsTy, hsExp'')
-        _ -> do
+        _ ->
           fail "impossible: got type different from `long' (bsCtx)"
   }
 
@@ -523,7 +525,7 @@ bsCStrAntiQuoter = AntiQuoter
       hId <- C.parseIdentifier
       let cId = mangleHaskellIdentifier hId
       return (cId, C.Ptr [] (C.TypeSpecifier mempty (C.Char Nothing)), hId)
-  , aqMarshaller = \_purity _cTypes cTy cId -> do
+  , aqMarshaller = \_purity _cTypes cTy cId ->
       case cTy of
         C.Ptr _ (C.TypeSpecifier _ (C.Char Nothing)) -> do
           hsTy <- [t| Ptr CChar |]
@@ -553,7 +555,7 @@ cDeclAqParser = do
 deHaskellifyCType
   :: C.CParser HaskellIdentifier m
   => C.Type HaskellIdentifier -> m (C.Type C.CIdentifier)
-deHaskellifyCType = traverse $ \hId -> do
+deHaskellifyCType = traverse $ \hId ->
   case C.cIdentifierFromString (unHaskellIdentifier hId) of
     Left err -> fail $ "Illegal Haskell identifier " ++ unHaskellIdentifier hId ++
                        " in C type:\n" ++ err

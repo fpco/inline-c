@@ -21,7 +21,7 @@ import           Control.Monad (when, msum, void)
 import           Data.Char (ord)
 import qualified Data.HashSet as HashSet
 import           Data.Hashable (Hashable)
-import           Data.List (intercalate, partition, intersperse)
+import           Data.List (intercalate, partition)
 import           Data.Monoid ((<>))
 import           Data.String (IsString(..))
 import           Data.Typeable (Typeable)
@@ -135,7 +135,7 @@ mangleHaskellIdentifier (HaskellIdentifier hs) =
   where
     (valid, invalid) = partition (`elem` C.cIdentLetter) hs
 
-    mangled = concat $ intersperse "_" $ map (`showHex` "") $ map ord invalid
+    mangled = intercalate "_" $ map ((`showHex` "") . ord) invalid
 
 -- Utils
 ------------------------------------------------------------------------
@@ -146,4 +146,3 @@ identNoLex s = fmap fromString $ try $ do
           ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
   when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
   return name
-
