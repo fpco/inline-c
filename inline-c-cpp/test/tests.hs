@@ -15,7 +15,7 @@ C.include "<stdexcept>"
 
 main :: IO ()
 main = Hspec.hspec $ do
-  Hspec.describe "Basic C++" $
+  Hspec.describe "Basic C++" $ do
     Hspec.it "Hello World" $ do
       let x = 3
       [C.block| void {
@@ -128,3 +128,5 @@ main = Hspec.hspec $ do
         |]
 
       result `Hspec.shouldBe` Right 0xDEADBEEF
+
+{- HLINT ignore main "Redundant do" -}

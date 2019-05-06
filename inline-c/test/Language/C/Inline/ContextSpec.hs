@@ -26,52 +26,52 @@ import           Language.C.Inline.Context
 
 spec :: Hspec.SpecWith ()
 spec = do
-  Hspec.it "converts simple type correctly (1)" $
+  Hspec.it "converts simple type correctly (1)" $ do
     shouldBeType (cty "int") [t| CInt |]
-  Hspec.it "converts simple type correctly (2)" $
+  Hspec.it "converts simple type correctly (2)" $ do
     shouldBeType (cty "char") [t| CChar |]
-  Hspec.it "converts void" $
+  Hspec.it "converts void" $ do
     shouldBeType (cty "void") [t| () |]
-  Hspec.it "converts standard library types (1)" $
+  Hspec.it "converts standard library types (1)" $ do
     shouldBeType (cty "FILE") [t| CFile |]
-  Hspec.it "converts standard library types (2)" $
+  Hspec.it "converts standard library types (2)" $ do
     shouldBeType (cty "uint16_t") [t| Word16 |]
-  Hspec.it "converts standard library types (3)" $
+  Hspec.it "converts standard library types (3)" $ do
     shouldBeType (cty "jmp_buf") [t| CJmpBuf |]
-  Hspec.it "converts single ptr type" $
+  Hspec.it "converts single ptr type" $ do
     shouldBeType (cty "long*") [t| Ptr CLong |]
-  Hspec.it "converts double ptr type" $
+  Hspec.it "converts double ptr type" $ do
     shouldBeType (cty "unsigned long**") [t| Ptr (Ptr CULong) |]
-  Hspec.it "converts arrays" $
+  Hspec.it "converts arrays" $ do
     shouldBeType (cty "double[]") [t| CArray CDouble |]
-  Hspec.it "converts named things" $
+  Hspec.it "converts named things" $ do
     shouldBeType (cty "unsigned int foo[]") [t| CArray CUInt |]
-  Hspec.it "converts arrays of pointers" $
+  Hspec.it "converts arrays of pointers" $ do
     shouldBeType
       (cty "unsigned short *foo[]") [t| CArray (Ptr CUShort) |]
-  Hspec.it "ignores qualifiers" $
+  Hspec.it "ignores qualifiers" $ do
     shouldBeType (cty "const short*") [t| Ptr CShort |]
-  Hspec.it "ignores storage information" $
+  Hspec.it "ignores storage information" $ do
     shouldBeType (cty "extern unsigned long") [t| CULong |]
-  Hspec.it "converts sized arrays" $
+  Hspec.it "converts sized arrays" $ do
     shouldBeType (cty "float[4]") [t| CArray CFloat |]
-  Hspec.it "converts variably sized arrays" $
+  Hspec.it "converts variably sized arrays" $ do
     shouldBeType (cty "float[*]") [t| CArray CFloat |]
-  Hspec.it "converts function pointers" $
+  Hspec.it "converts function pointers" $ do
     shouldBeType
       (cty "int (*f)(unsigned char, float)")
       [t| FunPtr (CUChar -> CFloat -> IO CInt) |]
-  Hspec.it "converts complicated function pointers (1)" $
+  Hspec.it "converts complicated function pointers (1)" $ do
     -- pointer to function returning pointer to function returning int
     shouldBeType
       (cty "int (*(*)())()") [t| FunPtr (IO (FunPtr (IO CInt))) |]
-  Hspec.it "converts complicated function pointerst (2)" $
+  Hspec.it "converts complicated function pointerst (2)" $ do
     -- foo is an array of pointer to pointer to function returning
     -- pointer to array of pointer to char
     shouldBeType
       (cty "char *(*(**foo [])())[]")
       [t| CArray (Ptr (FunPtr (IO (Ptr (CArray (Ptr CChar)))))) |]
-  Hspec.it "converts complicated function pointers (3)" $
+  Hspec.it "converts complicated function pointers (3)" $ do
     -- foo is an array of pointer to pointer to function taking int
     -- returning pointer to array of pointer to char
     shouldBeType
@@ -97,3 +97,5 @@ spec = do
     cty s = C.parameterDeclarationType $ assertParse C.parseParameterDeclaration s
 
     baseTypes = ctxTypesTable baseCtx
+
+{- HLINT ignore spec "Redundant do" -}
