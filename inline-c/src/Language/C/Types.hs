@@ -3,10 +3,10 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -59,6 +59,8 @@ module Language.C.Types
   , describeParameterDeclaration
   , describeType
   ) where
+
+{- HLINT ignore "Use fewer imports" -}
 
 import           Control.Arrow (second)
 import           Control.Monad (when, unless, forM_)
@@ -117,7 +119,9 @@ instance Semigroup Specifiers where
 instance Monoid Specifiers where
   mempty = Specifiers [] [] []
 
-#if !MIN_VERSION_base(4,11,0)
+#if MIN_VERSION_base(4,9,0)
+  mappend = (<>)
+#else
   mappend (Specifiers x1 y1 z1) (Specifiers x2 y2 z2) =
     Specifiers (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
 #endif
@@ -136,7 +140,7 @@ data Sign
 
 data ParameterDeclaration i = ParameterDeclaration
   { parameterDeclarationId :: Maybe i
-  , parameterDeclarationType :: (Type i)
+  , parameterDeclarationType :: Type i
   } deriving (Typeable, Show, Eq, Functor, Foldable, Traversable)
 
 ------------------------------------------------------------------------
@@ -167,15 +171,15 @@ untangleParameterDeclaration P.ParameterDeclaration{..} = do
 untangleDeclarationSpecifiers
   :: [P.DeclarationSpecifier] -> Either UntangleErr (Specifiers, TypeSpecifier)
 untangleDeclarationSpecifiers declSpecs = do
-  let (pStorage, pTySpecs, pTyQuals, pFunSpecs) = flip execState ([], [], [], []) $ do
-        forM_ (reverse declSpecs) $ \declSpec -> case declSpec of
+  let (pStorage, pTySpecs, pTyQuals, pFunSpecs) = flip execState ([], [], [], []) $
+        forM_ (reverse declSpecs) $ \case
           P.StorageClassSpecifier x -> modify $ \(a, b, c, d) -> (x:a, b, c, d)
           P.TypeSpecifier x -> modify $ \(a, b, c, d) -> (a, x:b, c, d)
           P.TypeQualifier x -> modify $ \(a, b, c, d) -> (a, b, x:c, d)
           P.FunctionSpecifier x -> modify $ \(a, b, c, d) -> (a, b, c, x:d)
   -- Split data type and specifiers
   let (dataTypes, specs) =
-        partition (\x -> not (x `elem` [P.SIGNED, P.UNSIGNED, P.LONG, P.SHORT])) pTySpecs
+        partition (`notElem` [P.SIGNED, P.UNSIGNED, P.LONG, P.SHORT]) pTySpecs
   let illegalSpecifiers s = failConversion $ IllegalSpecifiers s specs
   -- Find out sign, if present
   mbSign0 <- case filter (== P.SIGNED) specs of
@@ -219,26 +223,26 @@ untangleDeclarationSpecifiers declSpecs = do
     P.CHAR -> do
       checkNoLength
       return $ Char mbSign
-    P.INT | longs == 0 && shorts == 0 -> do
+    P.INT | longs == 0 && shorts == 0 ->
       return $ Int sign
-    P.INT | longs == 1 -> do
+    P.INT | longs == 1 ->
       return $ Long sign
-    P.INT | longs == 2 -> do
+    P.INT | longs == 2 ->
       return $ LLong sign
-    P.INT | shorts == 1 -> do
+    P.INT | shorts == 1 ->
       return $ Short sign
-    P.INT -> do
+    P.INT ->
       illegalSpecifiers "too many long/short"
     P.FLOAT -> do
       checkNoLength
       return Float
-    P.DOUBLE -> do
+    P.DOUBLE ->
       if longs == 1
         then return LDouble
         else do
           checkNoLength
           return Double
-    _ -> do
+    _ ->
       error $ "untangleDeclarationSpecifiers impossible: " ++ show dataType
   return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
 

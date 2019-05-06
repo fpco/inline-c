@@ -16,12 +16,14 @@ module Language.C.Inline.HaskellIdentifier
   , haskellReservedWords
   ) where
 
+{- HLINT ignore "Use fewer imports" -}
+
 import           Control.Applicative ((<|>))
 import           Control.Monad (when, msum, void)
 import           Data.Char (ord)
 import qualified Data.HashSet as HashSet
 import           Data.Hashable (Hashable)
-import           Data.List (intercalate, partition, intersperse)
+import           Data.List (intercalate, partition)
 import           Data.Monoid ((<>))
 import           Data.String (IsString(..))
 import           Data.Typeable (Typeable)
@@ -94,9 +96,8 @@ haskellReservedWords = C.cReservedWords <> HashSet.fromList
 -- | See
 -- <https://www.haskell.org/onlinereport/haskell2010/haskellch2.html#x7-160002.2>.
 parseHaskellIdentifier :: forall i m. C.CParser i m => m HaskellIdentifier
-parseHaskellIdentifier = do
-  segments <- go
-  return $ HaskellIdentifier $ intercalate "." segments
+parseHaskellIdentifier =
+  HaskellIdentifier . intercalate "." <$> go
   where
     small = lower <|> char '_'
     large = upper
@@ -135,7 +136,7 @@ mangleHaskellIdentifier (HaskellIdentifier hs) =
   where
     (valid, invalid) = partition (`elem` C.cIdentLetter) hs
 
-    mangled = concat $ intersperse "_" $ map (`showHex` "") $ map ord invalid
+    mangled = intercalate "_" $ map ((`showHex` "") . ord) invalid
 
 -- Utils
 ------------------------------------------------------------------------
@@ -146,4 +147,3 @@ identNoLex s = fmap fromString $ try $ do
           ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
   when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
   return name
-

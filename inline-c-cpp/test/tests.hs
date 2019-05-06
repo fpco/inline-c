@@ -3,7 +3,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Exception.Safe
-import           Control.Monad
 import qualified Language.C.Inline.Cpp as C
 import qualified Language.C.Inline.Cpp.Exceptions as C
 import qualified Test.Hspec as Hspec
@@ -129,3 +128,5 @@ main = Hspec.hspec $ do
         |]
 
       result `Hspec.shouldBe` Right 0xDEADBEEF
+
+{- HLINT ignore main "Redundant do" -}

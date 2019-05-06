@@ -186,7 +186,7 @@ runCParser
   -- ^ Source name.
   -> s
   -- ^ String to parse.
-  -> (ReaderT (CParserContext i) (Parsec.Parsec s ()) a)
+  -> ReaderT (CParserContext i) (Parsec.Parsec s ()) a
   -- ^ Parser.  Anything with type @forall m. CParser i m => m a@ is a
   -- valid argument.
   -> Either Parsec.ParseError a
@@ -198,7 +198,7 @@ quickCParser
   :: CParserContext i
   -> String
   -- ^ String to parse.
-  -> (ReaderT (CParserContext i) (Parsec.Parsec String ()) a)
+  -> ReaderT (CParserContext i) (Parsec.Parsec String ()) a
   -- ^ Parser.  Anything with type @forall m. CParser i m => m a@ is a
   -- valid argument.
   -> a
@@ -211,7 +211,7 @@ quickCParser typeNames s p = case runCParser typeNames "quickCParser" s p of
 quickCParser_
   :: String
   -- ^ String to parse.
-  -> (ReaderT (CParserContext CIdentifier) (Parsec.Parsec String ()) a)
+  -> ReaderT (CParserContext CIdentifier) (Parsec.Parsec String ()) a
   -- ^ Parser.  Anything with type @forall m. CParser i m => m a@ is a
   -- valid argument.
   -> a
@@ -231,11 +231,13 @@ cReservedWords = HashSet.fromList
 
 cIdentStart :: [Char]
 cIdentStart = ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
+{- HLINT ignore cIdentStart "Use String" -}
 
 cIdentLetter :: [Char]
 cIdentLetter = ['a'..'z'] ++ ['A'..'Z'] ++ ['_'] ++ ['0'..'9']
+{- HLINT ignore cIdentLetter "Use String" -}
 
-cIdentStyle :: (TokenParsing m, Monad m) => IdentifierStyle m
+cIdentStyle :: TokenParsing m => IdentifierStyle m
 cIdentStyle = IdentifierStyle
   { _styleName = "C identifier"
   , _styleStart = oneOf cIdentStart
@@ -376,7 +378,7 @@ function_specifier = msum
 
 data Declarator i = Declarator
   { declaratorPointers :: [Pointer]
-  , declaratorDirect :: (DirectDeclarator i)
+  , declaratorDirect :: DirectDeclarator i
   } deriving (Typeable, Eq, Show, Functor, Foldable, Traversable)
 
 declarator :: CParser i m => m (Declarator i)
@@ -424,7 +426,7 @@ direct_declarator = do
   aops <- many array_or_proto
   return $ foldl ArrayOrProto ddecltor aops
 
-data Pointer
+newtype Pointer
   = Pointer [TypeQualifier]
   deriving (Typeable, Eq, Show)
 
@@ -539,8 +541,7 @@ instance Pretty i => Pretty (Declarator i) where
     _:_ -> prettyPointers ptrs <+> pretty ddecltor
 
 prettyPointers :: [Pointer] -> Doc
-prettyPointers [] = ""
-prettyPointers (x : xs) = pretty x <> prettyPointers xs
+prettyPointers = foldr ((<>) . pretty) ""
 
 instance Pretty Pointer where
   pretty (Pointer tyQual) = "*" <> hsep (map pretty tyQual)

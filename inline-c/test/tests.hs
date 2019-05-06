@@ -205,10 +205,10 @@ main = Hspec.hspec $ do
       bits `Hspec.shouldBe` 16
     Hspec.it "Haskell identifiers" $ do
       let x' = 3
-      void $ [C.exp| int { $(int x') } |]
+      void [C.exp| int { $(int x') } |]
       let ä = 3
-      void $ [C.exp| int { $(int ä) } |]
-      void $ [C.exp| int { $(int Prelude.maxBound) } |]
+      void [C.exp| int { $(int ä) } |]
+      void [C.exp| int { $(int Prelude.maxBound) } |]
     Hspec.it "Function pointers" $ do
       alloca $ \x_ptr -> do
         poke x_ptr 7
@@ -216,3 +216,5 @@ main = Hspec.hspec $ do
         [C.exp| void { $(void (*fp)(int *))($(int *x_ptr)) } |]
         x <- peek x_ptr
         x `Hspec.shouldBe` 42
+
+{- HLINT ignore main "Redundant do" -}

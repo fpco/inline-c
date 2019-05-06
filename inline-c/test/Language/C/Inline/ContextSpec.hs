@@ -81,7 +81,7 @@ spec = do
     goodConvert cTy = do
       mbHsTy <- TH.runQ $ convertType IO baseTypes cTy
       case mbHsTy of
-        Nothing   -> error $ "Could not convert type (goodConvert)"
+        Nothing   -> error "Could not convert type (goodConvert)"
         Just hsTy -> return hsTy
 
     shouldBeType cTy hsTy = do
@@ -97,3 +97,5 @@ spec = do
     cty s = C.parameterDeclarationType $ assertParse C.parseParameterDeclaration s
 
     baseTypes = ctxTypesTable baseCtx
+
+{- HLINT ignore spec "Redundant do" -}

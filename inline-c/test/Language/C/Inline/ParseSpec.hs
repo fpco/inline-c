@@ -5,7 +5,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Language.C.Inline.ParseSpec (spec) where
 
@@ -36,7 +35,7 @@ spec = do
       (retType, params, cExp) <- goodParse [r|
           int { (int) ceil($(double x) + ((double) $(float y))) }
         |]
-      retType `Hspec.shouldBe` (cty "int")
+      retType `Hspec.shouldBe` cty "int"
       params `shouldMatchParameters` [(cty "double", Plain "x"), (cty "float", Plain "y")]
       cExp `shouldMatchBody` " (int) ceil(x[a-z0-9_]+ \\+ ((double) y[a-z0-9_]+)) "
     Hspec.it "accepts anti quotes" $ do
@@ -50,22 +49,22 @@ spec = do
     Hspec.it "parses returning function pointers" $ do
       (retType, params, cExp) <-
         goodParse [r| double (*)(double) { &cos } |]
-      retType `Hspec.shouldBe` (cty "double (*)(double)")
+      retType `Hspec.shouldBe` cty "double (*)(double)"
       params `shouldMatchParameters` []
       cExp `shouldMatchBody` " &cos "
     Hspec.it "parses Haskell identifier (1)" $ do
       (retType, params, cExp) <- goodParse [r| double { $(double x') } |]
-      retType `Hspec.shouldBe` (cty "double")
+      retType `Hspec.shouldBe` cty "double"
       params `shouldMatchParameters` [(cty "double", Plain "x'")]
       cExp `shouldMatchBody` " x[a-z0-9_]+ "
     Hspec.it "parses Haskell identifier (2)" $ do
       (retType, params, cExp) <- goodParse [r| double { $(double ä') } |]
-      retType `Hspec.shouldBe` (cty "double")
+      retType `Hspec.shouldBe` cty "double"
       params `shouldMatchParameters` [(cty "double", Plain "ä'")]
       cExp `shouldMatchBody` " [a-z0-9_]+ "
     Hspec.it "parses Haskell identifier (3)" $ do
       (retType, params, cExp) <- goodParse [r| int { $(int Foo.bar) } |]
-      retType `Hspec.shouldBe` (cty "int")
+      retType `Hspec.shouldBe` cty "int"
       params `shouldMatchParameters` [(cty "int", Plain "Foo.bar")]
       cExp `shouldMatchBody` " Foobar[a-z0-9_]+ "
     Hspec.it "does not parse Haskell identifier in bad position" $ do
@@ -110,3 +109,5 @@ spec = do
             ')' -> "\\)"
             ch -> [ch]
       (x =~ concatMap f y) `Hspec.shouldBe` True
+
+{- HLINT ignore spec "Redundant do" -}

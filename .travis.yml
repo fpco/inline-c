@@ -13,11 +13,8 @@ addons:
     - libcairo2-dev
 
 env:
-- ARGS="--flag inline-c:gsl-example"
-- ARGS="--stack-yaml stack-lts-12.14.yaml --flag inline-c:gsl-example"
-# gtk2hs-buildtools is not present in nightly a bit of a pain to install,
-# skip it for now
-- ARGS="--stack-yaml stack-nightly-2018-10-24.yaml"
+- STACK="stack --no-terminal --install-ghc"
+  STACK_TEST="$STACK test --haddock"
 
 before_install:
 # Download and unpack the stack executable
@@ -28,7 +25,21 @@ before_install:
 # This line does all of the work: installs GHC if necessary, build the library,
 # executables, and test suites, and runs the test suites. --no-terminal works
 # around some quirks in Travis's terminal implementation.
-script: stack --no-terminal --install-ghc test --haddock $ARGS
+matrix:
+  include:
+    - name: test +gsl
+      script: $STACK_TEST --flag inline-c:gsl-example
+    - name: test +gsl lts-12.14
+      script:
+        $STACK_TEST
+          --stack-yaml stack-lts-12.14.yaml --flag inline-c:gsl-example
+    - name: test nightly
+      # gtk2hs-buildtools is not present in nightly a bit of a pain to install,
+      # skip it for now
+      script: $STACK_TEST --stack-yaml stack-nightly-2018-10-24.yaml
+    - name: HLint
+      # 2.1.11 inroduced {- HLINT -} pragmas, use it until lts-12.22
+      script: $STACK build hlint-2.1.11 --exec 'hlint .'
 
 # Caching so the next build will be fast too.
 cache:

@@ -70,7 +70,7 @@ handleForeignCatch cont =
 -- them in an 'Either'
 throwBlock :: QuasiQuoter
 throwBlock = QuasiQuoter
-  { quoteExp = \blockStr -> do
+  { quoteExp = \blockStr ->
       [e| either throwIO return =<< $(tryBlockQuoteExp blockStr) |]
   , quotePat = unsupported
   , quoteType = unsupported
@@ -87,7 +87,7 @@ catchBlock = QuasiQuoter
   , quoteDec = unsupported
   } where
       unsupported _ = fail "Unsupported quasiquotation."
-      
+
 
 tryBlockQuoteExp :: String -> Q Exp
 tryBlockQuoteExp blockStr = do
@@ -147,7 +147,7 @@ tryBlockQuoteExp blockStr = do
         , "}"
         ]
   [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) -> $(quoteExp C.block inlineCStr) |]
- 
+
 -- | Similar to `C.block`, but C++ exceptions will be caught and the result is (Either CppException value). The return type must be void or constructible with @{}@.
 -- Using this will automatically include @exception@, @cstring@ and @cstdlib@.
 tryBlock :: QuasiQuoter

@@ -1,10 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -315,7 +312,7 @@ verbatim s = do
 -- | Like 'alloca', but also peeks the contents of the 'Ptr' and returns
 -- them once the provided action has finished.
 withPtr :: (Storable a) => (Ptr a -> IO b) -> IO (a, b)
-withPtr f = do
+withPtr f =
   alloca $ \ptr -> do
     x <- f ptr
     y <- peek ptr
