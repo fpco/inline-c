@@ -33,12 +33,13 @@ matrix:
       script:
         $STACK_TEST
           --stack-yaml stack-lts-12.14.yaml --flag inline-c:gsl-example
-    # gtk2hs-buildtools is not present in nightly a bit of a pain to install,
-    # skip it for now
     - name: test nightly
+      # gtk2hs-buildtools is not present in nightly a bit of a pain to install,
+      # skip it for now
       script: $STACK_TEST --stack-yaml stack-nightly-2018-10-24.yaml
     - name: HLint
-      script: $STACK --resolver=lts-12.14 build hlint --exec -- hlint .
+      # 2.1.11 inroduced {- HLINT -} pragmas, use it until lts-12.22
+      script: $STACK build hlint-2.1.11 --exec 'hlint .'
 
 # Caching so the next build will be fast too.
 cache:
