@@ -42,6 +42,9 @@ module Language.C.Inline.Context
   , bsCtx
   ) where
 
+{- HLINT ignore "Use fewer imports" -}
+{- HLINT ignore "Reduce duplication" -}
+
 import           Control.Applicative ((<|>))
 import           Control.Monad (mzero)
 import           Control.Monad.Trans.Class (lift)

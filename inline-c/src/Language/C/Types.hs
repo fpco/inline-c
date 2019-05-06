@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -58,6 +59,8 @@ module Language.C.Types
   , describeParameterDeclaration
   , describeType
   ) where
+
+{- HLINT ignore "Use fewer imports" -}
 
 import           Control.Arrow (second)
 import           Control.Monad (when, unless, forM_)
@@ -169,7 +172,7 @@ untangleDeclarationSpecifiers
   :: [P.DeclarationSpecifier] -> Either UntangleErr (Specifiers, TypeSpecifier)
 untangleDeclarationSpecifiers declSpecs = do
   let (pStorage, pTySpecs, pTyQuals, pFunSpecs) = flip execState ([], [], [], []) $
-        forM_ (reverse declSpecs) $ \declSpec -> case declSpec of
+        forM_ (reverse declSpecs) $ \case
           P.StorageClassSpecifier x -> modify $ \(a, b, c, d) -> (x:a, b, c, d)
           P.TypeSpecifier x -> modify $ \(a, b, c, d) -> (a, x:b, c, d)
           P.TypeQualifier x -> modify $ \(a, b, c, d) -> (a, b, x:c, d)

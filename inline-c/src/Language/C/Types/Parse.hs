@@ -231,9 +231,11 @@ cReservedWords = HashSet.fromList
 
 cIdentStart :: [Char]
 cIdentStart = ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
+{- HLINT ignore cIdentStart "Use String" -}
 
 cIdentLetter :: [Char]
 cIdentLetter = ['a'..'z'] ++ ['A'..'Z'] ++ ['_'] ++ ['0'..'9']
+{- HLINT ignore cIdentLetter "Use String" -}
 
 cIdentStyle :: TokenParsing m => IdentifierStyle m
 cIdentStyle = IdentifierStyle

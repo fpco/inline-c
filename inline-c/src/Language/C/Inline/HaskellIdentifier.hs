@@ -16,6 +16,8 @@ module Language.C.Inline.HaskellIdentifier
   , haskellReservedWords
   ) where
 
+{- HLINT ignore "Use fewer imports" -}
+
 import           Control.Applicative ((<|>))
 import           Control.Monad (when, msum, void)
 import           Data.Char (ord)
@@ -94,9 +96,8 @@ haskellReservedWords = C.cReservedWords <> HashSet.fromList
 -- | See
 -- <https://www.haskell.org/onlinereport/haskell2010/haskellch2.html#x7-160002.2>.
 parseHaskellIdentifier :: forall i m. C.CParser i m => m HaskellIdentifier
-parseHaskellIdentifier = do
-  segments <- go
-  return $ HaskellIdentifier $ intercalate "." segments
+parseHaskellIdentifier =
+  HaskellIdentifier . intercalate "." <$> go
   where
     small = lower <|> char '_'
     large = upper

@@ -199,7 +199,7 @@ setContext ctx = do
   void $ initialiseModuleState $ Just ctx
 
 bumpGeneratedNames :: TH.Q Int
-bumpGeneratedNames = do
+bumpGeneratedNames =
   modifyModuleState $ \ms ->
     let c' = msGeneratedNames ms
     in (ms{msGeneratedNames = c' + 1}, c')
@@ -406,10 +406,10 @@ runParserInQ s ctx p = do
   let parsecLoc = Parsec.newPos (TH.loc_filename loc) line col
   let p' = lift (Parsec.setPosition parsecLoc) *> p <* lift Parser.eof
   case C.runCParser ctx (TH.loc_filename loc) s p' of
-    Left err -> do
+    Left err ->
       -- TODO consider prefixing with "error while parsing C" or similar
       fail $ show err
-    Right res -> do
+    Right res ->
       return res
 
 data SomeEq = forall a. (Typeable a, Eq a) => SomeEq a
@@ -423,7 +423,7 @@ instance Show SomeEq where
   show _ = "<<SomeEq>>"
 
 toSomeEq :: (Eq a, Typeable a) => a -> SomeEq
-toSomeEq x = SomeEq x
+toSomeEq = SomeEq
 
 fromSomeEq :: Typeable a => SomeEq -> Maybe a
 fromSomeEq (SomeEq x) = cast x
@@ -481,7 +481,6 @@ parseTypedC antiQs = do
              return (decls1 ++ decls2, s1 ++ s2)
         ]
       return (decls, s ++ s')
-      where
 
     parseAntiQuote
       :: StateT Int m ([(C.CIdentifier, C.Type C.CIdentifier, ParameterType)], String)
@@ -557,14 +556,14 @@ genericQuote purity build = quoteCode $ \s -> do
         (haskellCParserContext (typeNamesFromTypesTable (ctxTypesTable ctx)))
         (parseTypedC (ctxAntiQuoters ctx))
     hsType <- cToHs ctx cType
-    hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
+    hsParams <- forM cParams $ \(_cId, cTy, parTy) ->
       case parTy of
         Plain s' -> do
           hsTy <- cToHs ctx cTy
           let hsName = TH.mkName (unHaskellIdentifier s')
           hsExp <- [| \cont -> cont ($(TH.varE hsName) :: $(return hsTy)) |]
           return (hsTy, hsExp)
-        AntiQuote antiId dyn -> do
+        AntiQuote antiId dyn ->
           case Map.lookup antiId (ctxAntiQuoters ctx) of
             Nothing ->
               fail $ "IMPOSSIBLE: could not find anti-quoter " ++ show antiId ++
@@ -599,13 +598,9 @@ genericQuote purity build = quoteCode $ \s -> do
        |]
 
     convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
-    convertCFunSig retType params0 = do
-      go params0
-      where
-        go [] =
-          [t| IO $(return retType) |]
-        go (paramType : params) = do
-          [t| $(return paramType) -> $(go params) |]
+    convertCFunSig retType = go where
+      go []                   = [t| IO $(return retType) |]
+      go (paramType : params) = [t| $(return paramType) -> $(go params) |]
 
 splitTypedC :: String -> (String, String)
   -- ^ Returns the type and the body separately
@@ -640,13 +635,9 @@ funPtrQuote callSafety = quoteCode $ \code -> do
         Just hsTy -> return hsTy
 
     convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
-    convertCFunSig retType params0 = do
-      go params0
-      where
-        go [] =
-          [t| IO $(return retType) |]
-        go (paramType : params) = do
-          [t| $(return paramType) -> $(go params) |]
+    convertCFunSig retType = go where
+      go []                   = [t| IO $(return retType) |]
+      go (paramType : params) = [t| $(return paramType) -> $(go params) |]
 
     parse :: C.CParser C.CIdentifier m => m FunPtrDecl
     parse = do
@@ -669,7 +660,7 @@ funPtrQuote callSafety = quoteCode $ \code -> do
             , funPtrBody = body
             , funPtrName = fmap C.unCIdentifier mbName
             }
-        _ -> fail $ "Expecting function declaration"
+        _ -> fail "Expecting function declaration"
 
     parseBody :: C.CParser C.CIdentifier m => m String
     parseBody = do

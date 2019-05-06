@@ -104,7 +104,7 @@ lorenz
   -> Double
   -- ^ End point
   -> Either String (V.Vector Double)
-lorenz x0 f0 xend = solveOde fun x0 f0 xend
+lorenz = solveOde fun
   where
     sigma = 10.0;
     _R = 28.0;
