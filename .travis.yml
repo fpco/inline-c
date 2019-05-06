@@ -38,8 +38,7 @@ matrix:
     - name: test nightly
       script: $STACK_TEST --stack-yaml stack-nightly-2018-10-24.yaml
     - name: HLint
-      install: $STACK --resolver=lts-12.14 build hlint
-      script: $STACK exec -- hlint .
+      script: $STACK --resolver=lts-12.14 build hlint --exec -- hlint .
 
 # Caching so the next build will be fast too.
 cache:
