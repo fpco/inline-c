@@ -74,7 +74,7 @@ main = Hspec.hspec $ do
             []
             [r| 1 + 4 |])
       x `Hspec.shouldBe` 1 + 4
-    Hspec.it "inlineCode" $
+    Hspec.it "inlineCode" $ do
       francescos_mul 3 4 `Hspec.shouldBe` 12
     Hspec.it "exp" $ do
       let x = 3
@@ -96,7 +96,7 @@ main = Hspec.hspec $ do
       let y = 10
       z <- [CI.exp| int{ 7 + $(int x) + $(int y) } |]
       z `Hspec.shouldBe` x + y + 7
-    Hspec.it "void exp"
+    Hspec.it "void exp" $ do
       [C.exp| void { printf("Hello\n") } |]
     Hspec.it "Foreign.C.Types library types" $ do
       let x = 1
@@ -209,10 +209,12 @@ main = Hspec.hspec $ do
       let ä = 3
       void [C.exp| int { $(int ä) } |]
       void [C.exp| int { $(int Prelude.maxBound) } |]
-    Hspec.it "Function pointers" $
+    Hspec.it "Function pointers" $ do
       alloca $ \x_ptr -> do
         poke x_ptr 7
         let fp = [C.funPtr| void poke42(int *ptr) { *ptr = 42; } |]
         [C.exp| void { $(void (*fp)(int *))($(int *x_ptr)) } |]
         x <- peek x_ptr
         x `Hspec.shouldBe` 42
+
+{- HLINT ignore main "Redundant do" -}

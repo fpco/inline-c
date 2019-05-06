@@ -29,7 +29,7 @@ import           Language.C.Inline.Internal
 import qualified Language.C.Types as C
 
 spec :: Hspec.SpecWith ()
-spec =
+spec = do
   Hspec.describe "parsing" $ do
     Hspec.it "parses simple C expression" $ do
       (retType, params, cExp) <- goodParse [r|
@@ -38,13 +38,13 @@ spec =
       retType `Hspec.shouldBe` cty "int"
       params `shouldMatchParameters` [(cty "double", Plain "x"), (cty "float", Plain "y")]
       cExp `shouldMatchBody` " (int) ceil(x[a-z0-9_]+ \\+ ((double) y[a-z0-9_]+)) "
-    Hspec.it "accepts anti quotes" $
+    Hspec.it "accepts anti quotes" $ do
       void $ goodParse [r| int { $(int x) } |]
-    Hspec.it "rejects if bad braces (1)" $
+    Hspec.it "rejects if bad braces (1)" $ do
       badParse [r| int x |]
-    Hspec.it "rejects if bad braces (2)" $
+    Hspec.it "rejects if bad braces (2)" $ do
       badParse [r| int { x |]
-    Hspec.it "parses function pointers" $
+    Hspec.it "parses function pointers" $ do
       void $ goodParse [r| int(int (*add)(int, int)) { add(3, 4) } |]
     Hspec.it "parses returning function pointers" $ do
       (retType, params, cExp) <-
@@ -67,7 +67,7 @@ spec =
       retType `Hspec.shouldBe` cty "int"
       params `shouldMatchParameters` [(cty "int", Plain "Foo.bar")]
       cExp `shouldMatchBody` " Foobar[a-z0-9_]+ "
-    Hspec.it "does not parse Haskell identifier in bad position" $
+    Hspec.it "does not parse Haskell identifier in bad position" $ do
       badParse [r| double (*)(double Foo.bar) { 3.0 } |]
   where
     ctx = baseCtx <> funCtx
@@ -109,3 +109,5 @@ spec =
             ')' -> "\\)"
             ch -> [ch]
       (x =~ concatMap f y) `Hspec.shouldBe` True
+
+{- HLINT ignore spec "Redundant do" -}
