@@ -20,14 +20,17 @@ source-repository head
 library
   exposed-modules:     Language.C.Inline.Cpp
                        Language.C.Inline.Cpp.Exceptions
-  ghc-options:         -Wall
   build-depends:       base >=4.7 && <5
                      , inline-c >= 0.6.1.0
                      , template-haskell
                      , safe-exceptions
   hs-source-dirs:      src
   default-language:    Haskell2010
-  cc-options:          -Wall -Werror
+  ghc-options:         -Wall -optc-std=c++11
+  if os(darwin)
+    -- avoid https://gitlab.haskell.org/ghc/ghc/issues/11829
+    ld-options:        -Wl,-keep_dwarf_unwind 
+    ghc-options:       -pgmc=clang++
 
 test-suite tests
   type:                exitcode-stdio-1.0
@@ -39,5 +42,9 @@ test-suite tests
                      , safe-exceptions
                      , hspec
   default-language:    Haskell2010
+  ghc-options:
+    -optc-std=c++11
+  if os(darwin)
+    ghc-options: -pgmc=clang++
   extra-libraries:     stdc++
-  cc-options:          -Wall -Werror
+  cc-options:          -Wall -Werror -std=c++11
