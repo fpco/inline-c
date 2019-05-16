@@ -1,5 +1,9 @@
-resolver: lts-11.22
+resolver: lts-13.19
 packages:
 - inline-c
 - inline-c-cpp
 - sample-cabal-project
+extra-deps:
+- Chart-cairo-1.9.1
+- cairo-0.13.6.0
+- gtk2hs-buildtools-0.13.5.0
