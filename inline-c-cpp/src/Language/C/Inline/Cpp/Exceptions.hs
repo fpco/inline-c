@@ -87,7 +87,50 @@ catchBlock = QuasiQuoter
   , quoteDec = unsupported
   } where
       unsupported _ = fail "Unsupported quasiquotation."
-      
+
+exceptionalValue :: String -> String
+exceptionalValue typeStr =
+  case typeStr of
+    "void" -> ""
+    "char" -> "0"
+    "short" -> "0"
+    "long" -> "0"
+    "int" -> "0"
+    "int8_t" -> "0"
+    "int16_t" -> "0"
+    "int32_t" -> "0"
+    "int64_t" -> "0"
+    "uint8_t" -> "0"
+    "uint16_t" -> "0"
+    "uint32_t" -> "0"
+    "uint64_t" -> "0"
+    "float" -> "0"
+    "double" -> "0"
+    "bool" -> "0"
+    "signed char" -> "0"
+    "signed short" -> "0"
+    "signed int" -> "0"
+    "signed long" -> "0"
+    "unsigned char" -> "0"
+    "unsigned short" -> "0"
+    "unsigned int" -> "0"
+    "unsigned long" -> "0"
+    "size_t" -> "0"
+    "wchar_t" -> "0"
+    "ptrdiff_t" -> "0"
+    "sig_atomic_t" -> "0"
+    "intptr_t" -> "0"
+    "uintptr_t" -> "0"
+    "intmax_t" -> "0"
+    "uintmax_t" -> "0"
+    "clock_t" -> "0"
+    "time_t" -> "0"
+    "useconds_t" -> "0"
+    "suseconds_t" -> "0"
+    "FILE" -> "0"
+    "fpos_t" -> "0"
+    "jmp_buf" -> "0"
+    _ -> "{}"
 
 tryBlockQuoteExp :: String -> Q Exp
 tryBlockQuoteExp blockStr = do
@@ -130,7 +173,7 @@ tryBlockQuoteExp blockStr = do
         , "    size_t message_len = message.size() + 1;"
         , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(message_len));"
         , "    std::memcpy(*__inline_c_cpp_error_message__, message.c_str(), message_len);"
-        , if ty == "void" then "return;" else "return {};"
+        , "    return " ++ exceptionalValue ty ++ ";"
         , "  } catch (...) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeOtherException ++ ";"
         , "#if defined(__GNUC__) || defined(__clang__)"
@@ -142,7 +185,7 @@ tryBlockQuoteExp blockStr = do
         , "#else"
         , "    *__inline_c_cpp_error_message__ = NULL;"
         , "#endif"
-        , if ty == "void" then "return;" else "return {};"
+        , "    return " ++ exceptionalValue ty ++ ";"
         , "  }"
         , "}"
         ]
