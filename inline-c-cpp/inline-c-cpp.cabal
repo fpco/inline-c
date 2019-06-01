@@ -48,3 +48,5 @@ test-suite tests
     ghc-options: -pgmc=clang++
   extra-libraries:     stdc++
   cc-options:          -Wall -Werror -optc-xc++ -std=c++11
+  if os(darwin)
+    ld-options: -Wl,-keep_dwarf_unwind
