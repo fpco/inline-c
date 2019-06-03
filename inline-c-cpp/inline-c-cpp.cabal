@@ -6,8 +6,8 @@ description:         Utilities to inline C++ code into Haskell using inline-c.  
 license:             MIT
 license-file:        LICENSE
 author:              Francesco Mazzoli
-maintainer:          francesco@fpcomplete.com
-copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2018 Francesco Mazzoli
+maintainer:          f@mazzo.li
+copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2019 Francesco Mazzoli
 category:            FFI
 tested-with:         GHC == 8.2.2, GHC == 8.4.3, GHC == 8.6.1
 build-type:          Simple

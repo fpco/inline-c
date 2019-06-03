@@ -5,8 +5,8 @@ description:         See <https://github.com/fpco/inline-c/blob/master/README.md
 license:             MIT
 license-file:        LICENSE
 author:              Francesco Mazzoli, Mathieu Boespflug
-maintainer:          francesco@fpcomplete.com
-copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2018 Francesco Mazzoli
+maintainer:          f@mazzo.li
+copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2019 Francesco Mazzoli
 category:            FFI
 tested-with:         GHC == 8.2.2, GHC == 8.4.3, GHC == 8.6.1
 build-type:          Simple
