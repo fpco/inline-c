@@ -50,6 +50,7 @@ main = Hspec.hspec $ do
     Hspec.it "inlineCode" $ do
       let c_add = $(C.inlineCode $ C.Code
             TH.Unsafe                   -- Call safety
+            Nothing
             [t| Int -> Int -> Int |]    -- Call type
             "francescos_add"            -- Call name
             -- C Code
@@ -57,22 +58,28 @@ main = Hspec.hspec $ do
             False) -- not a function pointer
       c_add 3 4 `Hspec.shouldBe` 7
     Hspec.it "inlineItems" $ do
-      let c_add3 = $(C.inlineItems
-            TH.Unsafe
-            False                       -- not a function pointer
-            Nothing                     -- no postfix
-            [t| CInt -> CInt |]
-            (C.quickCParser_ "int" C.parseType)
-            [("x", C.quickCParser_ "int" C.parseType)]
-            [r| return x + 3; |])
+      let c_add3 = $(do
+            here <- TH.location
+            C.inlineItems
+              TH.Unsafe
+              False                       -- not a function pointer
+              Nothing                     -- no postfix
+              here
+              [t| CInt -> CInt |]
+              (C.quickCParser_ "int" C.parseType)
+              [("x", C.quickCParser_ "int" C.parseType)]
+              [r| return x + 3; |])
       c_add3 1 `Hspec.shouldBe` 1 + 3
     Hspec.it "inlineExp" $ do
-      let x = $(C.inlineExp
-            TH.Safe
-            [t| CInt |]
-            (C.quickCParser_ "int" C.parseType)
-            []
-            [r| 1 + 4 |])
+      let x = $(do
+            here <- TH.location
+            C.inlineExp
+              TH.Safe
+              here
+              [t| CInt |]
+              (C.quickCParser_ "int" C.parseType)
+              []
+              [r| 1 + 4 |])
       x `Hspec.shouldBe` 1 + 4
     Hspec.it "inlineCode" $ do
       francescos_mul 3 4 `Hspec.shouldBe` 12
