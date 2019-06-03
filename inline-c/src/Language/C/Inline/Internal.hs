@@ -239,6 +239,8 @@ emitVerbatim s = do
 data Code = Code
   { codeCallSafety :: TH.Safety
     -- ^ Safety of the foreign call.
+  , codeLoc :: Maybe TH.Loc
+    -- ^ The haskell source location used for the #line directive
   , codeType :: TH.TypeQ
     -- ^ Type of the foreign call.
   , codeFunName :: String
@@ -266,19 +268,23 @@ data Code = Code
 --
 -- @
 -- c_add :: Int -> Int -> Int
--- c_add = $(inlineCode $ Code
---   TH.Unsafe                   -- Call safety
---   [t| Int -> Int -> Int |]    -- Call type
---   "francescos_add"            -- Call name
---   -- C Code
---   \"int francescos_add(int x, int y) { int z = x + y; return z; }\")
+-- c_add = $(do
+--   here <- TH.location
+--   inlineCode $ Code
+--     TH.Unsafe                   -- Call safety
+--     (Just here)
+--     [t| Int -> Int -> Int |]    -- Call type
+--     "francescos_add"            -- Call name
+--     -- C Code
+--     \"int francescos_add(int x, int y) { int z = x + y; return z; }\")
 -- @
 inlineCode :: Code -> TH.ExpQ
 inlineCode Code{..} = do
   -- Write out definitions
   ctx <- getContext
   let out = fromMaybe id $ ctxOutput ctx
-  void $ emitVerbatim $ out codeDefs
+  let directive = maybe "" (\l -> "#line " ++ show (fst $ TH.loc_start l) ++ " " ++ show (TH.loc_filename l ) ++ "\n") codeLoc
+  void $ emitVerbatim $ out $ directive ++ codeDefs
   -- Create and add the FFI declaration.
   ffiImportName <- uniqueFfiImportName
   dec <- if codeFunPtr
@@ -316,16 +322,21 @@ uniqueCName mbPostfix = do
 --
 -- @
 -- c_cos :: Double -> Double
--- c_cos = $(inlineExp
---   TH.Unsafe
---   [t| Double -> Double |]
---   (quickCParser_ \"double\" parseType)
---   [("x", quickCParser_ \"double\" parseType)]
---   "cos(x)")
+-- c_cos = $(do
+--   here <- TH.location
+--   inlineExp
+--     TH.Unsafe
+--     here
+--     [t| Double -> Double |]
+--     (quickCParser_ \"double\" parseType)
+--     [("x", quickCParser_ \"double\" parseType)]
+--     "cos(x)")
 -- @
 inlineExp
   :: TH.Safety
   -- ^ Safety of the foreign call
+  -> TH.Loc
+  -- ^ The location to report
   -> TH.TypeQ
   -- ^ Type of the foreign call
   -> C.Type C.CIdentifier
@@ -335,8 +346,8 @@ inlineExp
   -> String
   -- ^ The C expression
   -> TH.ExpQ
-inlineExp callSafety type_ cRetType cParams cExp =
-  inlineItems callSafety False Nothing type_ cRetType cParams cItems
+inlineExp callSafety loc type_ cRetType cParams cExp =
+  inlineItems callSafety False Nothing loc type_ cRetType cParams cItems
   where
     cItems = case cRetType of
       C.TypeSpecifier _quals C.Void -> cExp ++ ";"
@@ -348,9 +359,13 @@ inlineExp callSafety type_ cRetType cParams cExp =
 --
 -- @
 -- c_cos :: Double -> Double
--- c_cos = $(inlineItems
+-- c_cos = $(do
+--  here <- TH.location
+--  inlineItems
 --   TH.Unsafe
 --   False
+--   Nothing
+--   here
 --   [t| Double -> Double |]
 --   (quickCParser_ \"double\" parseType)
 --   [("x", quickCParser_ \"double\" parseType)]
@@ -363,6 +378,8 @@ inlineItems
   -- ^ Whether to return as a FunPtr or not
   -> Maybe String
   -- ^ Optional postfix for the generated name
+  -> TH.Loc
+  -- ^ The location to report
   -> TH.TypeQ
   -- ^ Type of the foreign call
   -> C.Type C.CIdentifier
@@ -372,7 +389,7 @@ inlineItems
   -> String
   -- ^ The C items
   -> TH.ExpQ
-inlineItems callSafety funPtr mbPostfix type_ cRetType cParams cItems = do
+inlineItems callSafety funPtr mbPostfix loc type_ cRetType cParams cItems = do
   let mkParam (id', paramTy) = C.ParameterDeclaration (Just id') paramTy
   let proto = C.Proto cRetType (map mkParam cParams)
   funName <- uniqueCName mbPostfix
@@ -381,11 +398,10 @@ inlineItems callSafety funPtr mbPostfix type_ cRetType cParams cItems = do
                        "funName:\n" ++ err
     Right x -> return x
   let decl = C.ParameterDeclaration (Just cFunName) proto
-  let defs =
-        prettyOneLine decl ++ " {\n" ++
-        cItems ++ "\n}\n"
+  let defs = prettyOneLine decl ++ " { " ++ cItems ++ " }\n"
   inlineCode $ Code
     { codeCallSafety = callSafety
+    , codeLoc = Just loc
     , codeType = type_
     , codeFunName = funName
     , codeDefs = defs
@@ -546,12 +562,13 @@ quoteCode p = TH.QuasiQuoter
 
 genericQuote
   :: Purity
-  -> (TH.TypeQ -> C.Type C.CIdentifier -> [(C.CIdentifier, C.Type C.CIdentifier)] -> String -> TH.ExpQ)
+  -> (TH.Loc -> TH.TypeQ -> C.Type C.CIdentifier -> [(C.CIdentifier, C.Type C.CIdentifier)] -> String -> TH.ExpQ)
   -- ^ Function building an Haskell expression, see 'inlineExp' for
   -- guidance on the other args.
   -> TH.QuasiQuoter
 genericQuote purity build = quoteCode $ \s -> do
     ctx <- getContext
+    here <- TH.location
     ParseTypedC cType cParams cExp <-
       runParserInQ s
         (haskellCParserContext (typeNamesFromTypesTable (ctxTypesTable ctx)))
@@ -577,7 +594,7 @@ genericQuote purity build = quoteCode $ \s -> do
                 aqMarshaller antiQ purity (ctxTypesTable ctx) cTy x
     let hsFunType = convertCFunSig hsType $ map fst hsParams
     let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
-    ioCall <- buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
+    ioCall <- buildFunCall ctx (build here hsFunType cType cParams' cExp) (map snd hsParams) []
     -- If the user requested a pure function, make it so.
     case purity of
       Pure -> [| unsafePerformIO $(return ioCall) |]
@@ -625,12 +642,13 @@ data FunPtrDecl = FunPtrDecl
 
 funPtrQuote :: TH.Safety -> TH.QuasiQuoter
 funPtrQuote callSafety = quoteCode $ \code -> do
+  loc <- TH.location
   ctx <- getContext
   FunPtrDecl{..} <- runParserInQ code (C.cCParserContext (typeNamesFromTypesTable (ctxTypesTable ctx))) parse
   hsRetType <- cToHs ctx funPtrReturnType
   hsParams <- forM funPtrParameters (\(_ident, typ_) -> cToHs ctx typ_)
   let hsFunType = convertCFunSig hsRetType hsParams
-  inlineItems callSafety True funPtrName hsFunType funPtrReturnType funPtrParameters funPtrBody
+  inlineItems callSafety True funPtrName loc hsFunType funPtrReturnType funPtrParameters funPtrBody
   where
     cToHs :: Context -> C.Type C.CIdentifier -> TH.TypeQ
     cToHs ctx cTy = do
