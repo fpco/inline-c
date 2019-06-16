@@ -175,6 +175,9 @@ type CParser i m =
   , TokenParsing m
   , LookAheadParsing m
   , MonadReader (CParserContext i) m
+#if (MIN_VERSION_base(4,13,0))
+  , MonadFail m
+#endif
   , Hashable i
   )
 
