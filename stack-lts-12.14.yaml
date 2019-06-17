@@ -1,9 +1,0 @@
-resolver: lts-12.14
-packages:
-- inline-c
-- inline-c-cpp
-- sample-cabal-project
-extra-deps:
-- Chart-1.9@sha256:f41568b6b3704f66c2ec163295b430ab7d798f91de426c2d5aba747d1135cd9b
-- Chart-cairo-1.9@sha256:82875639be230c9406dbea650647b2dc94b11060160d6dad2c98551bb23d544f
-
