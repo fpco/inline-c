@@ -1,3 +1,5 @@
+- 0.8.0.1: Compatibility with GHC 8.8
+- 0.8: Add code locations.
 - 0.7.0.1: Add more docs for `funPtr`
 - 0.7.0.0: Add `funPtr` quasi-quoter
 - 0.6.0.6: Support GHC 8.4
