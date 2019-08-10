@@ -2,9 +2,11 @@
 
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Language.C.Inline.Cpp.Exceptions
   ( CppException(..)
+  , toSomeException
   , throwBlock
   , tryBlock
   , catchBlock
@@ -13,16 +15,26 @@ module Language.C.Inline.Cpp.Exceptions
 import           Control.Exception.Safe
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Internal as C
+import qualified Language.C.Inline.Cpp as Cpp
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Quote
 import           Foreign
 import           Foreign.C
 
+C.context Cpp.cppCtx
+C.include "HaskellException.hxx"
+
 -- | An exception thrown in C++ code.
 data CppException
   = CppStdException String
   | CppOtherException (Maybe String) -- contains the exception type, if available.
-  deriving (Eq, Ord, Show)
+  | CppHaskellException SomeException
+  deriving (Show)
+
+-- | Like 'toException' but unwrap 'CppHaskellException'
+toSomeException :: CppException -> SomeException
+toSomeException (CppHaskellException e) = e
+toSomeException x = toException x
 
 instance Exception CppException
 
@@ -33,20 +45,24 @@ pattern ExTypeNoException = 0
 pattern ExTypeStdException :: CInt
 pattern ExTypeStdException = 1
 
-pattern ExTypeOtherException :: CInt
-pattern ExTypeOtherException = 2
+pattern ExTypeHaskellException :: CInt
+pattern ExTypeHaskellException = 2
 
-handleForeignCatch :: (Ptr CInt -> Ptr CString -> IO a) -> IO (Either CppException a)
+pattern ExTypeOtherException :: CInt
+pattern ExTypeOtherException = 3
+
+handleForeignCatch :: (Ptr CInt -> Ptr CString -> Ptr (Ptr ()) -> IO a) -> IO (Either CppException a)
 handleForeignCatch cont =
   alloca $ \exTypePtr ->
-  alloca $ \msgPtrPtr -> do
+  alloca $ \msgPtrPtr ->
+  alloca $ \haskellExPtrPtr -> do
     poke exTypePtr ExTypeNoException
     -- we need to mask this entire block because the C++ allocates the
     -- string for the exception message and we need to make sure that
     -- we free it (see the @free@ below). The foreign code would not be
     -- preemptable anyway, so I do not think this loses us anything.
     mask_ $ do
-      res <- cont exTypePtr msgPtrPtr
+      res <- cont exTypePtr msgPtrPtr haskellExPtrPtr
       exType <- peek exTypePtr
       case exType of
         ExTypeNoException -> return (Right res)
@@ -55,6 +71,16 @@ handleForeignCatch cont =
           errMsg <- peekCString msgPtr
           free msgPtr
           return (Left (CppStdException errMsg))
+        ExTypeHaskellException -> do
+          haskellExPtr <- peek haskellExPtrPtr
+          stablePtr <- [C.block| void * {
+              return (static_cast<HaskellException *>($(void *haskellExPtr)))->haskellExceptionStablePtr->stablePtr;
+            } |]
+          someExc <- deRefStablePtr (castPtrToStablePtr stablePtr)
+          [C.block| void{
+              delete static_cast<HaskellException *>($(void *haskellExPtr));
+            } |]
+          return (Left (CppHaskellException someExc))
         ExTypeOtherException -> do
           msgPtr <- peek msgPtrPtr
           mbExcType <- if msgPtr == nullPtr
@@ -66,12 +92,12 @@ handleForeignCatch cont =
           return (Left (CppOtherException mbExcType))
         _ -> error "Unexpected C++ exception type."
 
--- | Like 'tryBlock', but will throw 'CppException's rather than returning
+-- | Like 'tryBlock', but will throw unwrapped 'CppHaskellException's or other 'CppException's rather than returning
 -- them in an 'Either'
 throwBlock :: QuasiQuoter
 throwBlock = QuasiQuoter
   { quoteExp = \blockStr -> do
-      [e| either throwIO return =<< $(tryBlockQuoteExp blockStr) |]
+      [e| either (throwIO . toSomeException) return =<< $(tryBlockQuoteExp blockStr) |]
   , quotePat = unsupported
   , quoteType = unsupported
   , quoteDec = unsupported
@@ -95,6 +121,7 @@ tryBlockQuoteExp blockStr = do
   _ <- C.include "<exception>"
   _ <- C.include "<cstring>"
   _ <- C.include "<cstdlib>"
+  _ <- C.include "HaskellException.hxx"
   -- see
   -- <https://stackoverflow.com/questions/28166565/detect-gcc-as-opposed-to-msvc-clang-with-macro>
   -- regarding how to detect g++ or clang.
@@ -109,6 +136,7 @@ tryBlockQuoteExp blockStr = do
     ]
   typePtrVarName <- newName "exTypePtr"
   msgPtrVarName <- newName "msgPtr"
+  haskellExPtrVarName <- newName "haskellExPtr"
   -- see
   -- <https://stackoverflow.com/questions/561997/determining-exception-type-after-the-exception-is-caught/47164539#47164539>
   -- regarding how to show the type of an exception.
@@ -116,8 +144,13 @@ tryBlockQuoteExp blockStr = do
         [ ty ++ " {"
         , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
         , "  char** __inline_c_cpp_error_message__ = $(char** " ++ nameBase msgPtrVarName ++ ");"
+        , "  HaskellException** __inline_c_cpp_haskellexception__ = (HaskellException**)($(void ** " ++ nameBase haskellExPtrVarName ++ "));"
         , "  try {"
         , body
+        , "  } catch (HaskellException &e) {"
+        , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeHaskellException ++ ";"
+        , "    *__inline_c_cpp_haskellexception__ = new HaskellException(e);"
+        , if ty == "void" then "return;" else "return {};"
         , "  } catch (std::exception &e) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeStdException ++ ";"
         , "#if defined(__GNUC__) || defined(__clang__)"
@@ -146,7 +179,7 @@ tryBlockQuoteExp blockStr = do
         , "  }"
         , "}"
         ]
-  [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) -> $(quoteExp C.block inlineCStr) |]
+  [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) $(varP haskellExPtrVarName) -> $(quoteExp C.block inlineCStr) |]
  
 -- | Similar to `C.block`, but C++ exceptions will be caught and the result is (Either CppException value). The return type must be void or constructible with @{}@.
 -- Using this will automatically include @exception@, @cstring@ and @cstdlib@.
