@@ -29,8 +29,8 @@ library
   ghc-options:         -Wall -optc-std=c++11
   include-dirs:        include
   install-includes:    HaskellException.hxx HaskellStablePtr.hxx
-  cxx-sources:         cxx-src/HaskellException.cxx cxx-src/HaskellStablePtr.cxx
   extra-libraries:     stdc++
+  c-sources:           cxx-src/HaskellException.cxx cxx-src/HaskellStablePtr.cxx
   cc-options:          -Wall -std=c++11
   if os(darwin)
     -- avoid https://gitlab.haskell.org/ghc/ghc/issues/11829
