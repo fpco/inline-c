@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -155,7 +156,11 @@ initialiseModuleState mbContext = do
           Nothing -> fail "inline-c: ModuleState not present (initialiseModuleState)"
           Just ms -> return ms
         let lang = fromMaybe TH.LangC (ctxForeignSrcLang context)
+#if MIN_VERSION_base(4,12,0)
+        TH.addForeignSource lang (concat (reverse (msFileChunks ms)))
+#else
         TH.addForeignFile lang (concat (reverse (msFileChunks ms)))
+#endif
       let moduleState = ModuleState
             { msContext = context
             , msGeneratedNames = 0
