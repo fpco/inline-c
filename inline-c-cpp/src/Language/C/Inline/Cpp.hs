@@ -26,7 +26,6 @@ cppCtx :: Context
 cppCtx = baseCtx <> mempty
   { ctxForeignSrcLang = Just TH.LangCxx
   , ctxOutput = Just $ \s -> "extern \"C\" {\n" ++ s ++ "\n}"
-  , ctxEnableCpp = True
   }
 
 -- | Emits an @using@ directive, e.g.

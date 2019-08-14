@@ -138,9 +138,11 @@ cIdentifierFromString useCpp s =
   -- @
   -- cIdentifierFromString => fromString => cIdentifierFromString => ...
   -- @
-  case Parsec.parse (identNoLex useCpp cIdentStyle <* eof) "cIdentifierFromString" s of
+  case Parsec.parse (identNoLex cIdentStyle <* eof) "cIdentifierFromString" s of
     Left err -> Left $ show err
     Right x -> Right $ CIdentifier x
+  where
+    identNoLex = if useCpp then cxxIdentNoLex else cIdentNoLex
 
 instance IsString CIdentifier where
   fromString s =
@@ -151,7 +153,7 @@ instance IsString CIdentifier where
 cCParserContext :: Bool -> TypeNames -> CParserContext CIdentifier
 cCParserContext useCpp typeNames = CParserContext
   { cpcTypeNames = typeNames
-  , cpcParseIdent = cidentifier_no_lex
+  , cpcParseIdent = if useCpp then cxxidentifier_no_lex else cidentifier_no_lex
   , cpcIdentToString = unCIdentifier
   , cpcIdentName = "C identifier"
   , cpcEnableCpp = useCpp
@@ -298,27 +300,32 @@ data TypeSpecifier
   | Struct CIdentifier
   | Enum CIdentifier
   | TypeName CIdentifier
-  | Template CIdentifier [TypeSpecifier]
-  | TemplateConst String
+  | CxxTemplate CIdentifier [TypeSpecifier]
+  -- See "Template non-type arguments" in https://en.cppreference.com/w/cpp/language/template_parameters
+  -- Generally, const value of template-arguments supports numerical value, pointer and reference,
+  -- but almost classes use numerial value only.
+  | CxxTemplateConst String
   deriving (Typeable, Eq, Show)
 
 type_specifier :: CParser i m => m TypeSpecifier
-type_specifier = msum
-  [ VOID <$ reserve cIdentStyle "void"
-  , BOOL <$ reserve cIdentStyle "bool"
-  , CHAR <$ reserve cIdentStyle "char"
-  , SHORT <$ reserve cIdentStyle "short"
-  , INT <$ reserve cIdentStyle "int"
-  , LONG <$ reserve cIdentStyle "long"
-  , FLOAT <$ reserve cIdentStyle "float"
-  , DOUBLE <$ reserve cIdentStyle "double"
-  , SIGNED <$ reserve cIdentStyle "signed"
-  , UNSIGNED <$ reserve cIdentStyle "unsigned"
-  , Struct <$> (reserve cIdentStyle "struct" >> cidentifier)
-  , Enum <$> (reserve cIdentStyle "enum" >> cidentifier)
-  , template_parser
-  , TypeName <$> type_name
-  ]
+type_specifier = do
+  ctx <- ask
+  let identifier' = if (cpcEnableCpp ctx) then token cxxidentifier_no_lex else token cidentifier_no_lex
+  msum [ VOID <$ reserve cIdentStyle "void"
+       , BOOL <$ reserve cIdentStyle "bool"
+       , CHAR <$ reserve cIdentStyle "char"
+       , SHORT <$ reserve cIdentStyle "short"
+       , INT <$ reserve cIdentStyle "int"
+       , LONG <$ reserve cIdentStyle "long"
+       , FLOAT <$ reserve cIdentStyle "float"
+       , DOUBLE <$ reserve cIdentStyle "double"
+       , SIGNED <$ reserve cIdentStyle "signed"
+       , UNSIGNED <$ reserve cIdentStyle "unsigned"
+       , Struct <$> (reserve cIdentStyle "struct" >> identifier')
+       , Enum <$> (reserve cIdentStyle "enum" >> identifier')
+       , template_parser
+       , TypeName <$> type_name
+       ]
 
 identifier :: CParser i m => m i
 identifier = token identifier_no_lex
@@ -340,56 +347,54 @@ identifier_no_lex = try $ do
 
 -- | Same as 'cidentifier_no_lex', but does not check that the
 -- identifier is not a type name.
-cidentifier_raw :: (TokenParsing m, Monad m) => Bool -> m CIdentifier
-cidentifier_raw useCpp = identNoLex useCpp cIdentStyle
+cidentifier_raw :: (TokenParsing m, Monad m) => m CIdentifier
+cidentifier_raw = cIdentNoLex cIdentStyle
+
+cxxidentifier_raw :: (TokenParsing m, Monad m) => m CIdentifier
+cxxidentifier_raw = cxxIdentNoLex cIdentStyle
 
 -- | This parser parses a 'CIdentifier' and nothing else -- it does not consume
 -- trailing spaces and the like.
 cidentifier_no_lex :: CParser i m => m CIdentifier
 cidentifier_no_lex = try $ do
-  ctx <- ask
-  s <- cidentifier_raw (cpcEnableCpp ctx)
+  s <- cidentifier_raw
   typeNames <- asks cpcTypeNames
   when (HashSet.member s typeNames) $
     unexpected $ "type name " ++ unCIdentifier s
   return s
 
-cidentifier :: CParser i m => m CIdentifier
-cidentifier = token cidentifier_no_lex
+cxxidentifier_no_lex :: CParser i m => m CIdentifier
+cxxidentifier_no_lex = try $ do
+  s <- cxxidentifier_raw
+  typeNames <- asks cpcTypeNames
+  when (HashSet.member s typeNames) $
+    unexpected $ "type name " ++ unCIdentifier s
+  return s
 
 type_name :: CParser i m => m CIdentifier
 type_name = try $ do
   ctx <- ask
-  s <- ident' (cpcEnableCpp ctx) cIdentStyle <?> "type name"
+  s <- if (cpcEnableCpp ctx) then token (cxxIdentNoLex cIdentStyle) else token (cIdentNoLex cIdentStyle)
   typeNames <- asks cpcTypeNames
   unless (HashSet.member s typeNames) $
     unexpected $ "identifier  " ++ unCIdentifier s
   return s
 
-templateParser :: (Monad m, CharParsing m, CParser i m) => IdentifierStyle m -> m TypeSpecifier
-templateParser s = parse'
+templateParser :: (Monad m, CharParsing m, CParser i m) => m TypeSpecifier
+templateParser = parse'
   where
     parse' = do
-      id' <- cidentParserWithNamespace
+      id' <- cxxIdentParser s
       _ <- string "<"
       args <- templateArgParser
       _ <- string ">"
-      return $ Template (CIdentifier id') args
-    cidentParser = ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
-    cidentParserWithNamespace =
-      try (concat <$> sequence [cidentParser, (string "::"), cidentParserWithNamespace]) <|>
-      cidentParser
-    templateArgType = try type_specifier <|> (TemplateConst <$> (many $ oneOf ['0'..'9']))
-    templateArgParser' = do
-      t <- templateArgType
-      _ <- string ","
-      tt <- templateArgParser
-      return $ t:tt
-    templateArgParser =
-      try (templateArgParser') <|> ((:) <$> templateArgType <*> return [])
+      return $ CxxTemplate (CIdentifier id') args
+    templateArgType = try type_specifier <|> (CxxTemplateConst <$> (many $ oneOf ['0'..'9']))
+    templateArgParser = sepBy templateArgType (symbol ",")
+    s = cIdentStyle
 
 template_parser :: CParser i m => m TypeSpecifier
-template_parser = try $ templateParser cIdentStyle <?> "template name"
+template_parser = try $ templateParser <?> "template name"
 
 data TypeQualifier
   = CONST
@@ -562,8 +567,8 @@ instance Pretty TypeSpecifier where
    Struct x -> "struct" <+> pretty x
    Enum x -> "enum" <+> pretty x
    TypeName x -> pretty x
-   Template x args -> pretty x <+> "<" <+> mconcat (intersperse "," (map pretty args))  <+> ">"
-   TemplateConst x -> pretty x
+   CxxTemplate x args -> pretty x <+> "<" <+> mconcat (intersperse "," (map pretty args))  <+> " >"
+   CxxTemplateConst x -> pretty x
 
 instance Pretty TypeQualifier where
   pretty tyQual = case tyQual of
@@ -785,26 +790,23 @@ many1 p = (:) <$> p <*> many p
 -- Utils
 ------------------------------------------------------------------------
 
-cppIdentParser :: (Monad m, CharParsing m) => Bool -> IdentifierStyle m -> m [Char]
-cppIdentParser useCpp s = cidentParserWithNamespace
-  where
-    cidentParser = ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
-    cidentParserWithNamespace =
-      if useCpp
-      then
-        try (concat <$> sequence [cidentParser, (string "::"), cidentParserWithNamespace]) <|>
-        cidentParser
-      else
-        cidentParser
-
-identNoLex :: (TokenParsing m, Monad m, IsString s) => Bool -> IdentifierStyle m -> m s
-identNoLex useCpp s = fmap fromString $ try $ do
-  name <- highlight (_styleHighlight s) (cppIdentParser useCpp s)
+cIdentNoLex :: (TokenParsing m, Monad m, IsString s) => IdentifierStyle m -> m s
+cIdentNoLex s = fmap fromString $ try $ do
+  name <- highlight (_styleHighlight s)
+          ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
   when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
   return name
 
-ident' :: (TokenParsing m, Monad m, IsString s) => Bool -> IdentifierStyle m -> m s
-ident' useCpp s = fmap fromString $ token $ try $ do
-  name <- highlight (_styleHighlight s) (cppIdentParser useCpp s)
+cxxIdentParser :: (Monad m, CharParsing m) => IdentifierStyle m -> m [Char]
+cxxIdentParser s = cidentParserWithNamespace
+  where
+    cidentParser = ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
+    cidentParserWithNamespace =
+      try (concat <$> sequence [cidentParser, (string "::"), cidentParserWithNamespace]) <|>
+      cidentParser
+
+cxxIdentNoLex :: (TokenParsing m, Monad m, IsString s) => IdentifierStyle m -> m s
+cxxIdentNoLex s = fmap fromString $ try $ do
+  name <- highlight (_styleHighlight s) (cxxIdentParser s)
   when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
   return name

@@ -88,6 +88,41 @@ catchBlock = QuasiQuoter
   } where
       unsupported _ = fail "Unsupported quasiquotation."
 
+
+
+{-
+
+Some compilers can not parse "{}" as generalized initializer.(See following the example of test.cpp.)
+"exceptionalValue"-function assigns initial value for numeric types.
+Many numeric types can be initialized with 0.
+
+-- test.cpp --
+int
+test(){
+  try {
+    throw  "Exception\n";
+  }catch(...) {
+    return {};
+  }
+}
+
+---In case of clang -----------
+$ clang++ -c test.cpp
+test.cpp:6:12: warning: generalized initializer lists are a C++11 extension [-Wc++11-extensions]
+    return {};
+           ^~
+test.cpp:6:12: error: scalar initializer cannot be empty
+    return {};
+           ^~
+1 warning and 1 error generated.
+
+---In case of gcc- -----------
+$ g++ -c test.cpp
+test.cpp: In function ‘int test()’:
+test.cpp:6:12: warning: extended initializer lists only available with -std=c++11 or -std=gnu++11
+     return {};
+
+-}
 exceptionalValue :: String -> String
 exceptionalValue typeStr =
   case typeStr of

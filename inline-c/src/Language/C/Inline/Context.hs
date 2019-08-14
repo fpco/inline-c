@@ -160,7 +160,6 @@ data Context = Context
     -- when generating C++ code.
   , ctxForeignSrcLang :: Maybe TH.ForeignSrcLang
     -- ^ TH.LangC by default
-  , ctxEnableCpp :: Bool
   }
 
 
@@ -171,7 +170,6 @@ instance Semigroup Context where
     , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
-    , ctxEnableCpp = ctxEnableCpp ctx1 || ctxEnableCpp ctx2
     }
 #endif
 
@@ -181,7 +179,6 @@ instance Monoid Context where
     , ctxAntiQuoters = mempty
     , ctxOutput = Nothing
     , ctxForeignSrcLang = Nothing
-    , ctxEnableCpp = False
     }
 
 #if !MIN_VERSION_base(4,11,0)
@@ -190,7 +187,6 @@ instance Monoid Context where
     , ctxAntiQuoters = ctxAntiQuoters ctx1 <> ctxAntiQuoters ctx2
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
-    , ctxEnableCpp = ctxEnableCpp ctx1 || ctxEnableCpp ctx2
     }
 #endif
 
@@ -277,7 +273,7 @@ convertType purity cTypes = runMaybeT . go
     go :: C.Type C.CIdentifier -> MaybeT TH.Q TH.Type
     go cTy = do
      case cTy of
-      C.TypeSpecifier _specs (C.Template ident' cTys) -> do
+      C.TypeSpecifier _specs (C.CxxTemplate ident' cTys) -> do
 --        let symbol = TH.LitT (TH.StrTyLit (C.unCIdentifier ident'))
         symbol <- case Map.lookup (C.TypeName ident') cTypes of
           Nothing -> mzero
@@ -296,7 +292,7 @@ convertType purity cTypes = runMaybeT . go
             lift [t| $(symbol) '($(return a),$(return b),$(return c),$(return d),$(return e))|]
           [] -> fail $ "Can not find template parameters."
           _ -> fail $ "Find too many template parameters. num = " ++ show (length hsTy)
-      C.TypeSpecifier _specs (C.TemplateConst num) -> do
+      C.TypeSpecifier _specs (C.CxxTemplateConst num) -> do
         let n = (TH.LitT (TH.NumTyLit (read num)))
         lift [t| $(return n) |]
       C.TypeSpecifier _specs cSpec ->

@@ -103,8 +103,8 @@ data TypeSpecifier
   | TypeName P.CIdentifier
   | Struct P.CIdentifier
   | Enum P.CIdentifier
-  | Template P.CIdentifier [TypeSpecifier]
-  | TemplateConst String
+  | CxxTemplate P.CIdentifier [TypeSpecifier]
+  | CxxTemplateConst String
   deriving (Typeable, Show, Eq, Ord)
 
 data Specifiers = Specifiers
@@ -209,13 +209,13 @@ untangleDeclarationSpecifiers declSpecs = do
   let checkNoLength =
         when (longs > 0 || shorts > 0) $ illegalSpecifiers "unexpected long/short"
   let type2type dat = case dat of
-        P.Template s args -> do
+        P.CxxTemplate s args -> do
           checkNoSpecs
           args' <- forM args type2type
-          return $ Template s args'
-        P.TemplateConst s -> do
+          return $ CxxTemplate s args'
+        P.CxxTemplateConst s -> do
           checkNoSpecs
-          return $ TemplateConst s
+          return $ CxxTemplateConst s
         P.TypeName s -> do
           checkNoSpecs
           return $ TypeName s
@@ -404,8 +404,8 @@ tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
         TypeName s -> [P.TypeName s]
         Struct s -> [P.Struct s]
         Enum s -> [P.Enum s]
-        Template s types -> [P.Template s (concat (map pTySpecs types))]
-        TemplateConst s -> [P.TemplateConst s]
+        CxxTemplate s types -> [P.CxxTemplate s (concat (map pTySpecs types))]
+        CxxTemplateConst s -> [P.CxxTemplateConst s]
   in map P.StorageClassSpecifier storages ++
      map P.TypeQualifier tyQuals ++
      map P.FunctionSpecifier funSpecs ++
@@ -509,8 +509,8 @@ instance PP.Pretty TypeSpecifier where
     TypeName s -> PP.pretty s
     Struct s -> "struct" <+> PP.pretty s
     Enum s -> "enum" <+> PP.pretty s
-    Template s args -> PP.pretty s <+> "<"  <+>  mconcat (intersperse "," (map PP.pretty args))  <+> ">"
-    TemplateConst s -> PP.pretty s
+    CxxTemplate s args -> PP.pretty s <+> "<"  <+>  mconcat (intersperse "," (map PP.pretty args))  <+> " >"
+    CxxTemplateConst s -> PP.pretty s
 
 instance PP.Pretty UntangleErr where
   pretty err = case err of

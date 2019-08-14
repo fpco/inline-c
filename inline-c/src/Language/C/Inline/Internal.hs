@@ -399,7 +399,7 @@ inlineItems callSafety funPtr mbPostfix loc type_ cRetType cParams cItems = do
   let proto = C.Proto cRetType (map mkParam cParams)
   ctx <- getContext
   funName <- uniqueCName mbPostfix
-  cFunName <- case C.cIdentifierFromString (ctxEnableCpp ctx) funName of
+  cFunName <- case C.cIdentifierFromString (ctxForeignSrcLang ctx == Just TH.LangCxx) funName of
     Left err -> fail $ "inlineItems: impossible, generated bad C identifier " ++
                        "funName:\n" ++ err
     Right x -> return x
@@ -581,8 +581,8 @@ genericQuote purity build = quoteCode $ \s -> do
     here <- TH.location
     ParseTypedC cType cParams cExp <-
       runParserInQ s
-        (haskellCParserContext (ctxEnableCpp ctx) (typeNamesFromTypesTable (ctxTypesTable ctx)))
-        (parseTypedC (ctxEnableCpp ctx) (ctxAntiQuoters ctx))
+        (haskellCParserContext (ctxForeignSrcLang ctx == Just TH.LangCxx) (typeNamesFromTypesTable (ctxTypesTable ctx)))
+        (parseTypedC (ctxForeignSrcLang ctx == Just TH.LangCxx) (ctxAntiQuoters ctx))
     hsType <- cToHs ctx cType
     hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
       case parTy of
@@ -654,7 +654,7 @@ funPtrQuote :: TH.Safety -> TH.QuasiQuoter
 funPtrQuote callSafety = quoteCode $ \code -> do
   loc <- TH.location
   ctx <- getContext
-  FunPtrDecl{..} <- runParserInQ code (C.cCParserContext (ctxEnableCpp ctx) (typeNamesFromTypesTable (ctxTypesTable ctx))) parse
+  FunPtrDecl{..} <- runParserInQ code (C.cCParserContext (ctxForeignSrcLang ctx == Just TH.LangCxx) (typeNamesFromTypesTable (ctxTypesTable ctx))) parse
   hsRetType <- cToHs ctx funPtrReturnType
   hsParams <- forM funPtrParameters (\(_ident, typ_) -> cToHs ctx typ_)
   let hsFunType = convertCFunSig hsRetType hsParams
