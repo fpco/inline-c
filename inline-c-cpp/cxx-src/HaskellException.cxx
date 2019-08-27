@@ -2,17 +2,17 @@
 #include "HaskellException.hxx"
 
 HaskellException::HaskellException(std::string renderedExceptionIn, void *haskellExceptionStablePtrIn)
-  : renderedException(renderedExceptionIn)
+  : displayExceptionValue(renderedExceptionIn)
   , haskellExceptionStablePtr(new HaskellStablePtr(haskellExceptionStablePtrIn))
 {
 }
 
 HaskellException::HaskellException(const HaskellException &other)
-  : renderedException(other.renderedException)
+  : displayExceptionValue(other.displayExceptionValue)
   , haskellExceptionStablePtr(other.haskellExceptionStablePtr)
 {
 }
 
 const char* HaskellException::what() const noexcept {
-  return renderedException.c_str();
+  return displayExceptionValue.c_str();
 }
