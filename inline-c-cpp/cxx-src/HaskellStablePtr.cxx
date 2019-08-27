@@ -3,5 +3,7 @@
 #include "HsFFI.h"
 
 HaskellStablePtr::~HaskellStablePtr() {
-  hs_free_stable_ptr(stablePtr);
+  if (stablePtr != STABLE_PTR_NULL) {
+    hs_free_stable_ptr(stablePtr);
+  }
 }
