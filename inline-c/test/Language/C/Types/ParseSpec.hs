@@ -60,7 +60,7 @@ assertParse
   => CParserContext i -> (forall m. CParser i m => m a) -> String -> a
 assertParse ctx p s =
   case runCParser ctx "spec" s (lift spaces *> p <* lift eof) of
-    Left err -> error $ "Parse error (assertParse): " ++ show err
+    Left err -> error $ "Parse error (assertParse): " ++ show err ++ " parsed string " ++ show s ++ " with type names " ++ show (cpcTypeNames ctx)
     Right x -> x
 
 prettyOneLine :: PP.Pretty a => a -> String
