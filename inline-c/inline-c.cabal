@@ -70,6 +70,7 @@ test-suite tests
                      , transformers
                      , unordered-containers
                      , vector
+                     , split
   default-language:    Haskell2010
   ghc-options:         -Wall
   cc-options:          -Wall -Werror
