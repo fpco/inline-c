@@ -18,7 +18,7 @@ the [last section](#ghci) for more info.
 ## Getting started
 
 Let's say we want to compute the cosine of a number using C from
-Haskell. `inline-c` let's you write this function call inline, without
+Haskell. `inline-c` lets you write this function call inline, without
 any need for a binding to the foreign function:
 
 ```
@@ -48,7 +48,7 @@ quasiquoter provided by `inline-c`.
 A `C.exp` quasiquotation always includes a type annotation for the
 inline C expression. This annotation determines the type of the
 quasiquotation in Haskell. Out of the box, `inline-c` knows how to map
-many common C types to Haskell type. In this case,
+many common C types to Haskell types. In this case,
 
 ```
 [C.exp| double { cos(1) } |] :: IO CDouble
@@ -227,9 +227,9 @@ Since `vec` is a vector of `CDouble`s, we want a pointer to `double`s.
 
 ## ByteStrings
 
-The `bs-len` and `bs-ptr` ant-quoters in the `C.bsCtx` context work
+The `bs-len` and `bs-ptr` anti-quoters in the `C.bsCtx` context work
 exactly the same as the `vec-len` and `vec-ptr` counterparts, but with
-strict `ByteString`s.  The only difference is that it is no necessary to
+strict `ByteString`s.  The only difference is that it is not necessary to
 specify the type of the pointer from C -- it is always going to be
 `char *`:
 
@@ -267,7 +267,7 @@ easily turn Haskell function into function pointers.
 {-# LANGUAGE TemplateHaskell #-}
 import qualified Language.C.Inline as C
 
--- To use the function pointer anti-quoter, we need the 'C.funCtx along with
+-- To use the function pointer anti-quoter, we need the 'C.funCtx' along with
 -- the 'C.baseCtx'.
 C.context (C.baseCtx <> C.funCtx)
 
