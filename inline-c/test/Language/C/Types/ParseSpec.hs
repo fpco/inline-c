@@ -20,6 +20,7 @@ import qualified Data.HashSet as HashSet
 import           Data.List (intercalate)
 import           Data.String (fromString)
 import           Data.Maybe (mapMaybe)
+import           Data.List.Split (splitOn)
 
 import           Language.C.Types.Parse
 import qualified Language.C.Types as Types
@@ -48,7 +49,7 @@ spec = do
 #endif
       ParameterDeclarationWithTypeNames typeNames ty <-
         arbitraryParameterDeclarationWithTypeNames unHaskellIdentifier
-      return $ isGoodType ty QC.==>
+      return $ isGoodHaskellIdentifierType typeNames ty QC.==>
         let ty' = assertParse (haskellCParserContext True typeNames) parameter_declaration (prettyOneLine ty)
         in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
 
@@ -60,16 +61,31 @@ assertParse
   => CParserContext i -> (forall m. CParser i m => m a) -> String -> a
 assertParse ctx p s =
   case runCParser ctx "spec" s (lift spaces *> p <* lift eof) of
-    Left err -> error $ "Parse error (assertParse): " ++ show err
+    Left err -> error $ "Parse error (assertParse): " ++ show err ++ " parsed string " ++ show s ++ " with type names " ++ show (cpcTypeNames ctx)
     Right x -> x
 
 prettyOneLine :: PP.Pretty a => a -> String
 prettyOneLine x = PP.displayS (PP.renderCompact (PP.pretty x)) ""
 
 isGoodType :: ParameterDeclaration i -> Bool
-isGoodType ty = case Types.untangleParameterDeclaration ty of
-  Left _ -> False
-  Right _ -> True
+isGoodType ty =
+  case Types.untangleParameterDeclaration ty of
+    Left{} -> False
+    Right{} -> True
+
+isGoodHaskellIdentifierType :: TypeNames -> ParameterDeclaration HaskellIdentifier -> Bool
+isGoodHaskellIdentifierType typeNames ty0 =
+  case Types.untangleParameterDeclaration ty0 of
+    Left{} -> False
+    Right ty ->
+      case Types.parameterDeclarationId ty of
+        Nothing -> True
+        Just i -> let
+          -- see <https://github.com/fpco/inline-c/pull/97#issuecomment-538648101>
+          leadingSegment : _ = splitOn "." (unHaskellIdentifier i)
+          in case cIdentifierFromString leadingSegment of
+           Left{} -> True
+           Right seg -> not (seg `HashSet.member` typeNames)
 
 ------------------------------------------------------------------------
 -- Arbitrary
