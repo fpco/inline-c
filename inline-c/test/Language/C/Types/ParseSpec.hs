@@ -83,7 +83,7 @@ isGoodHaskellIdentifierType typeNames ty0 =
         Just i -> let
           -- see <https://github.com/fpco/inline-c/pull/97#issuecomment-538648101>
           leadingSegment : _ = splitOn "." (unHaskellIdentifier i)
-          in case cIdentifierFromString leadingSegment of
+          in case cIdentifierFromString False leadingSegment of
            Left{} -> True
            Right seg -> not (seg `HashSet.member` typeNames)
 
