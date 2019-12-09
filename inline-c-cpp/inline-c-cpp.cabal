@@ -21,7 +21,7 @@ library
   exposed-modules:     Language.C.Inline.Cpp
                        Language.C.Inline.Cpp.Exceptions
   build-depends:       base >=4.7 && <5
-                     , inline-c >= 0.6.1.0
+                     , inline-c >= 0.9.0.0
                      , template-haskell
                      , safe-exceptions
                      , containers
