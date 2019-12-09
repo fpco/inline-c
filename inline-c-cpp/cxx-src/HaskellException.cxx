@@ -2,14 +2,14 @@
 #include "HaskellException.hxx"
 
 HaskellException::HaskellException(std::string renderedExceptionIn, void *haskellExceptionStablePtrIn)
-  : displayExceptionValue(renderedExceptionIn)
-  , haskellExceptionStablePtr(new HaskellStablePtr(haskellExceptionStablePtrIn))
+  : haskellExceptionStablePtr(new HaskellStablePtr(haskellExceptionStablePtrIn))
+  , displayExceptionValue(renderedExceptionIn)
 {
 }
 
 HaskellException::HaskellException(const HaskellException &other)
-  : displayExceptionValue(other.displayExceptionValue)
-  , haskellExceptionStablePtr(other.haskellExceptionStablePtr)
+  : haskellExceptionStablePtr(other.haskellExceptionStablePtr)
+  , displayExceptionValue(other.displayExceptionValue)
 {
 }
 
