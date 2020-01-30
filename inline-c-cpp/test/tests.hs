@@ -28,6 +28,7 @@ import           Foreign.StablePtr (StablePtr, newStablePtr, castStablePtrToPtr)
 import qualified Test.Hspec as Hspec
 import           Foreign.Ptr (Ptr)
 import           Data.List (isInfixOf)
+import           Data.Monoid
 
 data Test
 data Vector a
