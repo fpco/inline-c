@@ -12,6 +12,7 @@ copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2019 France
 category:            FFI
 tested-with:         GHC == 8.2.2, GHC == 8.4.4, GHC == 8.6.5
 build-type:          Simple
+extra-source-files:  test/*.h
 
 source-repository head
   type:     git
