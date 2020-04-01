@@ -31,6 +31,10 @@ module Language.C.Inline
   , bsCtx
   , context
 
+    -- * Substitution
+  , substitute
+  , getHaskellType
+
     -- * Inline C
     -- $quoting
   , exp
