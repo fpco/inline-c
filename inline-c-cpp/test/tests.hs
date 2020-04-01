@@ -16,6 +16,7 @@
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TypeApplications #-}
 
 import           Control.Exception.Safe
 import           Control.Monad
@@ -26,19 +27,20 @@ import qualified Language.C.Inline.Cpp.Exceptions as C
 import           Foreign.C.String (withCString)
 import           Foreign.StablePtr (StablePtr, newStablePtr, castStablePtrToPtr)
 import qualified Test.Hspec as Hspec
+import           Test.Hspec (shouldBe)
 import           Foreign.Ptr (Ptr)
 import           Data.List (isInfixOf)
 import           Data.Monoid
+import qualified StdVector
+import qualified Data.Vector.Storable as VS
 
 data Test
-data Vector a
 data Array a
 
 C.context $ C.cppCtx `mappend` C.cppTypePairs [
   ("Test::Test", [t|Test|]),
-  ("std::vector", [t|Vector|]),
   ("std::array", [t|Array|])
-  ]
+  ] `mappend` StdVector.stdVectorCtx
 
 C.include "<iostream>"
 C.include "<vector>"
@@ -50,6 +52,9 @@ C.include "test.h"
 data MyCustomException = MyCustomException Int
   deriving (Eq, Show, Typeable)
 instance Exception MyCustomException
+
+StdVector.instanceStdVector "int"
+StdVector.instanceStdVector "double"
 
 main :: IO ()
 main = Hspec.hspec $ do
@@ -72,7 +77,7 @@ main = Hspec.hspec $ do
     Hspec.it "Hello Template" $ do
       pt <- [C.block| std::vector<int>* {
           return new std::vector<int>();
-        } |] :: IO (Ptr (Vector C.CInt))
+        } |] :: IO (Ptr (StdVector.CStdVector C.CInt))
       [C.block| void {
           $(std::vector<int>* pt)->push_back(100);
           std::cout << (*$(std::vector<int>* pt))[0] << std::endl;
@@ -81,7 +86,7 @@ main = Hspec.hspec $ do
     Hspec.it "Template + Namespace" $ do
       pt <- [C.block| std::vector<Test::Test>* {
           return new std::vector<Test::Test>();
-        } |] :: IO (Ptr (Vector Test))
+        } |] :: IO (Ptr (StdVector.CStdVector Test))
       [C.block| void {
           $(std::vector<Test::Test>* pt)->push_back(Test::Test());
         } |]
@@ -239,6 +244,20 @@ main = Hspec.hspec $ do
         |]
 
       result `shouldBeRight` 0xDEADBEEF
+
+  Hspec.describe "Macros" $ do
+    Hspec.it "generated std::vector instances work correctly" $ do
+      intVec <- StdVector.new @C.CInt
+      StdVector.pushBack intVec 4
+      StdVector.pushBack intVec 5
+      hsIntVec <- StdVector.toVector intVec
+      VS.toList hsIntVec `shouldBe` [ 4, 5 ]
+
+      doubleVec <- StdVector.new @C.CDouble
+      StdVector.pushBack doubleVec 4.3
+      StdVector.pushBack doubleVec 6.7
+      hsDoubleVec <- StdVector.toVector doubleVec
+      VS.toList hsDoubleVec `shouldBe` [ 4.3, 6.7 ]
 
 tag :: C.CppException -> String
 tag (C.CppStdException {}) = "CppStdException"

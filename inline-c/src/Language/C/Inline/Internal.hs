@@ -18,6 +18,11 @@ module Language.C.Inline.Internal
       setContext
     , getContext
 
+      -- * Substitution
+    , Substitutions(..)
+    , substitute
+    , getHaskellType
+
       -- * Emitting and invoking C code
       --
       -- | The functions in this section let us access more the C file
@@ -78,6 +83,7 @@ import qualified Data.List as L
 import qualified Data.Char as C
 import           Data.Hashable (Hashable)
 import           Foreign.Ptr (FunPtr)
+import qualified Data.Map as M
 
 -- We cannot use getQ/putQ before 7.10.3 because of <https://ghc.haskell.org/trac/ghc/ticket/10596>
 #define USE_GETQ (__GLASGOW_HASKELL__ > 710 || (__GLASGOW_HASKELL__ == 710 && __GLASGOW_HASKELL_PATCHLEVEL1__ >= 3))
@@ -461,6 +467,44 @@ data ParseTypedC = ParseTypedC
   , ptcBody :: String
   }
 
+newtype Substitutions = Substitutions { unSubstitutions :: M.Map String (String -> String) }
+
+applySubstitutions :: String -> TH.Q String
+applySubstitutions str = do
+  subs <- maybe mempty unSubstitutions <$> TH.getQ
+  let substitution = msum $ flip map (M.toList subs) $ \( subName, subFunc ) ->
+        Parsec.try $ do
+          _ <- Parsec.string ('@' : subName ++ "(")
+          subArg <- Parsec.manyTill Parsec.anyChar (Parsec.char ')')
+          return (subFunc subArg)
+  let someChar = (:[]) <$> Parsec.anyChar
+  case Parsec.parse (many (substitution <|> someChar)) "" str of
+    Left _ -> fail "Substitution failed (should be impossible)"
+    Right chunks -> return (concat chunks)
+
+-- | Define macros that can be used in the nested Template Haskell expression.
+-- Macros can be used as @\@MACRO_NAME(input)@ in inline-c quotes, and will transform their input with the given function.
+-- They can be useful for passing in types when defining Haskell instances for C++ template types.
+substitute :: [ ( String, String -> String ) ] -> TH.Q a -> TH.Q a
+substitute subsList cont = do
+  oldSubs <- maybe mempty unSubstitutions <$> TH.getQ
+  let subs = M.fromList subsList
+  let conflicting = M.intersection subs oldSubs
+  newSubs <-
+    if M.null conflicting
+      then return (Substitutions (M.union oldSubs subs))
+      else fail ("Conflicting substitutions `" ++ show (M.keys conflicting) ++ "`")
+  TH.putQ newSubs *> cont <* TH.putQ (Substitutions oldSubs)
+
+-- | Given a C type name, return the Haskell type in Template Haskell. The first parameter controls whether function pointers
+-- should be mapped as pure or IO functions.
+getHaskellType :: Bool -> String -> TH.TypeQ
+getHaskellType pureFunctions cTypeStr = do
+  ctx <- getContext
+  let cParseCtx = C.cCParserContext (ctxEnableCpp ctx) (typeNamesFromTypesTable (ctxTypesTable ctx))
+  cType <- runParserInQ cTypeStr cParseCtx C.parseType
+  cToHs ctx (if pureFunctions then Pure else IO) cType
+
 -- To parse C declarations, we're faced with a bit of a problem: we want
 -- to parse the anti-quotations so that Haskell identifiers are
 -- accepted, but we want them to appear only as the root of
@@ -570,24 +614,32 @@ quoteCode p = TH.QuasiQuoter
   , TH.quoteDec = const $ fail "inline-c: quoteDec not implemented (quoteCode)"
   }
 
+cToHs :: Context -> Purity -> C.Type C.CIdentifier -> TH.TypeQ
+cToHs ctx purity cTy = do
+  mbHsTy <- convertType purity (ctxTypesTable ctx) cTy
+  case mbHsTy of
+    Nothing -> fail $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
+    Just hsTy -> return hsTy
+
 genericQuote
   :: Purity
   -> (TH.Loc -> TH.TypeQ -> C.Type C.CIdentifier -> [(C.CIdentifier, C.Type C.CIdentifier)] -> String -> TH.ExpQ)
   -- ^ Function building an Haskell expression, see 'inlineExp' for
   -- guidance on the other args.
   -> TH.QuasiQuoter
-genericQuote purity build = quoteCode $ \s -> do
+genericQuote purity build = quoteCode $ \rawStr -> do
     ctx <- getContext
     here <- TH.location
+    s <- applySubstitutions rawStr
     ParseTypedC cType cParams cExp <-
       runParserInQ s
         (haskellCParserContext (ctxEnableCpp ctx) (typeNamesFromTypesTable (ctxTypesTable ctx)))
         (parseTypedC (ctxEnableCpp ctx) (ctxAntiQuoters ctx))
-    hsType <- cToHs ctx cType
+    hsType <- cToHs ctx purity cType
     hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
       case parTy of
         Plain s' -> do
-          hsTy <- cToHs ctx cTy
+          hsTy <- cToHs ctx purity cTy
           let hsName = TH.mkName (unHaskellIdentifier s')
           hsExp <- [| \cont -> cont ($(TH.varE hsName) :: $(return hsTy)) |]
           return (hsTy, hsExp)
@@ -610,13 +662,6 @@ genericQuote purity build = quoteCode $ \s -> do
       Pure -> [| unsafePerformIO $(return ioCall) |]
       IO -> return ioCall
   where
-    cToHs :: Context -> C.Type C.CIdentifier -> TH.TypeQ
-    cToHs ctx cTy = do
-      mbHsTy <- convertType purity (ctxTypesTable ctx) cTy
-      case mbHsTy of
-        Nothing -> fail $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
-        Just hsTy -> return hsTy
-
     buildFunCall :: Context -> TH.ExpQ -> [TH.Exp] -> [TH.Name] -> TH.ExpQ
     buildFunCall _ctx f [] args =
       foldl (\f' arg -> [| $f' $(TH.varE arg) |]) f args
@@ -651,22 +696,16 @@ data FunPtrDecl = FunPtrDecl
   } deriving (Eq, Show)
 
 funPtrQuote :: TH.Safety -> TH.QuasiQuoter
-funPtrQuote callSafety = quoteCode $ \code -> do
+funPtrQuote callSafety = quoteCode $ \rawCode -> do
   loc <- TH.location
   ctx <- getContext
+  code <- applySubstitutions rawCode
   FunPtrDecl{..} <- runParserInQ code (C.cCParserContext (ctxEnableCpp ctx) (typeNamesFromTypesTable (ctxTypesTable ctx))) parse
-  hsRetType <- cToHs ctx funPtrReturnType
-  hsParams <- forM funPtrParameters (\(_ident, typ_) -> cToHs ctx typ_)
+  hsRetType <- cToHs ctx IO funPtrReturnType
+  hsParams <- forM funPtrParameters (\(_ident, typ_) -> cToHs ctx IO typ_)
   let hsFunType = convertCFunSig hsRetType hsParams
   inlineItems callSafety True funPtrName loc hsFunType funPtrReturnType funPtrParameters funPtrBody
   where
-    cToHs :: Context -> C.Type C.CIdentifier -> TH.TypeQ
-    cToHs ctx cTy = do
-      mbHsTy <- convertType IO (ctxTypesTable ctx) cTy
-      case mbHsTy of
-        Nothing -> fail $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
-        Just hsTy -> return hsTy
-
     convertCFunSig :: TH.Type -> [TH.Type] -> TH.TypeQ
     convertCFunSig retType params0 = do
       go params0
