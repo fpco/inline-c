@@ -1,3 +1,5 @@
+- 0.9.1.0: Add `Language.C.Inline.substitute` and `Language.C.Inline.getHaskellType`.
+- 0.9.0.0: Add support for C++ namespace and template.
 - 0.8.0.1: Compatibility with GHC 8.8
 - 0.8: Add code locations.
 - 0.7.0.1: Add more docs for `funPtr`
