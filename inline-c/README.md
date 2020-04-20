@@ -317,5 +317,6 @@ cabal repl --ghc-options='-fobject-code -O0'
 ```
 
 [ghc-manual-quasiquotation]:
-https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/template-haskell.html#th-quasiquotation
-[ghc-manual-template-haskell]: https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/template-haskell.html
+https://downloads.haskell.org/ghc/latest/docs/html/users_guide/glasgow_exts.html#template-haskell-quasi-quotation
+[ghc-manual-template-haskell]:
+https://downloads.haskell.org/ghc/latest/docs/html/users_guide/glasgow_exts.html#template-haskell
