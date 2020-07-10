@@ -4,6 +4,7 @@
 #include "HaskellStablePtr.hxx"
 #include <memory>
 #include <string>
+#include <exception>
 
 /* A representation of a Haskell exception (SomeException), with a precomputed
    exception message from Control.Exception.displayException.
@@ -25,3 +26,6 @@ public:
   virtual const char* what() const noexcept override;
 
 };
+
+void setMessageOfStdException(std::exception &e,char** __inline_c_cpp_error_message__);
+void setMessageOfOtherException(char** __inline_c_cpp_error_message__);
