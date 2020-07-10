@@ -161,22 +161,7 @@ exceptionalValue typeStr =
 tryBlockQuoteExp :: String -> Q Exp
 tryBlockQuoteExp blockStr = do
   let (ty, body) = C.splitTypedC blockStr
-  _ <- C.include "<exception>"
-  _ <- C.include "<cstring>"
-  _ <- C.include "<cstdlib>"
   _ <- C.include "HaskellException.hxx"
-  -- see
-  -- <https://stackoverflow.com/questions/28166565/detect-gcc-as-opposed-to-msvc-clang-with-macro>
-  -- regarding how to detect g++ or clang.
-  --
-  -- the defined(__clang__) should actually be redundant, since apparently it also
-  -- defines GNUC, but but let's be safe.
-  _ <- C.verbatim $ unlines
-    [ "#if defined(__GNUC__) || defined(__clang__)"
-    , "#include <cxxabi.h>"
-    , "#include <string>"
-    , "#endif"
-    ]
   typePtrVarName <- newName "exTypePtr"
   msgPtrVarName <- newName "msgPtr"
   haskellExPtrVarName <- newName "haskellExPtr"
@@ -193,31 +178,14 @@ tryBlockQuoteExp blockStr = do
         , "  } catch (HaskellException &e) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeHaskellException ++ ";"
         , "    *__inline_c_cpp_haskellexception__ = new HaskellException(e);"
-        , if ty == "void" then "return;" else "return {};"
+        , "    return " ++ exceptionalValue ty ++ ";"
         , "  } catch (std::exception &e) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeStdException ++ ";"
-        , "#if defined(__GNUC__) || defined(__clang__)"
-        , "    int demangle_status;"
-        , "    const char* demangle_result = abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &demangle_status);"
-        , "    std::string message = \"Exception: \" + std::string(e.what()) + \"; type: \" + std::string(demangle_result);"
-        , "#else"
-        , "    std::string message = \"Exception: \" + std::string(e.what()) + \"; type: not available (please use g++ or clang)\";"
-        , "#endif"
-        , "    size_t message_len = message.size() + 1;"
-        , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(message_len));"
-        , "    std::memcpy(*__inline_c_cpp_error_message__, message.c_str(), message_len);"
+        , "    setMessageOfStdException(e,__inline_c_cpp_error_message__);"
         , "    return " ++ exceptionalValue ty ++ ";"
         , "  } catch (...) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeOtherException ++ ";"
-        , "#if defined(__GNUC__) || defined(__clang__)"
-        , "    int demangle_status;"
-        , "    const char* message = abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &demangle_status);"
-        , "    size_t message_len = strlen(message) + 1;"
-        , "    *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(message_len));"
-        , "    std::memcpy(*__inline_c_cpp_error_message__, message, message_len);"
-        , "#else"
-        , "    *__inline_c_cpp_error_message__ = NULL;"
-        , "#endif"
+        , "    setMessageOfOtherException(__inline_c_cpp_error_message__);"
         , "    return " ++ exceptionalValue ty ++ ";"
         , "  }"
         , "}"
