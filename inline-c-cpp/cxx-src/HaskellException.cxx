@@ -32,10 +32,22 @@ const char* HaskellException::what() const noexcept {
   return displayExceptionValue.c_str();
 }
 
+
+// see
+// <https://stackoverflow.com/questions/561997/determining-exception-type-after-the-exception-is-caught/47164539#47164539>
+// regarding how to show the type of an exception.
+
+#if defined(__GNUC__) || defined(__clang__)
+const char* currentExceptionTypeName()
+{
+  int demangle_status;
+  return abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &demangle_status);
+}
+#endif
+
 void setMessageOfStdException(std::exception &e,char** __inline_c_cpp_error_message__){
 #if defined(__GNUC__) || defined(__clang__)
-  int demangle_status;
-  const char* demangle_result = abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &demangle_status);
+  const char* demangle_result = currentExceptionTypeName();
   std::string message = "Exception: " + std::string(e.what()) + "; type: " + std::string(demangle_result);
 #else
   std::string message = "Exception: " + std::string(e.what()) + "; type: not available (please use g++ or clang)";
@@ -47,8 +59,7 @@ void setMessageOfStdException(std::exception &e,char** __inline_c_cpp_error_mess
 
 void setMessageOfOtherException(char** __inline_c_cpp_error_message__){
 #if defined(__GNUC__) || defined(__clang__)
-  int demangle_status;
-  const char* message = abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &demangle_status);
+  const char* message = currentExceptionTypeName();
   size_t message_len = strlen(message) + 1;
   *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(message_len));
   std::memcpy(*__inline_c_cpp_error_message__, message, message_len);
