@@ -165,9 +165,6 @@ tryBlockQuoteExp blockStr = do
   typePtrVarName <- newName "exTypePtr"
   msgPtrVarName <- newName "msgPtr"
   haskellExPtrVarName <- newName "haskellExPtr"
-  -- see
-  -- <https://stackoverflow.com/questions/561997/determining-exception-type-after-the-exception-is-caught/47164539#47164539>
-  -- regarding how to show the type of an exception.
   let inlineCStr = unlines
         [ ty ++ " {"
         , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
