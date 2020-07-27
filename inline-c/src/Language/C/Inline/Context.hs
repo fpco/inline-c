@@ -299,6 +299,10 @@ convertType purity cTypes = runMaybeT . go
       C.TypeSpecifier _specs (C.TemplateConst num) -> do
         let n = (TH.LitT (TH.NumTyLit (read num)))
         lift [t| $(return n) |]
+      C.TypeSpecifier _specs (C.TemplatePointer cSpec) -> do
+        case Map.lookup cSpec cTypes of
+          Nothing -> mzero
+          Just ty -> lift [t| Ptr $(ty) |]
       C.TypeSpecifier _specs cSpec ->
         case Map.lookup cSpec cTypes of
           Nothing -> mzero

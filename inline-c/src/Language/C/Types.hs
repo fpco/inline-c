@@ -105,6 +105,7 @@ data TypeSpecifier
   | Enum P.CIdentifier
   | Template P.CIdentifier [TypeSpecifier]
   | TemplateConst String
+  | TemplatePointer TypeSpecifier
   deriving (Typeable, Show, Eq, Ord)
 
 data Specifiers = Specifiers
@@ -216,6 +217,10 @@ untangleDeclarationSpecifiers declSpecs = do
         P.TemplateConst s -> do
           checkNoSpecs
           return $ TemplateConst s
+        P.TemplatePointer s -> do
+          checkNoSpecs
+          s' <- type2type s
+          return $ TemplatePointer s'
         P.TypeName s -> do
           checkNoSpecs
           return $ TypeName s
@@ -406,6 +411,7 @@ tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
         Enum s -> [P.Enum s]
         Template s types -> [P.Template s (concat (map pTySpecs types))]
         TemplateConst s -> [P.TemplateConst s]
+        TemplatePointer type' -> [P.TemplatePointer (head (pTySpecs type'))]
   in map P.StorageClassSpecifier storages ++
      map P.TypeQualifier tyQuals ++
      map P.FunctionSpecifier funSpecs ++
@@ -511,6 +517,7 @@ instance PP.Pretty TypeSpecifier where
     Enum s -> "enum" <+> PP.pretty s
     Template s args -> PP.pretty s <+> "<"  <+>  mconcat (intersperse "," (map PP.pretty args))  <+> ">"
     TemplateConst s -> PP.pretty s
+    TemplatePointer s -> PP.pretty s <+> "*"
 
 instance PP.Pretty UntangleErr where
   pretty err = case err of

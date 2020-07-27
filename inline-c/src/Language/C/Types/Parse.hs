@@ -300,6 +300,7 @@ data TypeSpecifier
   | TypeName CIdentifier
   | Template CIdentifier [TypeSpecifier]
   | TemplateConst String
+  | TemplatePointer TypeSpecifier
   deriving (Typeable, Eq, Show)
 
 type_specifier :: CParser i m => m TypeSpecifier
@@ -379,7 +380,7 @@ templateParser s = parse'
     cidentParserWithNamespace =
       try (concat <$> sequence [cidentParser, (string "::"), cidentParserWithNamespace]) <|>
       cidentParser
-    templateArgType = try type_specifier <|> (TemplateConst <$> (many $ oneOf ['0'..'9']))
+    templateArgType = try ((TemplatePointer <$> (type_specifier)) <* (string "*")) <|> try type_specifier <|> (TemplateConst <$> (many $ oneOf ['0'..'9']))
     templateArgParser' = do
       t <- templateArgType
       _ <- string ","
@@ -564,6 +565,7 @@ instance Pretty TypeSpecifier where
    TypeName x -> pretty x
    Template x args -> pretty x <+> "<" <+> mconcat (intersperse "," (map pretty args))  <+> ">"
    TemplateConst x -> pretty x
+   TemplatePointer x -> pretty x <+> "*"
 
 instance Pretty TypeQualifier where
   pretty tyQual = case tyQual of

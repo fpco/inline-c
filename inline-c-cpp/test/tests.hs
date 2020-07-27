@@ -259,6 +259,17 @@ main = Hspec.hspec $ do
       hsDoubleVec <- StdVector.toVector doubleVec
       VS.toList hsDoubleVec `shouldBe` [ 4.3, 6.7 ]
 
+  Hspec.it "Template with pointers" $ do
+    pt <- [C.block| std::vector<int*>* {
+        return new std::vector<int*>();
+      } |] :: IO (Ptr (StdVector.CStdVector (Ptr C.CInt)))
+    [C.block| void {
+        int *a = new int;
+        *a = 100;
+        $(std::vector<int*>* pt)->push_back(a);
+        std::cout << *((*$(std::vector<int*>* pt))[0]) << std::endl;
+      } |]
+
 tag :: C.CppException -> String
 tag (C.CppStdException {}) = "CppStdException"
 tag (C.CppHaskellException {}) = "CppHaskellException"
