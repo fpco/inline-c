@@ -41,6 +41,8 @@ spec = do
       cExp `shouldMatchBody` " (int) ceil(x[a-z0-9_]+ \\+ ((double) y[a-z0-9_]+)) "
     Hspec.it "accepts anti quotes" $ do
       void $ goodParse [r| int { $(int x) } |]
+    Hspec.it "accepts anti quotes with pointer" $ do
+      void $ goodParse [r| int* { $(int* x) } |]
     Hspec.it "rejects if bad braces (1)" $ do
       badParse [r| int x |]
     Hspec.it "rejects if bad braces (2)" $ do
