@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 
 -- | @interruptible@ variants of the "Language.C.Inline" quasi-quoters, to call
--- interruptible C code. See <https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/ffi.html#ffi-interruptible>
+-- interruptible C code. See <https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/ffi-chap.html#interruptible-foreign-calls>
 -- for more information.
 --
 -- This module is intended to be imported qualified:
