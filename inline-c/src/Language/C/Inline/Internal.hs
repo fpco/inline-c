@@ -70,7 +70,7 @@ import           Data.Typeable (Typeable, cast)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
-import           System.IO.Unsafe (unsafePerformIO)
+import           System.IO.Unsafe (unsafePerformIO, unsafeDupablePerformIO)
 import qualified Text.Parsec as Parsec
 import qualified Text.Parsec.Pos as Parsec
 import qualified Text.Parser.Char as Parser
@@ -659,7 +659,7 @@ genericQuote purity build = quoteCode $ \rawStr -> do
     ioCall <- buildFunCall ctx (build here hsFunType cType cParams' cExp) (map snd hsParams) []
     -- If the user requested a pure function, make it so.
     case purity of
-      Pure -> [| unsafePerformIO $(return ioCall) |]
+      Pure -> [| unsafeDupablePerformIO $(return ioCall) |]
       IO -> return ioCall
   where
     buildFunCall :: Context -> TH.ExpQ -> [TH.Exp] -> [TH.Name] -> TH.ExpQ
