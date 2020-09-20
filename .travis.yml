@@ -18,11 +18,11 @@ addons:
 
 matrix:
   include:
-   - env: ARGS="--flag inline-c:gsl-example"
-   - env: ARGS="--stack-yaml stack-nightly-2020-09-20.yaml --flag inline-c:gsl-example"
-   - env: ARGS="--stack-yaml stack-lts-14.27.yaml --flag inline-c:gsl-example"
-   - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c:gsl-example"
-   - env: ARGS="--stack-yaml stack-lts-11.22.yaml --flag inline-c:gsl-example"
+   - env: ARGS="--flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--stack-yaml stack-nightly-2020-09-20.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--stack-yaml stack-lts-14.27.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--stack-yaml stack-lts-11.22.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
    - os: osx
    # These fails with some CPP error:
    # inline-c-cpp        > /Users/travis/build/fpco/inline-c/inline-c-cpp//Users/travis/.stack/programs/x86_64-osx/ghc-8.4.4/lib/ghc-8.4.4/include/Stg.h:29:3: error:
