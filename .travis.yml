@@ -19,7 +19,8 @@ addons:
 matrix:
   include:
    - env: ARGS="--flag inline-c:gsl-example"
-   - env: ARGS="--stack-yaml stack-nightly-2020-01-30.yaml --flag inline-c:gsl-example"
+   - env: ARGS="--stack-yaml stack-nightly-2020-09-20.yaml --flag inline-c:gsl-example"
+   - env: ARGS="--stack-yaml stack-lts-14.27.yaml --flag inline-c:gsl-example"
    - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c:gsl-example"
    - env: ARGS="--stack-yaml stack-lts-11.22.yaml --flag inline-c:gsl-example"
    - os: osx
