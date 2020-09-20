@@ -659,6 +659,7 @@ genericQuote purity build = quoteCode $ \rawStr -> do
     ioCall <- buildFunCall ctx (build here hsFunType cType cParams' cExp) (map snd hsParams) []
     -- If the user requested a pure function, make it so.
     case purity of
+      -- Using unsafeDupablePerformIO to increase performance of pure calls, see <https://github.com/fpco/inline-c/issues/115>
       Pure -> [| unsafeDupablePerformIO $(return ioCall) |]
       IO -> return ioCall
   where
