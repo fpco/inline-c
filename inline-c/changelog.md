@@ -1,3 +1,4 @@
+- 0.9.1.1: Use `unsafeDupablePerformIO` rather than `unsafePerformIO`. See issue #115 and PR #117.
 - 0.9.1.0: Add `Language.C.Inline.substitute` and `Language.C.Inline.getHaskellType`.
 - 0.9.0.0: Add support for C++ namespace and template.
 - 0.8.0.1: Compatibility with GHC 8.8
