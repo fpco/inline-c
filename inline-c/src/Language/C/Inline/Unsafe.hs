@@ -37,10 +37,16 @@ exp = genericQuote IO $ inlineExp TH.Unsafe
 
 -- | Variant of 'exp', for use with expressions known to have no side effects.
 --
--- BEWARE: use this function with caution, only when you know what you are
+-- __BEWARE__: Use this function with caution, only when you know what you are
 -- doing. If an expression does in fact have side-effects, then indiscriminate
 -- use of 'pure' may endanger referential transparency, and in principle even
--- type safety.
+-- type safety. Also note that the function may run more than once and that it
+-- may run in parallel with itself, given that
+-- 'System.IO.Unsafe.unsafeDupablePerformIO' is used to call the provided C
+-- code [to ensure good performance using the threaded
+-- runtime](https://github.com/fpco/inline-c/issues/115).  Please refer to the
+-- documentation for 'System.IO.Unsafe.unsafeDupablePerformIO' for more
+-- details.
 pure :: TH.QuasiQuoter
 pure = genericQuote Pure $ inlineExp TH.Unsafe
 
