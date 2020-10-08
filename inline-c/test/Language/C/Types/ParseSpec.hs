@@ -11,6 +11,7 @@ import           Control.Applicative
 import           Control.Monad.Trans.Class (lift)
 import           Data.Hashable (Hashable)
 import qualified Test.Hspec as Hspec
+import qualified Test.Hspec.QuickCheck
 import qualified Test.QuickCheck as QC
 import           Text.Parser.Char
 import           Text.Parser.Combinators
@@ -29,7 +30,10 @@ import           Language.C.Inline.HaskellIdentifier
 import Prelude -- Fix for 7.10 unused warnings.
 
 spec :: Hspec.SpecWith ()
-spec = do
+-- modifyMaxDiscardRatio:
+--    'isGoodType' and 'isGoodHaskellIdentifierType' usually make it within the
+--    discard ratio of 10, but we increase the ratio to avoid spurious build failures
+spec = Test.Hspec.QuickCheck.modifyMaxDiscardRatio (const 20) $ do
   Hspec.it "parses everything which is pretty-printable (C)" $ do
 #if MIN_VERSION_QuickCheck(2,9,0)
     QC.property $ QC.again $ do -- Work around <https://github.com/nick8325/quickcheck/issues/113>
