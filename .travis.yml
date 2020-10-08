@@ -51,7 +51,9 @@ before_install:
 # This line does all of the work: installs GHC if necessary, build the library,
 # executables, and test suites, and runs the test suites. --no-terminal works
 # around some quirks in Travis's terminal implementation.
-script: stack --no-terminal --install-ghc test --haddock $ARGS
+# -j1: work around /tmp/stack-ce322b87c3e4fa73/test-ghc-env: openBinaryFile: resource busy (file is locked)
+#      as suggested by ulidtko here https://github.com/commercialhaskell/stack/issues/5024#issuecomment-690063488
+script: stack --no-terminal --install-ghc test -j1 --haddock $ARGS
 
 # Caching so the next build will be fast too.
 cache:
