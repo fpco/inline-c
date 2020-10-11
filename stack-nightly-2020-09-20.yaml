@@ -4,7 +4,4 @@ packages:
 - inline-c-cpp
 - sample-cabal-project
 extra-deps:
-- Chart-cairo-1.9.3@sha256:05cecda5743954e43c8eabea788e0c19300c305346febee727ce578f69e30748,879
-- cairo-0.13.8.0@sha256:9b64a376ebaa4f153bba5866a32291fd4bed48147009cce9158ce6533928eba8,4075
 - gtk2hs-buildtools-0.13.8.0@sha256:132f38155fc677430a47ea750918973161c876fb6f281d342ac2f07eb99229ce,5238
-
