@@ -35,6 +35,8 @@ matrix:
    #   os: osx
    # - env: ARGS="--stack-yaml stack-lts-11.22.yaml --flag inline-c:gsl-example"
    #   os: osx
+   - env: ARGS="--stack-yaml stack-nightly-2020-09-20.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+     os: osx
 
 before_install:
 # Download and unpack the stack executable
