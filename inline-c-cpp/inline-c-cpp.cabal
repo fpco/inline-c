@@ -66,6 +66,8 @@ test-suite tests
   ghc-options:         -optcxx=-Wall
                        -optcxx=-Werror
                        -optcxx=-std=c++11
+                       -- Test parameter propagation:
+                       -optcxx=-DINLINE_CPP_TEST_MACRO=1
   extra-libraries:     stdc++
   if os(darwin)
     ld-options: -Wl,-keep_dwarf_unwind

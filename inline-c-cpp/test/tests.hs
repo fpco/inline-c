@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -62,6 +61,10 @@ main = Hspec.hspec $ do
     Hspec.it "Hello World" $ do
       let x = 3
       [C.block| void {
+// Sanity check for propagation of c++ compiler options through Cabal and ghc
+#ifndef INLINE_CPP_TEST_MACRO
+#error "INLINE_CPP_TEST_MACRO wasn't defined."
+#endif
           std::cout << "Hello, world!" << $(int x) << std::endl;
         } |]
 
