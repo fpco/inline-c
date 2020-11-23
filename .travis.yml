@@ -19,7 +19,7 @@ addons:
 matrix:
   include:
    - env: ARGS="--flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
-   - env: ARGS="--stack-yaml stack-nightly-2020-09-20.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--stack-yaml stack-nightly-2020-11-23.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
    - env: ARGS="--stack-yaml stack-lts-14.27.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
    - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
    - os: osx
