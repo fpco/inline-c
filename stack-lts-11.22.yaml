@@ -1,5 +1,0 @@
-resolver: lts-11.22
-packages:
-- inline-c
-- inline-c-cpp
-- sample-cabal-project
