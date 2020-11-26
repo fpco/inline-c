@@ -1,3 +1,4 @@
+cabal-version:       2.2
 name:                inline-c-cpp
 version:             0.4.0.2
 synopsis:            Lets you embed C++ code into Haskell.
@@ -11,7 +12,6 @@ copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2019 France
 category:            FFI
 tested-with:         GHC == 8.4.4, GHC == 8.6.5, GHC == 8.8.4, GHC == 8.10.2
 build-type:          Simple
-cabal-version:       >=1.10
 extra-source-files:  test/*.h
 
 source-repository head
@@ -22,7 +22,43 @@ flag std-vector-example
   description:         Build std::vector example
   default:             False
 
+common cxx-opts
+  -- These options are for compilation of C++ _files_. We need to duplicate
+  -- these in ghc-options to apply them on inline-c-cpp snippets.
+  -- This is partly(?) due to Cabal < 3.2.1.0 not passing cxx-options to
+  -- GHC 8.10 correctly. See https://github.com/haskell/cabal/issues/6421
+  cxx-options:
+    -- Compilers strive to be ABI compatible regardless of the C++ language
+    -- version (except perhaps experimental features).
+    -- Discussion: https://stackoverflow.com/questions/46746878/is-it-safe-to-link-c17-c14-and-c11-objects/49118876
+    -- We only have to raise this if a new inline-c-cpp feature requires us to
+    -- bundle C++ code that requires a newer version of the standard.
+    -- Generated code in user libraries will be compiled with the language
+    -- version configured there.
+    -std=c++11
+    -Wall
+  extra-libraries: stdc++
+
+  if os(darwin)
+    -- avoid https://gitlab.haskell.org/ghc/ghc/issues/11829
+    ld-options:  -Wl,-keep_dwarf_unwind
+
+  if impl(ghc >= 8.10)
+    ghc-options:
+      -optcxx-std=c++11
+      -optcxx-Wall
+  else
+    -- On GHC < 8.10, we have to emulate -optcxx by making the C compiler compile
+    -- C++. GCC accepts this via -std, whereas Clang requires us to change the
+    -- command.
+    ghc-options:
+      -optc-std=c++11
+      -optc-Wall
+    if os(darwin)
+      ghc-options: -pgmc=clang++
+
 library
+  import:              cxx-opts
   exposed-modules:     Language.C.Inline.Cpp
                        Language.C.Inline.Cpp.Exceptions
   build-depends:       base >=4.7 && <5
@@ -35,15 +71,11 @@ library
   ghc-options:         -Wall -optc-xc++ -optc-std=c++11
   include-dirs:        include
   install-includes:    HaskellException.hxx HaskellStablePtr.hxx
-  extra-libraries:     stdc++
-  c-sources:           cxx-src/HaskellException.cxx cxx-src/HaskellStablePtr.cxx
-  cc-options:          -Wall -std=c++11
-  if os(darwin)
-    -- avoid https://gitlab.haskell.org/ghc/ghc/issues/11829
-    ld-options:        -Wl,-keep_dwarf_unwind
-    ghc-options:       -pgmc=clang++
+  cxx-sources:         cxx-src/HaskellException.cxx
+                       cxx-src/HaskellStablePtr.cxx
 
 test-suite tests
+  import:              cxx-opts
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             tests.hs
@@ -57,11 +89,12 @@ test-suite tests
                      , template-haskell
                      , vector
   default-language:    Haskell2010
-  ghc-options:
-    -optc-std=c++11
-  if os(darwin)
-    ghc-options: -pgmc=clang++
-  extra-libraries:     stdc++
-  cc-options:          -Wall -Werror -optc-xc++ -std=c++11
-  if os(darwin)
-    ld-options: -Wl,-keep_dwarf_unwind
+  cxx-options:         -Werror
+
+  if impl(ghc >= 8.10)
+    ghc-options:
+      -optcxx-Werror
+  else
+    ghc-options:
+      -optc-Werror
+
