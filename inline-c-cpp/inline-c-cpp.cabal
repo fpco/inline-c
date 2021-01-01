@@ -94,7 +94,8 @@ test-suite tests
   if impl(ghc >= 8.10)
     ghc-options:
       -optcxx-Werror
-  else
-    ghc-options:
-      -optc-Werror
-
+  -- else
+  --   ghc-options:
+  --     -- GHC < 8.10 can pass options to the C++ compiler, but it warns
+  --     -- so -Werror will not work.
+  --     -optc-Werror
