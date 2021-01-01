@@ -68,7 +68,7 @@ library
                      , containers
   hs-source-dirs:      src
   default-language:    Haskell2010
-  ghc-options:         -Wall -optc-xc++ -optc-std=c++11
+  ghc-options:         -Wall
   include-dirs:        include
   install-includes:    HaskellException.hxx HaskellStablePtr.hxx
   cxx-sources:         cxx-src/HaskellException.cxx
