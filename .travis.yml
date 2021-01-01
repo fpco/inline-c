@@ -23,13 +23,13 @@ matrix:
    - env: ARGS="--stack-yaml stack-lts-14.27.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
    - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
 
-   - env: ARGS="--flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--flag inline-c-cpp:std-vector-example"
      os: osx
-   - env: ARGS="--stack-yaml stack-nightly-2021-01-01.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--stack-yaml stack-nightly-2021-01-01.yaml --flag inline-c-cpp:std-vector-example"
      os: osx
-   - env: ARGS="--stack-yaml stack-lts-14.27.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--stack-yaml stack-lts-14.27.yaml --flag inline-c-cpp:std-vector-example"
      os: osx
-   - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example"
+   - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c-cpp:std-vector-example"
      os: osx
 
 before_install:
