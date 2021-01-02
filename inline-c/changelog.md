@@ -1,3 +1,4 @@
+- 0.9.1.4: Support GHC 8.10, including better C++ flags handling, see PR #121.
 - 0.9.1.3: Work around spurious test failures, see PR #118.
 - 0.9.1.2: Update haddock for `Language.C.Inline.Interruptible.pure`.
 - 0.9.1.1: Use `unsafeDupablePerformIO` rather than `unsafePerformIO`. See issue #115 and PR #117.
