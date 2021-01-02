@@ -29,8 +29,25 @@ matrix:
      os: osx
    - env: ARGS="--stack-yaml stack-lts-14.27.yaml --flag inline-c-cpp:std-vector-example"
      os: osx
-   - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c-cpp:std-vector-example"
-     os: osx
+  # LTS 12.26 fails with
+  # inline-c-cpp        > Linking .stack-work/dist/x86_64-osx/Cabal-2.2.0.1/build/tests/tests ...
+  # inline-c-cpp        > clang: warning: treating 'c' input as 'c++' when in C++ mode, this behavior is deprecated [-Wdeprecated]
+  # inline-c-cpp        > clang: warning: argument unused during compilation: '-nopie' [-Wunused-command-line-argument]
+  # inline-c-cpp        > 
+  # inline-c-cpp        > /Users/travis/build/fpco/inline-c/inline-c-cpp/In file included from /var/folders/nz/vv4_9tw56nv9k3tkvyszvwg80000gn/T/ghc9189_0/ghc_3.c:1:0: error:
+  # inline-c-cpp        >     
+  # inline-c-cpp        > 
+  # inline-c-cpp        > /Users/travis/build/fpco/inline-c/inline-c-cpp/In file included from /Users/travis/.stack/programs/x86_64-osx/ghc-8.4.4/lib/ghc-8.4.4/include/Rts.h:29:0: error:
+  # inline-c-cpp        >     
+  # inline-c-cpp        > 
+  # inline-c-cpp        > /Users/travis/build/fpco/inline-c/inline-c-cpp//Users/travis/.stack/programs/x86_64-osx/ghc-8.4.4/lib/ghc-8.4.4/include/Stg.h:29:3: error:
+  # inline-c-cpp        >      error: __STDC_VERSION__ does not advertise C99 or later
+  # inline-c-cpp        >    |
+  # inline-c-cpp        > 29 | # error __STDC_VERSION__ does not advertise C99 or later
+  # inline-c-cpp        >    |   ^
+  # inline-c-cpp        > # error __STDC_VERSION__ does not advertise C99 or later
+  #  - env: ARGS="--stack-yaml stack-lts-12.26.yaml --flag inline-c-cpp:std-vector-example"
+  #    os: osx
 
 before_install:
 # Download and unpack the stack executable
