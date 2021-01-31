@@ -16,14 +16,23 @@
    not know in advance where and how often the exception will be copied, or when
    it is released.
  */
+#ifdef	__APPLE__
 class HaskellException : public std::exception {
+#else
+class HaskellException : public std::exception {
+#endif
 public:
   std::shared_ptr<HaskellStablePtr> haskellExceptionStablePtr;
   std::string displayExceptionValue;
 
   HaskellException(std::string displayExceptionValue, void *haskellExceptionStablePtr);
   HaskellException(const HaskellException &);
+#ifdef	__APPLE__
+  virtual const char* what() const _NOEXCEPT override;
+  virtual ~HaskellException() _NOEXCEPT;
+#else
   virtual const char* what() const noexcept override;
+#endif
 
 };
 

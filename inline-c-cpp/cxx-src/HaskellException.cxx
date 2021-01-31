@@ -28,7 +28,16 @@ HaskellException::HaskellException(const HaskellException &other)
 {
 }
 
+#ifdef	__APPLE__
+HaskellException::~HaskellException() _NOEXCEPT
+{
+  haskellExceptionStablePtr.reset();
+}
+
+const char* HaskellException::what() const _NOEXCEPT {
+#else
 const char* HaskellException::what() const noexcept {
+#endif
   return displayExceptionValue.c_str();
 }
 
