@@ -41,6 +41,10 @@ spec = do
     shouldBeType (cty "bool") [t| CBool |]
   Hspec.it "converts void" $ do
     shouldBeType (cty "void") [t| () |]
+  Hspec.it "converts signed" $ do
+    shouldBeType (cty "signed") [t| CInt |]
+  Hspec.it "converts unsigned" $ do
+    shouldBeType (cty "unsigned") [t| CUInt |]
   Hspec.it "converts standard library types (1)" $ do
     shouldBeType (cty "FILE") [t| CFile |]
   Hspec.it "converts standard library types (2)" $ do
