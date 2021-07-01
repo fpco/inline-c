@@ -179,37 +179,41 @@ untangleDeclarationSpecifiers declSpecs = do
           P.TypeSpecifier x -> modify $ \(a, b, c, d) -> (a, x:b, c, d)
           P.TypeQualifier x -> modify $ \(a, b, c, d) -> (a, b, x:c, d)
           P.FunctionSpecifier x -> modify $ \(a, b, c, d) -> (a, b, c, x:d)
-  -- Split data type and specifiers
-  let (dataTypes, specs) =
-        partition (\x -> not (x `elem` [P.SIGNED, P.UNSIGNED, P.LONG, P.SHORT])) pTySpecs
-  let illegalSpecifiers s = failConversion $ IllegalSpecifiers s specs
-  -- Find out sign, if present
-  mbSign0 <- case filter (== P.SIGNED) specs of
-    []  -> return Nothing
-    [_] -> return $ Just Signed
-    _:_ -> illegalSpecifiers "conflicting/duplicate sign information"
-  mbSign <- case (mbSign0, filter (== P.UNSIGNED) specs) of
-    (Nothing, []) -> return Nothing
-    (Nothing, [_]) -> return $ Just Unsigned
-    (Just b, []) -> return $ Just b
-    _ -> illegalSpecifiers "conflicting/duplicate sign information"
-  let sign = fromMaybe Signed mbSign
-  -- Find out length
-  let longs = length $ filter (== P.LONG) specs
-  let shorts = length $ filter (== P.SHORT) specs
-  when (longs > 0 && shorts > 0) $ illegalSpecifiers "both long and short"
-  -- Find out data type
-  dataType <- case dataTypes of
-    [x] -> return x
-    [] | longs > 0 || shorts > 0 -> return P.INT
-    [] -> failConversion $ NoDataTypes declSpecs
-    _:_ -> failConversion $ MultipleDataTypes declSpecs
-  -- Check if things are compatible with one another
-  let checkNoSpecs =
-        unless (null specs) $ illegalSpecifiers "expecting no specifiers"
-  let checkNoLength =
-        when (longs > 0 || shorts > 0) $ illegalSpecifiers "unexpected long/short"
-  let type2type dat = case dat of
+  tySpec <- type2type pTySpecs
+  return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
+  where
+    type2type pTySpecs = do
+      -- Split data type and specifiers
+      let (dataTypes, specs) =
+            partition (\x -> not (x `elem` [P.SIGNED, P.UNSIGNED, P.LONG, P.SHORT])) pTySpecs
+      let illegalSpecifiers s = failConversion $ IllegalSpecifiers s specs
+      -- Find out sign, if present
+      mbSign0 <- case filter (== P.SIGNED) specs of
+        []  -> return Nothing
+        [_] -> return $ Just Signed
+        _:_ -> illegalSpecifiers "conflicting/duplicate sign information"
+      mbSign <- case (mbSign0, filter (== P.UNSIGNED) specs) of
+        (Nothing, []) -> return Nothing
+        (Nothing, [_]) -> return $ Just Unsigned
+        (Just b, []) -> return $ Just b
+        _ -> illegalSpecifiers "conflicting/duplicate sign information"
+      let sign = fromMaybe Signed mbSign
+      -- Find out length
+      let longs = length $ filter (== P.LONG) specs
+      let shorts = length $ filter (== P.SHORT) specs
+      when (longs > 0 && shorts > 0) $ illegalSpecifiers "both long and short"
+      -- Find out data type
+      dataType <- case dataTypes of
+        [x] -> return x
+        [] | longs > 0 || shorts > 0 -> return P.INT
+        [] -> failConversion $ NoDataTypes declSpecs
+        _:_ -> failConversion $ MultipleDataTypes declSpecs
+      -- Check if things are compatible with one another
+      let checkNoSpecs =
+            unless (null specs) $ illegalSpecifiers "expecting no specifiers"
+      let checkNoLength =
+            when (longs > 0 || shorts > 0) $ illegalSpecifiers "unexpected long/short"
+      case dataType of
         P.Template s args -> do
           checkNoSpecs
           args' <- forM args type2type
@@ -219,7 +223,7 @@ untangleDeclarationSpecifiers declSpecs = do
           return $ TemplateConst s
         P.TemplatePointer s -> do
           checkNoSpecs
-          s' <- type2type s
+          s' <- type2type [s]
           return $ TemplatePointer s'
         P.TypeName s -> do
           checkNoSpecs
@@ -260,8 +264,6 @@ untangleDeclarationSpecifiers declSpecs = do
               return Double
         _ -> do
           error $ "untangleDeclarationSpecifiers impossible: " ++ show dataType
-  tySpec <- type2type dataType
-  return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
 
 untangleDeclarator
   :: forall i. Type i -> P.Declarator i -> Either UntangleErr (i, Type i)
@@ -409,7 +411,7 @@ tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
         TypeName s -> [P.TypeName s]
         Struct s -> [P.Struct s]
         Enum s -> [P.Enum s]
-        Template s types -> [P.Template s (concat (map pTySpecs types))]
+        Template s types -> [P.Template s (map pTySpecs types)]
         TemplateConst s -> [P.TemplateConst s]
         TemplatePointer type' -> [P.TemplatePointer (head (pTySpecs type'))]
   in map P.StorageClassSpecifier storages ++
