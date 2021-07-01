@@ -563,7 +563,11 @@ instance Pretty TypeSpecifier where
    Struct x -> "struct" <+> pretty x
    Enum x -> "enum" <+> pretty x
    TypeName x -> pretty x
-   Template x args -> pretty x <+> "<" <+> mconcat (intersperse "," (map pretty args))  <+> ">"
+   Template x args ->
+     -- This code generates a c++ code of "template-identifier<template-argument1,template-argument2,..>" like "std::vector<int>".
+     -- concat_with_space is used to concat multiple terms like "unsigned int".
+     let concat_with_space = mconcat . (intersperse " ") . (map pretty)
+     in pretty x <+> "<" <+> mconcat (intersperse "," (map concat_with_space args))  <+> ">"
    TemplateConst x -> pretty x
    TemplatePointer x -> pretty x <+> "*"
 
