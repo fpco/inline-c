@@ -298,7 +298,7 @@ data TypeSpecifier
   | Struct CIdentifier
   | Enum CIdentifier
   | TypeName CIdentifier
-  | Template CIdentifier [TypeSpecifier]
+  | Template CIdentifier [[TypeSpecifier]]
   | TemplateConst String
   | TemplatePointer TypeSpecifier
   deriving (Typeable, Eq, Show)
@@ -380,14 +380,14 @@ templateParser s = parse'
     cidentParserWithNamespace =
       try (concat <$> sequence [cidentParser, (string "::"), cidentParserWithNamespace]) <|>
       cidentParser
-    templateArgType = try ((TemplatePointer <$> (type_specifier)) <* (string "*")) <|> try type_specifier <|> (TemplateConst <$> (many $ oneOf ['0'..'9']))
+    templateArgType = try ((TemplatePointer <$> (type_specifier)) <* (string "*")) <|> try type_specifier <|> (TemplateConst <$> (some $ oneOf ['0'..'9']))
     templateArgParser' = do
-      t <- templateArgType
+      t <- some (token templateArgType)
       _ <- string ","
       tt <- templateArgParser
       return $ t:tt
     templateArgParser =
-      try (templateArgParser') <|> ((:) <$> templateArgType <*> return [])
+      try (templateArgParser') <|> ((:) <$> some (token templateArgType) <*> return [])
 
 template_parser :: CParser i m => m TypeSpecifier
 template_parser = try $ templateParser cIdentStyle <?> "template name"
