@@ -30,6 +30,20 @@ returns_vec_of_int = do
             }
   |] :: IO (Ptr (CppVector CInt))
 
+-- compiles: we can return std::vector<signed>*
+returns_vec_of_signed = do
+  [C.block| std::vector<signed>* {
+                return ( (std::vector<signed>*) NULL);
+            }
+  |] :: IO (Ptr (CppVector CInt))
+
+-- compiles: we can return std::vector<unsigned>*
+returns_vec_of_unsigned = do
+  [C.block| std::vector<unsigned>* {
+                return ( (std::vector<unsigned>*) NULL);
+            }
+  |] :: IO (Ptr (CppVector CUInt))
+
 -- compiles: we can return std::vector<long int>*
 returns_vec_of_long_int = do
   [C.block| std::vector<long int>* {

@@ -205,6 +205,8 @@ untangleDeclarationSpecifiers declSpecs = do
       -- Find out data type
       dataType <- case dataTypes of
         [x] -> return x
+        [] | mbSign0 == Just Signed -> return P.INT -- "The Case of 'signed' not including 'signed int'"
+        [] | mbSign == Just Unsigned -> return P.INT -- "The Case of 'unsigned' not including 'unsigned int'"
         [] | longs > 0 || shorts > 0 -> return P.INT
         [] -> failConversion $ NoDataTypes declSpecs
         _:_ -> failConversion $ MultipleDataTypes declSpecs
