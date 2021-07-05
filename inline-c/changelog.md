@@ -1,3 +1,4 @@
+- 0.9.1.5: Support multi-token types in C++ template arguments, see issue #125 and PR #126.
 - 0.9.1.4: Support GHC 8.10, including better C++ flags handling, see PR #121.
 - 0.9.1.3: Work around spurious test failures, see PR #118.
 - 0.9.1.2: Update haddock for `Language.C.Inline.Interruptible.pure`.
