@@ -268,6 +268,8 @@ main = Hspec.hspec $ do
         *a = 100;
         $(std::vector<int*>* pt)->push_back(a);
         std::cout << *((*$(std::vector<int*>* pt))[0]) << std::endl;
+        delete a;
+        delete $(std::vector<int*>* pt);
       } |]
 
 tag :: C.CppException -> String
