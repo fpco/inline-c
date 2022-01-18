@@ -60,6 +60,7 @@ common cxx-opts
 library
   import:              cxx-opts
   exposed-modules:     Language.C.Inline.Cpp
+                       Language.C.Inline.Cpp.Exception
                        Language.C.Inline.Cpp.Exceptions
   build-depends:       base >=4.7 && <5
                      , bytestring
