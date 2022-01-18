@@ -7,6 +7,7 @@
 
 module Language.C.Inline.Cpp.Exception
   ( CppException(..)
+  , CppExceptionPtr
   , toSomeException
   , throwBlock
   , tryBlock
