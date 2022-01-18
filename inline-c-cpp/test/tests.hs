@@ -26,7 +26,8 @@ import           Data.ByteString (ByteString)
 import qualified Language.C.Inline.Cpp as C
 import qualified Language.C.Inline.Context as CC
 import qualified Language.C.Types as CT
-import qualified Language.C.Inline.Cpp.Exceptions as C
+import qualified Language.C.Inline.Cpp.Exception as C
+import qualified Language.C.Inline.Cpp.Exceptions as Legacy
 import           Foreign.C.String (withCString)
 import           Foreign.StablePtr (StablePtr, newStablePtr, castStablePtrToPtr)
 import qualified Test.Hspec as Hspec
@@ -296,16 +297,16 @@ main = Hspec.hspec $ do
 tag :: C.CppException -> String
 tag (C.CppStdException {}) = "CppStdException"
 tag (C.CppHaskellException {}) = "CppHaskellException"
-tag (C.CppOtherException {}) = "CppStdException"
+tag (Legacy.CppOtherException {}) = "CppStdException"
 
 shouldBeCppStdException :: Either C.CppException a -> String -> IO ()
-shouldBeCppStdException (Left (C.CppStdException actualMsg)) expectedMsg = do
+shouldBeCppStdException (Left (Legacy.CppStdException actualMsg)) expectedMsg = do
   actualMsg `Hspec.shouldBe` expectedMsg
 shouldBeCppStdException (Left x) expectedMsg = tag x `Hspec.shouldBe` ("CppStdException " <> show expectedMsg)
 shouldBeCppStdException (Right _) expectedMsg = "Right _" `Hspec.shouldBe` ("Left (CppStdException " <> show expectedMsg <> ")")
 
 shouldBeCppOtherException :: Either C.CppException a -> Maybe String -> IO ()
-shouldBeCppOtherException (Left (C.CppOtherException actualType)) expectedType = do
+shouldBeCppOtherException (Left (Legacy.CppOtherException actualType)) expectedType = do
   actualType `Hspec.shouldBe` expectedType
 shouldBeCppOtherException (Left x) expectedType = tag x `Hspec.shouldBe` ("CppOtherException " <> show expectedType)
 shouldBeCppOtherException (Right _) expectedType = "Right _" `Hspec.shouldBe` ("Left (CppOtherException " <> show expectedType <> ")")
