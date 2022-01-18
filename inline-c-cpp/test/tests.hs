@@ -17,9 +17,12 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 import           Control.Exception.Safe
 import           Control.Monad
+import qualified Data.ByteString as BS
+import           Data.ByteString (ByteString)
 import qualified Language.C.Inline.Cpp as C
 import qualified Language.C.Inline.Context as CC
 import qualified Language.C.Types as CT
@@ -34,10 +37,11 @@ import           Data.Monoid
 import qualified StdVector
 import qualified Data.Vector.Storable as VS
 
+
 data Test
 data Array a
 
-C.context $ C.cppCtx `mappend` C.cppTypePairs [
+C.context $ C.cppCtx <> C.fptrCtx <> C.cppTypePairs [
   ("Test::Test", [t|Test|]),
   ("std::array", [t|Array|])
   ] `mappend` StdVector.stdVectorCtx
@@ -121,7 +125,24 @@ main = Hspec.hspec $ do
         |]
 
       case result of
-        Left (C.CppOtherException (Just ty)) | "string" `isInfixOf` ty -> return ()
+        Left (C.CppNonStdException ex (Just ty)) -> do
+          ("string" `BS.isInfixOf` ty) `shouldBe` True
+          [C.throwBlock| int {
+            std::exception_ptr *e = $fptr-ptr:(std::exception_ptr *ex);
+            if (!e) throw std::runtime_error("Exception was null");
+            try {
+              std::cerr << "throwing..." << std::endl;
+              std::rethrow_exception(*e);
+            } catch (std::string &foobar) {
+              if (foobar == "FOOBAR")
+                return 42;
+              else
+                return 1;
+            } catch (...) {
+              return 2;
+            }
+            return 3;
+          }|] >>= \r -> r `shouldBe` 42
         _ -> error ("Expected Left CppOtherException with string type, but got " ++ show result)
 
     Hspec.it "catch without return (pure)" $ do
