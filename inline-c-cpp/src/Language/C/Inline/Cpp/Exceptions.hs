@@ -2,10 +2,13 @@
 
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module Language.C.Inline.Cpp.Exceptions
   ( CppException(..)
+  , pattern CppStdException
+  , pattern CppOtherException
   , toSomeException
   , throwBlock
   , tryBlock
@@ -13,30 +16,59 @@ module Language.C.Inline.Cpp.Exceptions
   ) where
 
 import           Control.Exception.Safe
+import qualified Data.ByteString.Unsafe as BS (unsafePackMallocCString)
+import           Data.ByteString (ByteString)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.Text.Encoding.Error as T
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Internal as C
 import qualified Language.C.Inline.Cpp as Cpp
+import           Language.C.Inline.Cpp (AbstractCppExceptionPtr)
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Quote
 import           Foreign
 import           Foreign.C
+import           System.IO.Unsafe(unsafePerformIO)
 
 C.context Cpp.cppCtx
 C.include "HaskellException.hxx"
 
 -- | An exception thrown in C++ code.
 data CppException
-  = CppStdException String
-  | CppOtherException (Maybe String) -- contains the exception type, if available.
+  = CppStdException' CppExceptionPtr ByteString (Maybe ByteString)
   | CppHaskellException SomeException
-  deriving (Show)
+  | CppNonStdException CppExceptionPtr (Maybe ByteString)
+
+instance Show CppException where
+  showsPrec p (CppStdException' _ msg typ) = showParen (p >= 11) (showString "CppStdException e " . showsPrec 11 msg . showsPrec 11 typ)
+  showsPrec p (CppHaskellException e) = showParen (p >= 11) (showString "CppHaskellException " . showsPrec 11 e)
+  showsPrec p (CppNonStdException _ typ) = showParen (p >= 11) (showString "CppOtherException e " . showsPrec 11 typ)
+
+instance Exception CppException where
+  displayException (CppStdException' _ msg _typ) = bsToChars msg
+  displayException (CppHaskellException e) = displayException e
+  displayException (CppNonStdException _ (Just typ)) = "exception: Exception of type " <> bsToChars typ
+  displayException (CppNonStdException _ Nothing) = "exception: Non-std exception of unknown type"
+
+type CppExceptionPtr = ForeignPtr AbstractCppExceptionPtr
+
+unsafeFromNewCppExceptionPtr :: Ptr AbstractCppExceptionPtr -> IO CppExceptionPtr
+unsafeFromNewCppExceptionPtr p = newForeignPtr finalizeAbstractCppExceptionPtr p
+
+finalizeAbstractCppExceptionPtr :: FinalizerPtr AbstractCppExceptionPtr
+{-# NOINLINE finalizeAbstractCppExceptionPtr #-}
+finalizeAbstractCppExceptionPtr =
+  unsafePerformIO
+    [C.exp|
+      void (*)(std::exception_ptr *) {
+        [](std::exception_ptr *v){ delete v; }
+      }|]
 
 -- | Like 'toException' but unwrap 'CppHaskellException'
 toSomeException :: CppException -> SomeException
 toSomeException (CppHaskellException e) = e
 toSomeException x = toException x
-
-instance Exception CppException
 
 -- NOTE: Other C++ exception types (std::runtime_error etc) could be distinguished like this in the future.
 pattern ExTypeNoException :: CInt
@@ -51,10 +83,13 @@ pattern ExTypeHaskellException = 2
 pattern ExTypeOtherException :: CInt
 pattern ExTypeOtherException = 3
 
-handleForeignCatch :: (Ptr CInt -> Ptr CString -> Ptr (Ptr ()) -> IO a) -> IO (Either CppException a)
+
+handleForeignCatch :: (Ptr CInt -> Ptr CString -> Ptr CString -> Ptr (Ptr AbstractCppExceptionPtr) -> Ptr (Ptr ()) -> IO a) -> IO (Either CppException a)
 handleForeignCatch cont =
   alloca $ \exTypePtr ->
-  alloca $ \msgPtrPtr ->
+  alloca $ \msgCStringPtr ->
+  alloca $ \typCStringPtr ->
+  alloca $ \exPtr ->
   alloca $ \haskellExPtrPtr -> do
     poke exTypePtr ExTypeNoException
     -- we need to mask this entire block because the C++ allocates the
@@ -62,15 +97,15 @@ handleForeignCatch cont =
     -- we free it (see the @free@ below). The foreign code would not be
     -- preemptable anyway, so I do not think this loses us anything.
     mask_ $ do
-      res <- cont exTypePtr msgPtrPtr haskellExPtrPtr
+      res <- cont exTypePtr msgCStringPtr typCStringPtr exPtr haskellExPtrPtr
       exType <- peek exTypePtr
       case exType of
         ExTypeNoException -> return (Right res)
         ExTypeStdException -> do
-          msgPtr <- peek msgPtrPtr
-          errMsg <- peekCString msgPtr
-          free msgPtr
-          return (Left (CppStdException errMsg))
+          ex <- unsafeFromNewCppExceptionPtr =<< peek exPtr
+          errMsg <- BS.unsafePackMallocCString =<< peek msgCStringPtr
+          mbExcType <- maybePeek BS.unsafePackMallocCString =<< peek typCStringPtr
+          return (Left (CppStdException' ex errMsg mbExcType))
         ExTypeHaskellException -> do
           haskellExPtr <- peek haskellExPtrPtr
           stablePtr <- [C.block| void * {
@@ -82,14 +117,9 @@ handleForeignCatch cont =
             } |]
           return (Left (CppHaskellException someExc))
         ExTypeOtherException -> do
-          msgPtr <- peek msgPtrPtr
-          mbExcType <- if msgPtr == nullPtr
-            then return Nothing
-            else do
-              excType <- peekCString msgPtr
-              free msgPtr
-              return (Just excType)
-          return (Left (CppOtherException mbExcType))
+          ex <- unsafeFromNewCppExceptionPtr =<< peek exPtr
+          mbExcType <- maybePeek BS.unsafePackMallocCString =<< peek typCStringPtr
+          return (Left (CppNonStdException ex mbExcType)) :: IO (Either CppException a)
         _ -> error "Unexpected C++ exception type."
 
 -- | Like 'tryBlock', but will throw unwrapped 'CppHaskellException's or other 'CppException's rather than returning
@@ -165,30 +195,36 @@ tryBlockQuoteExp blockStr = do
   typePtrVarName <- newName "exTypePtr"
   msgPtrVarName <- newName "msgPtr"
   haskellExPtrVarName <- newName "haskellExPtr"
+  exPtrVarName <- newName "exPtr"
+  typeStrPtrVarName <- newName "typeStrPtr"
   let inlineCStr = unlines
         [ ty ++ " {"
         , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
         , "  char** __inline_c_cpp_error_message__ = $(char** " ++ nameBase msgPtrVarName ++ ");"
+        , "  char** __inline_c_cpp_error_typ__ = $(char** " ++ nameBase typeStrPtrVarName ++ ");"
         , "  HaskellException** __inline_c_cpp_haskellexception__ = (HaskellException**)($(void ** " ++ nameBase haskellExPtrVarName ++ "));"
+        , "  std::exception_ptr** __inline_c_cpp_exception_ptr__ = (std::exception_ptr**)$(std::exception_ptr** " ++ nameBase exPtrVarName ++ ");"
         , "  try {"
         , body
-        , "  } catch (HaskellException &e) {"
+        , "  } catch (const HaskellException &e) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeHaskellException ++ ";"
         , "    *__inline_c_cpp_haskellexception__ = new HaskellException(e);"
         , "    return " ++ exceptionalValue ty ++ ";"
-        , "  } catch (std::exception &e) {"
+        , "  } catch (const std::exception &e) {"
+        , "    *__inline_c_cpp_exception_ptr__ = new std::exception_ptr(std::current_exception());"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeStdException ++ ";"
-        , "    setMessageOfStdException(e,__inline_c_cpp_error_message__);"
+        , "    setMessageOfStdException(e, __inline_c_cpp_error_message__, __inline_c_cpp_error_typ__);"
         , "    return " ++ exceptionalValue ty ++ ";"
         , "  } catch (...) {"
+        , "    *__inline_c_cpp_exception_ptr__ = new std::exception_ptr(std::current_exception());"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeOtherException ++ ";"
-        , "    setMessageOfOtherException(__inline_c_cpp_error_message__);"
+        , "    setCppExceptionType(__inline_c_cpp_error_typ__);"
         , "    return " ++ exceptionalValue ty ++ ";"
         , "  }"
         , "}"
         ]
-  [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) $(varP haskellExPtrVarName) -> $(quoteExp C.block inlineCStr) |]
- 
+  [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) $(varP typeStrPtrVarName) $(varP exPtrVarName) $(varP haskellExPtrVarName) -> $(quoteExp C.block inlineCStr) |]
+
 -- | Similar to `C.block`, but C++ exceptions will be caught and the result is (Either CppException value). The return type must be void or constructible with @{}@.
 -- Using this will automatically include @exception@, @cstring@ and @cstdlib@.
 tryBlock :: QuasiQuoter
@@ -199,3 +235,23 @@ tryBlock = QuasiQuoter
   , quoteDec = unsupported
   } where
       unsupported _ = fail "Unsupported quasiquotation."
+
+bsToChars :: ByteString -> String
+bsToChars = T.unpack . T.decodeUtf8With T.lenientDecode
+
+-- legacy --
+
+pattern CppStdException :: String -> CppException
+pattern CppStdException s <- (cppStdExceptionMessage -> Just s)
+
+pattern CppOtherException :: Maybe String -> CppException
+pattern CppOtherException mt <- (cppNonStdExceptionType -> Just mt)
+
+cppStdExceptionMessage :: CppException -> Maybe String
+cppStdExceptionMessage (CppStdException' _ s (Just t)) = Just $ "Exception: " <> bsToChars s <> "; type: " <> bsToChars t
+cppStdExceptionMessage (CppStdException' _ s Nothing) = Just $ "Exception: " <> bsToChars s <> "; type: not available (please use g++ or clang)"
+cppStdExceptionMessage _ = Nothing
+
+cppNonStdExceptionType :: CppException -> Maybe (Maybe String)
+cppNonStdExceptionType (CppNonStdException _ mt) = Just (fmap bsToChars mt)
+cppNonStdExceptionType _ = Nothing

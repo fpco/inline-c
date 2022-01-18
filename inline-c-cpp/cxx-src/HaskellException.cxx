@@ -54,25 +54,18 @@ const char* currentExceptionTypeName()
 }
 #endif
 
-void setMessageOfStdException(std::exception &e,char** __inline_c_cpp_error_message__){
-#if defined(__GNUC__) || defined(__clang__)
-  const char* demangle_result = currentExceptionTypeName();
-  std::string message = "Exception: " + std::string(e.what()) + "; type: " + std::string(demangle_result);
-#else
-  std::string message = "Exception: " + std::string(e.what()) + "; type: not available (please use g++ or clang)";
-#endif
-  size_t message_len = message.size() + 1;
-  *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(message_len));
-  std::memcpy(*__inline_c_cpp_error_message__, message.c_str(), message_len);
+void setMessageOfStdException(const std::exception &e, char** msgStrPtr, char **typStrPtr){
+  *msgStrPtr = strdup(e.what());
+  setCppExceptionType(typStrPtr);
 }
 
-void setMessageOfOtherException(char** __inline_c_cpp_error_message__){
+void setCppExceptionType(char** typStrPtr){
 #if defined(__GNUC__) || defined(__clang__)
   const char* message = currentExceptionTypeName();
   size_t message_len = strlen(message) + 1;
-  *__inline_c_cpp_error_message__ = static_cast<char*>(std::malloc(message_len));
-  std::memcpy(*__inline_c_cpp_error_message__, message, message_len);
+  *typStrPtr = static_cast<char*>(std::malloc(message_len));
+  std::memcpy(*typStrPtr, message, message_len);
 #else
-  *__inline_c_cpp_error_message__ = NULL;
+  *typStrPtr = NULL;
 #endif
 }
