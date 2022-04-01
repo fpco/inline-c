@@ -1,3 +1,4 @@
+# ghc 8.4.4
 resolver: lts-12.26
 packages:
 - inline-c
