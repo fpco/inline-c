@@ -274,6 +274,57 @@ main = Hspec.hspec $ do
 
       result `shouldBeRight` 0xDEADBEEF
 
+    Hspec.it "code can contain preprocessor directives" $ do
+      result <- try $ [C.throwBlock| int {
+          #ifndef THE_MACRO_THAT_HAS_NOT_BEEN_DEFINED
+          return 0xDEADBEEF;
+          #else
+          return 0xBEEFCAFE;
+          #endif
+        } |]
+
+      result `shouldBeRight` 0xDEADBEEF
+
+    {- Manual test cases for testing lineDirective and splitTypedC
+
+    Hspec.it "error reporting test case" $ do
+      result <- try $ [C.throwBlock| int { 0 = 0; }|]
+      result `shouldBeRight` 0xDEADBEEF
+
+    Hspec.it "error reporting test case" $ do
+      result <- try $ [C.throwBlock| int
+        { 1 = 1; }
+      |]
+      result `shouldBeRight` 0xDEADBEEF
+
+    Hspec.it "error reporting test case" $ do
+      result <- try $ [C.throwBlock| int
+        {
+          2 = 2;
+        }
+      |]
+      result `shouldBeRight` 0xDEADBEEF
+
+    Hspec.it "error reporting test case" $ do
+      result <- try $ [C.throwBlock|
+        int
+        {
+          3 = 3;
+        }
+      |]
+      result `shouldBeRight` 0xDEADBEEF
+
+    Hspec.it "error reporting test case" $ do
+      result <- try $ [C.throwBlock|
+
+        int
+        {
+          4 = 4;
+        }
+      |]
+      result `shouldBeRight` 0xDEADBEEF
+    -- -}
+
   Hspec.describe "Macros" $ do
     Hspec.it "generated std::vector instances work correctly" $ do
       intVec <- StdVector.new @C.CInt

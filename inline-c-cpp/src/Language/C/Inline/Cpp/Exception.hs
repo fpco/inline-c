@@ -208,22 +208,26 @@ exceptionalValue typeStr =
 
 tryBlockQuoteExp :: String -> Q Exp
 tryBlockQuoteExp blockStr = do
-  let (ty, body) = C.splitTypedC blockStr
+  let (ty, body, bodyLineShift) = C.splitTypedC blockStr
   _ <- C.include "HaskellException.hxx"
   typePtrVarName <- newName "exTypePtr"
   msgPtrVarName <- newName "msgPtr"
   haskellExPtrVarName <- newName "haskellExPtr"
   exPtrVarName <- newName "exPtr"
   typeStrPtrVarName <- newName "typeStrPtr"
+  there <- location
   let inlineCStr = unlines
         [ ty ++ " {"
+        , C.lineDirective $(C.here)
         , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
         , "  const char** __inline_c_cpp_error_message__ = $(const char** " ++ nameBase msgPtrVarName ++ ");"
         , "  const char** __inline_c_cpp_error_typ__ = $(const char** " ++ nameBase typeStrPtrVarName ++ ");"
         , "  HaskellException** __inline_c_cpp_haskellexception__ = (HaskellException**)($(void ** " ++ nameBase haskellExPtrVarName ++ "));"
         , "  std::exception_ptr** __inline_c_cpp_exception_ptr__ = (std::exception_ptr**)$(std::exception_ptr** " ++ nameBase exPtrVarName ++ ");"
         , "  try {"
+        , C.lineDirective (C.shiftLines (bodyLineShift - 1) there)
         , body
+        , C.lineDirective $(C.here)
         , "  } catch (const HaskellException &e) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeHaskellException ++ ";"
         , "    *__inline_c_cpp_haskellexception__ = new HaskellException(e);"

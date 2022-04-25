@@ -55,6 +55,8 @@ module Language.C.Inline.Internal
 
       -- * Line directives
     , lineDirective
+    , here
+    , shiftLines
 
       -- * Utility functions for writing quasiquoters
     , genericQuote
@@ -683,13 +685,36 @@ genericQuote purity build = quoteCode $ \rawStr -> do
         go (paramType : params) = do
           [t| $(return paramType) -> $(go params) |]
 
-splitTypedC :: String -> (String, String)
-  -- ^ Returns the type and the body separately
-splitTypedC s = (trim ty, case body of
-                            [] -> []
-                            r  -> r)
+
+-- NOTE: splitTypedC wouldn't be necessary if inline-c-cpp could reuse C.block
+-- internals with a clean interface.
+-- This would be a significant refactoring but presumably it would lead to an
+-- api that could let users write their own quasiquoters a bit more conveniently.
+
+-- | Returns the type and the body separately.
+splitTypedC :: String -> (String, String, Int)
+splitTypedC s = (trim ty, bodyIndent <> body, bodyLineShift)
   where (ty, body) = span (/= '{') s
         trim x = L.dropWhileEnd C.isSpace (dropWhile C.isSpace x)
+
+        -- We may need to correct the line number of the body
+        bodyLineShift = length (filter (== '\n') ty)
+
+        -- Indentation is relevant for error messages when the syntax is:
+        -- [C.foo| type
+        --   { foo(); }
+        -- |]
+        bodyIndent =
+          let precedingSpaceReversed =
+                takeWhile (\c -> C.isSpace c) $
+                reverse $
+                ty
+              (precedingSpacesTabsReversed, precedingLine) =
+                span (`notElem` ("\n\r" :: [Char])) precedingSpaceReversed
+          in case precedingLine of
+            ('\n':_) -> reverse precedingSpacesTabsReversed
+            ('\r':_) -> reverse precedingSpacesTabsReversed
+            _ -> "" -- it wasn't indentation after all; just spaces after the type
 
 -- | Data to parse for the 'funPtr' quasi-quoter.
 data FunPtrDecl = FunPtrDecl
@@ -761,9 +786,48 @@ funPtrQuote callSafety = quoteCode $ \rawCode -> do
 ------------------------------------------------------------------------
 -- Line directives
 
+-- | Tell the C compiler where the next line came from.
+--
+-- Example:
+--
+-- @@@
+-- there <- location
+-- f (unlines
+--   [ lineDirective $(here)
+--   , "generated_code_user_did_not_write()"
+--   , lineDirective there
+--   ] ++ userCode
+-- ])
+-- @@@
+--
+-- Use @lineDirective $(C.here)@ when generating code, so that any errors or
+-- warnings report the location of the generating haskell module, rather than
+-- tangentially related user code that doesn't contain the actual problem.
 lineDirective :: TH.Loc -> String
 lineDirective l = "#line " ++ show (fst $ TH.loc_start l) ++ " " ++ show (TH.loc_filename l ) ++ "\n"
 
+-- | Get the location of the code you're looking at, for use with
+-- 'lineDirective'; place before generated code that user did not write.
+here :: TH.ExpQ
+here = [| $(TH.location >>= \(TH.Loc a b c (d1, d2) (e1, e2)) ->
+    [|Loc
+      $(TH.lift a)
+      $(TH.lift b)
+      $(TH.lift c)
+      ($(TH.lift d1), $(TH.lift d2))
+      ($(TH.lift e1), $(TH.lift e2))
+    |])
+  |]
+
+shiftLines :: Int -> TH.Loc -> TH.Loc
+shiftLines n l = l
+  { TH.loc_start =
+      let (startLn, startCol) = TH.loc_start l
+      in (startLn + n, startCol)
+  , TH.loc_end =
+      let (endLn, endCol) = TH.loc_end l
+      in (endLn + n, endCol)
+  }
 
 ------------------------------------------------------------------------
 -- Utils
