@@ -52,6 +52,10 @@ const char* HaskellException::what() const noexcept {
     - a mangled string if demangling fails,
     - "<unknown exception>" if exception type info is not available,
     - "<no exception>" if no current exception is found.
+
+   The responsibility for freeing the returned string falls on the caller,
+   such as handleForeignCatch, which passes the responsibility on to ByteString
+
  */
 #if defined(__GNUC__) || defined(__clang__)
 const char* currentExceptionTypeName()
@@ -73,6 +77,12 @@ const char* currentExceptionTypeName()
 }
 #endif
 
+/* Set the message and type strings.
+
+   The responsibility for freeing the returned string falls on the caller,
+   such as handleForeignCatch, which passes the responsibility on to a
+   ByteString.
+ */
 void setMessageOfStdException(const std::exception &e, const char** msgStrPtr, const char **typStrPtr){
   *msgStrPtr = strdup(e.what());
   setCppExceptionType(typStrPtr);
