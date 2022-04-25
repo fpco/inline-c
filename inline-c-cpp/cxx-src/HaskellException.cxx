@@ -46,25 +46,41 @@ const char* HaskellException::what() const noexcept {
 // <https://stackoverflow.com/questions/561997/determining-exception-type-after-the-exception-is-caught/47164539#47164539>
 // regarding how to show the type of an exception.
 
+/* mallocs a string representing the exception type name or error condition.
+
+   Ideally, this returns a demangled string, but it may degrade to
+    - a mangled string if demangling fails,
+    - "<unknown exception>" if exception type info is not available,
+    - "<no exception>" if no current exception is found.
+ */
 #if defined(__GNUC__) || defined(__clang__)
 const char* currentExceptionTypeName()
 {
+  std::type_info *type_info = abi::__cxa_current_exception_type();
+  if (!type_info)
+    return strdup("<no exception>");
+
+  const char *raw_name = type_info->name();
+  if (!raw_name)
+    return strdup("<unknown exception>");
+
   int demangle_status;
-  return abi::__cxa_demangle(abi::__cxa_current_exception_type()->name(), 0, 0, &demangle_status);
+  const char *demangled_name = abi::__cxa_demangle(raw_name, 0, 0, &demangle_status);
+  if (!demangled_name)
+    return strdup(raw_name);
+
+  return demangled_name;
 }
 #endif
 
-void setMessageOfStdException(const std::exception &e, char** msgStrPtr, char **typStrPtr){
+void setMessageOfStdException(const std::exception &e, const char** msgStrPtr, const char **typStrPtr){
   *msgStrPtr = strdup(e.what());
   setCppExceptionType(typStrPtr);
 }
 
-void setCppExceptionType(char** typStrPtr){
+void setCppExceptionType(const char** typStrPtr){
 #if defined(__GNUC__) || defined(__clang__)
-  const char* message = currentExceptionTypeName();
-  size_t message_len = strlen(message) + 1;
-  *typStrPtr = static_cast<char*>(std::malloc(message_len));
-  std::memcpy(*typStrPtr, message, message_len);
+  *typStrPtr = currentExceptionTypeName();
 #else
   *typStrPtr = NULL;
 #endif

@@ -199,8 +199,8 @@ tryBlockQuoteExp blockStr = do
   let inlineCStr = unlines
         [ ty ++ " {"
         , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
-        , "  char** __inline_c_cpp_error_message__ = $(char** " ++ nameBase msgPtrVarName ++ ");"
-        , "  char** __inline_c_cpp_error_typ__ = $(char** " ++ nameBase typeStrPtrVarName ++ ");"
+        , "  const char** __inline_c_cpp_error_message__ = $(const char** " ++ nameBase msgPtrVarName ++ ");"
+        , "  const char** __inline_c_cpp_error_typ__ = $(const char** " ++ nameBase typeStrPtrVarName ++ ");"
         , "  HaskellException** __inline_c_cpp_haskellexception__ = (HaskellException**)($(void ** " ++ nameBase haskellExPtrVarName ++ "));"
         , "  std::exception_ptr** __inline_c_cpp_exception_ptr__ = (std::exception_ptr**)$(std::exception_ptr** " ++ nameBase exPtrVarName ++ ");"
         , "  try {"

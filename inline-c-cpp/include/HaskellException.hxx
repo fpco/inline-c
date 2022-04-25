@@ -36,5 +36,5 @@ public:
 
 };
 
-void setMessageOfStdException(const std::exception &e, char** msgStrPtr, char **typeStrPtr);
-void setCppExceptionType(char** typeStrPtr);
+void setMessageOfStdException(const std::exception &e, const char** msgStrPtr, const char **typeStrPtr);
+void setCppExceptionType(const char** typeStrPtr);
