@@ -53,6 +53,9 @@ module Language.C.Inline.Internal
     , runParserInQ
     , splitTypedC
 
+      -- * Line directives
+    , lineDirective
+
       -- * Utility functions for writing quasiquoters
     , genericQuote
     , funPtrQuote
@@ -294,7 +297,7 @@ inlineCode Code{..} = do
   -- Write out definitions
   ctx <- getContext
   let out = fromMaybe id $ ctxOutput ctx
-  let directive = maybe "" (\l -> "#line " ++ show (fst $ TH.loc_start l) ++ " " ++ show (TH.loc_filename l ) ++ "\n") codeLoc
+  let directive = maybe "" lineDirective codeLoc
   void $ emitVerbatim $ out $ directive ++ codeDefs
   -- Create and add the FFI declaration.
   ffiImportName <- uniqueFfiImportName
@@ -754,6 +757,13 @@ funPtrQuote callSafety = quoteCode $ \rawCode -> do
              return ("}" ++ s')
         ]
       return (s ++ s')
+
+------------------------------------------------------------------------
+-- Line directives
+
+lineDirective :: TH.Loc -> String
+lineDirective l = "#line " ++ show (fst $ TH.loc_start l) ++ " " ++ show (TH.loc_filename l ) ++ "\n"
+
 
 ------------------------------------------------------------------------
 -- Utils
