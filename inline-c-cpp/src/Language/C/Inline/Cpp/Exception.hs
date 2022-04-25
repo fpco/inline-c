@@ -60,7 +60,7 @@ type CppExceptionPtr = ForeignPtr AbstractCppExceptionPtr
 -- by itself, but safe when used correctly; similar to for example
 -- 'BS.unsafePackMallocCString'.
 unsafeFromNewCppExceptionPtr :: Ptr AbstractCppExceptionPtr -> IO CppExceptionPtr
-unsafeFromNewCppExceptionPtr p = newForeignPtr finalizeAbstractCppExceptionPtr p
+unsafeFromNewCppExceptionPtr = newForeignPtr finalizeAbstractCppExceptionPtr
 
 finalizeAbstractCppExceptionPtr :: FinalizerPtr AbstractCppExceptionPtr
 {-# NOINLINE finalizeAbstractCppExceptionPtr #-}
