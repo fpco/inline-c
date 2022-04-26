@@ -52,8 +52,15 @@ instance Exception CppException where
 
 type CppExceptionPtr = ForeignPtr AbstractCppExceptionPtr
 
+-- | This converts a plain pointer to a managed object.
+--
+-- The pointer must have been created with @new@. The returned 'CppExceptionPtr'
+-- will @delete@ it when it is garbage collected, so you must not @delete@ it
+-- on your own. This function is called "unsafe" because it is not memory safe
+-- by itself, but safe when used correctly; similar to for example
+-- 'BS.unsafePackMallocCString'.
 unsafeFromNewCppExceptionPtr :: Ptr AbstractCppExceptionPtr -> IO CppExceptionPtr
-unsafeFromNewCppExceptionPtr p = newForeignPtr finalizeAbstractCppExceptionPtr p
+unsafeFromNewCppExceptionPtr = newForeignPtr finalizeAbstractCppExceptionPtr
 
 finalizeAbstractCppExceptionPtr :: FinalizerPtr AbstractCppExceptionPtr
 {-# NOINLINE finalizeAbstractCppExceptionPtr #-}
@@ -102,8 +109,16 @@ handleForeignCatch cont =
         ExTypeNoException -> return (Right res)
         ExTypeStdException -> do
           ex <- unsafeFromNewCppExceptionPtr =<< peek exPtr
+
+          -- BS.unsafePackMallocCString: safe because setMessageOfStdException
+          -- (invoked via tryBlockQuoteExp) sets msgCStringPtr to a newly
+          -- malloced string.
           errMsg <- BS.unsafePackMallocCString =<< peek msgCStringPtr
+
+          -- BS.unsafePackMallocCString: safe because currentExceptionTypeName
+          -- returns a newly malloced string
           mbExcType <- maybePeek BS.unsafePackMallocCString =<< peek typCStringPtr
+
           return (Left (CppStdException ex errMsg mbExcType))
         ExTypeHaskellException -> do
           haskellExPtr <- peek haskellExPtrPtr
@@ -117,7 +132,11 @@ handleForeignCatch cont =
           return (Left (CppHaskellException someExc))
         ExTypeOtherException -> do
           ex <- unsafeFromNewCppExceptionPtr =<< peek exPtr
+
+          -- BS.unsafePackMallocCString: safe because currentExceptionTypeName
+          -- returns a newly malloced string
           mbExcType <- maybePeek BS.unsafePackMallocCString =<< peek typCStringPtr
+
           return (Left (CppNonStdException ex mbExcType)) :: IO (Either CppException a)
         _ -> error "Unexpected C++ exception type."
 
@@ -199,8 +218,8 @@ tryBlockQuoteExp blockStr = do
   let inlineCStr = unlines
         [ ty ++ " {"
         , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
-        , "  char** __inline_c_cpp_error_message__ = $(char** " ++ nameBase msgPtrVarName ++ ");"
-        , "  char** __inline_c_cpp_error_typ__ = $(char** " ++ nameBase typeStrPtrVarName ++ ");"
+        , "  const char** __inline_c_cpp_error_message__ = $(const char** " ++ nameBase msgPtrVarName ++ ");"
+        , "  const char** __inline_c_cpp_error_typ__ = $(const char** " ++ nameBase typeStrPtrVarName ++ ");"
         , "  HaskellException** __inline_c_cpp_haskellexception__ = (HaskellException**)($(void ** " ++ nameBase haskellExPtrVarName ++ "));"
         , "  std::exception_ptr** __inline_c_cpp_exception_ptr__ = (std::exception_ptr**)$(std::exception_ptr** " ++ nameBase exPtrVarName ++ ");"
         , "  try {"

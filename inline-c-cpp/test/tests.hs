@@ -120,6 +120,13 @@ main = Hspec.hspec $ do
 
       result `shouldBeCppOtherException` (Just "unsigned int")
 
+    Hspec.it "non-exceptions are caught (void *)" $ do
+      result <- try [C.catchBlock|
+        throw (void *)0xDEADBEEF;
+        |]
+
+      result `shouldBeCppOtherException` (Just "void*")
+
     Hspec.it "non-exceptions are caught (std::string)" $ do
       result <- try [C.catchBlock|
         throw std::string("FOOBAR");
