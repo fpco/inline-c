@@ -49,4 +49,4 @@ pure = genericQuote Pure $ inlineExp TH.Interruptible
 
 -- | C code blocks (i.e. statements).
 block :: TH.QuasiQuoter
-block = genericQuote IO $ inlineItems TH.Unsafe False Nothing
+block = genericQuote IO $ inlineItems TH.Interruptible False Nothing
