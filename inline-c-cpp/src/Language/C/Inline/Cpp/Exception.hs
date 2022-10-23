@@ -12,6 +12,7 @@ module Language.C.Inline.Cpp.Exception
   , throwBlock
   , tryBlock
   , catchBlock
+  , tryBlockQuoteExp
   ) where
 
 import           Control.Exception.Safe
@@ -145,7 +146,7 @@ handleForeignCatch cont =
 throwBlock :: QuasiQuoter
 throwBlock = QuasiQuoter
   { quoteExp = \blockStr -> do
-      [e| either (throwIO . toSomeException) return =<< $(tryBlockQuoteExp blockStr) |]
+      [e| either (throwIO . toSomeException) return =<< $(tryBlockQuoteExp C.block blockStr) |]
   , quotePat = unsupported
   , quoteType = unsupported
   , quoteDec = unsupported
@@ -206,8 +207,8 @@ exceptionalValue typeStr =
     "jmp_buf" -> "0"
     _ -> "{}"
 
-tryBlockQuoteExp :: String -> Q Exp
-tryBlockQuoteExp blockStr = do
+tryBlockQuoteExp :: QuasiQuoter -> String -> Q Exp
+tryBlockQuoteExp block blockStr = do
   let (ty, body) = C.splitTypedC blockStr
   _ <- C.include "HaskellException.hxx"
   typePtrVarName <- newName "exTypePtr"
@@ -241,13 +242,13 @@ tryBlockQuoteExp blockStr = do
         , "  }"
         , "}"
         ]
-  [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) $(varP typeStrPtrVarName) $(varP exPtrVarName) $(varP haskellExPtrVarName) -> $(quoteExp C.block inlineCStr) |]
+  [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) $(varP typeStrPtrVarName) $(varP exPtrVarName) $(varP haskellExPtrVarName) -> $(quoteExp block inlineCStr) |]
 
 -- | Similar to `C.block`, but C++ exceptions will be caught and the result is (Either CppException value). The return type must be void or constructible with @{}@.
 -- Using this will automatically include @exception@, @cstring@ and @cstdlib@.
 tryBlock :: QuasiQuoter
 tryBlock = QuasiQuoter
-  { quoteExp = tryBlockQuoteExp
+  { quoteExp = tryBlockQuoteExp C.block
   , quotePat = unsupported
   , quoteType = unsupported
   , quoteDec = unsupported
