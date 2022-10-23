@@ -62,6 +62,7 @@ library
   exposed-modules:     Language.C.Inline.Cpp
                        Language.C.Inline.Cpp.Exception
                        Language.C.Inline.Cpp.Exceptions
+                       Language.C.Inline.Cpp.Unsafe
   build-depends:       base >=4.7 && <5
                      , bytestring
                      , inline-c >= 0.9.0.0
