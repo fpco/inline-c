@@ -91,20 +91,21 @@ pattern ExTypeOtherException :: CInt
 pattern ExTypeOtherException = 3
 
 
-handleForeignCatch :: (Ptr CInt -> Ptr CString -> Ptr CString -> Ptr (Ptr AbstractCppExceptionPtr) -> Ptr (Ptr ()) -> IO a) -> IO (Either CppException a)
+handleForeignCatch :: (Ptr (Ptr ()) -> IO a) -> IO (Either CppException a)
 handleForeignCatch cont =
-  alloca $ \exTypePtr ->
-  alloca $ \msgCStringPtr ->
-  alloca $ \typCStringPtr ->
-  alloca $ \exPtr ->
-  alloca $ \haskellExPtrPtr -> do
-    poke exTypePtr ExTypeNoException
+  allocaBytesAligned (sizeOf (undefined :: Ptr ()) * 5) (alignment (undefined :: Ptr ())) $ \basePtr -> do
+    let ptrSize         = sizeOf (undefined :: Ptr ())
+        exTypePtr       = castPtr basePtr :: Ptr CInt
+        msgCStringPtr   = castPtr (basePtr `plusPtr` ptrSize) :: Ptr CString
+        typCStringPtr   = castPtr (basePtr `plusPtr` (ptrSize*2))  :: Ptr CString
+        exPtr           = castPtr (basePtr `plusPtr` (ptrSize*3))  :: Ptr (Ptr AbstractCppExceptionPtr)
+        haskellExPtrPtr = castPtr (basePtr `plusPtr` (ptrSize*4)) :: Ptr (Ptr ())
     -- we need to mask this entire block because the C++ allocates the
     -- string for the exception message and we need to make sure that
     -- we free it (see the @free@ below). The foreign code would not be
     -- preemptable anyway, so I do not think this loses us anything.
     mask_ $ do
-      res <- cont exTypePtr msgCStringPtr typCStringPtr exPtr haskellExPtrPtr
+      res <- cont basePtr
       exType <- peek exTypePtr
       case exType of
         ExTypeNoException -> return (Right res)
@@ -211,18 +212,16 @@ tryBlockQuoteExp :: QuasiQuoter -> String -> Q Exp
 tryBlockQuoteExp block blockStr = do
   let (ty, body) = C.splitTypedC blockStr
   _ <- C.include "HaskellException.hxx"
-  typePtrVarName <- newName "exTypePtr"
-  msgPtrVarName <- newName "msgPtr"
-  haskellExPtrVarName <- newName "haskellExPtr"
-  exPtrVarName <- newName "exPtr"
-  typeStrPtrVarName <- newName "typeStrPtr"
+  basePtrVarName <- newName "basePtr"
   let inlineCStr = unlines
         [ ty ++ " {"
-        , "  int* __inline_c_cpp_exception_type__ = $(int* " ++ nameBase typePtrVarName ++ ");"
-        , "  const char** __inline_c_cpp_error_message__ = $(const char** " ++ nameBase msgPtrVarName ++ ");"
-        , "  const char** __inline_c_cpp_error_typ__ = $(const char** " ++ nameBase typeStrPtrVarName ++ ");"
-        , "  HaskellException** __inline_c_cpp_haskellexception__ = (HaskellException**)($(void ** " ++ nameBase haskellExPtrVarName ++ "));"
-        , "  std::exception_ptr** __inline_c_cpp_exception_ptr__ = (std::exception_ptr**)$(std::exception_ptr** " ++ nameBase exPtrVarName ++ ");"
+        , "  void** __inline_c_cpp_base_ptr__ = $(void** " ++ nameBase basePtrVarName ++ ");"
+        , "  int* __inline_c_cpp_exception_type__ = (int*)__inline_c_cpp_base_ptr__;"
+        , "  const char** __inline_c_cpp_error_message__ = (const char**)(__inline_c_cpp_base_ptr__ + 1);"
+        , "  const char** __inline_c_cpp_error_typ__ = (const char**)(__inline_c_cpp_base_ptr__ + 2);"
+        , "  std::exception_ptr** __inline_c_cpp_exception_ptr__ = (std::exception_ptr**)(__inline_c_cpp_base_ptr__ + 3);"
+        , "  HaskellException** __inline_c_cpp_haskellexception__ = (HaskellException**)(__inline_c_cpp_base_ptr__ + 4);"
+        , "  *__inline_c_cpp_exception_type__ = 0;"
         , "  try {"
         , body
         , "  } catch (const HaskellException &e) {"
@@ -242,7 +241,7 @@ tryBlockQuoteExp block blockStr = do
         , "  }"
         , "}"
         ]
-  [e| handleForeignCatch $ \ $(varP typePtrVarName) $(varP msgPtrVarName) $(varP typeStrPtrVarName) $(varP exPtrVarName) $(varP haskellExPtrVarName) -> $(quoteExp block inlineCStr) |]
+  [e| handleForeignCatch $ \ $(varP basePtrVarName) -> $(quoteExp block inlineCStr) |]
 
 -- | Similar to `C.block`, but C++ exceptions will be caught and the result is (Either CppException value). The return type must be void or constructible with @{}@.
 -- Using this will automatically include @exception@, @cstring@ and @cstdlib@.
