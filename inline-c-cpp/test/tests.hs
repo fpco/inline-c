@@ -41,10 +41,12 @@ import qualified Data.Vector.Storable as VS
 
 data Test
 data Array a
+data Tuple a
 
 C.context $ C.cppCtx <> C.fptrCtx <> C.cppTypePairs [
   ("Test::Test", [t|Test|]),
-  ("std::array", [t|Array|])
+  ("std::array", [t|Array|]),
+  ("std::tuple", [t|Tuple|])
   ] `mappend` StdVector.stdVectorCtx
 
 C.include "<iostream>"
@@ -103,6 +105,14 @@ main = Hspec.hspec $ do
       [C.block| void {
           (*$(std::array<int,10>* pt))[0]=true;
           std::cout << (*$(std::array<int,10>* pt))[0] << std::endl;
+        } |]
+
+    Hspec.it "Template with 6 arguments" $ do
+      pt <- [C.block| std::tuple<int,int,int,int,int,int>* {
+          return NULL;
+      } |] :: IO (Ptr (Tuple '(C.CInt,C.CInt,C.CInt,C.CInt,C.CInt,C.CInt)))
+      [C.block| void {
+          $(std::tuple<int,int,int,int,int,int>* pt) = NULL;
         } |]
 
   Hspec.describe "Exception handling" $ do
