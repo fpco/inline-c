@@ -284,18 +284,12 @@ convertType purity cTypes = runMaybeT . go
           Just ty -> return ty
         hsTy <- forM cTys $ \cTys'  -> go (C.TypeSpecifier undefined cTys')
         case hsTy of
-          (a:[]) ->
-            lift [t| $(symbol) $(return a) |]
-          (a:b:[]) ->
-            lift [t| $(symbol) '($(return a),$(return b))|]
-          (a:b:c:[]) ->
-            lift [t| $(symbol) '($(return a),$(return b),$(return c))|]
-          (a:b:c:d:[]) ->
-            lift [t| $(symbol) '($(return a),$(return b),$(return c),$(return d))|]
-          (a:b:c:d:e:[]) ->
-            lift [t| $(symbol) '($(return a),$(return b),$(return c),$(return d),$(return e))|]
           [] -> fail $ "Can not find template parameters."
-          _ -> fail $ "Find too many template parameters. num = " ++ show (length hsTy)
+          (a:[]) ->
+            lift $ TH.AppT <$> symbol <*> return a
+          other ->
+            let tuple = foldl (\tuple arg -> TH.AppT tuple arg) (TH.PromotedTupleT (length other)) other
+            in lift $ TH.AppT <$> symbol <*> return tuple
       C.TypeSpecifier _specs (C.TemplateConst num) -> do
         let n = (TH.LitT (TH.NumTyLit (read num)))
         lift [t| $(return n) |]
