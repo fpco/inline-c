@@ -12,7 +12,6 @@ copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2023 France
 category:            FFI
 tested-with:         GHC == 9.2.7
 build-type:          Simple
-extra-source-files:  test/*.h
 
 source-repository head
   type:     git
@@ -27,7 +26,6 @@ library
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall
-  include-dirs:        include
 
 test-suite tests
   type:                exitcode-stdio-1.0
