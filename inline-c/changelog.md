@@ -1,3 +1,4 @@
+- 0.9.1.8: Tighten ansi-wl-pprint upper bound, see issue #144.
 - 0.9.1.7: Allow arbitrary number of C++ templates, see PR #141.
 - 0.9.1.6: Fix mistakenly unsafe call, see issue #137.
 - 0.9.1.5: Support multi-token types in C++ template arguments, see issue #125 and PR #126.
