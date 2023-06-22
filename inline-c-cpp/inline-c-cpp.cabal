@@ -37,9 +37,12 @@ common cxx-opts
     -- version configured there.
     -std=c++11
     -Wall
-  extra-libraries: stdc++
+
+  if os(linux)
+    extra-libraries: stdc++
 
   if os(darwin)
+    extra-libraries: c++
     -- avoid https://gitlab.haskell.org/ghc/ghc/issues/11829
     ld-options:  -Wl,-keep_dwarf_unwind
 
