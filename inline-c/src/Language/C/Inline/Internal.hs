@@ -77,8 +77,9 @@ import qualified Text.Parser.Char as Parser
 import qualified Text.Parser.Combinators as Parser
 import qualified Text.Parser.LookAhead as Parser
 import qualified Text.Parser.Token as Parser
-import           Text.PrettyPrint.ANSI.Leijen ((<+>))
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           Prettyprinter ((<+>))
+import qualified Prettyprinter as PP
+import qualified Prettyprinter.Render.String as PP
 import qualified Data.List as L
 import qualified Data.Char as C
 import           Data.Hashable (Hashable)
@@ -410,7 +411,7 @@ inlineItems callSafety funPtr mbPostfix loc type_ cRetType cParams cItems = do
                        "funName:\n" ++ err
     Right x -> return x
   let decl = C.ParameterDeclaration (Just cFunName) proto
-  let defs = prettyOneLine decl ++ " { " ++ cItems ++ " }\n"
+  let defs = prettyOneLine (PP.pretty decl) ++ " { " ++ cItems ++ " }\n"
   inlineCode $ Code
     { codeCallSafety = callSafety
     , codeLoc = Just loc
@@ -599,7 +600,7 @@ parseTypedC useCpp antiQs = do
       let hsIdentS = unHaskellIdentifier hsIdent
       case C.cIdentifierFromString useCpp hsIdentS of
         Left err -> fail $ "Haskell identifier " ++ hsIdentS ++ " in illegal position" ++
-                           "in C type\n" ++ pretty80 cTy ++ "\n" ++
+                           "in C type\n" ++ pretty80 (PP.pretty cTy) ++ "\n" ++
                            "A C identifier was expected, but:\n" ++ err
         Right cIdent -> return cIdent
 
@@ -618,7 +619,7 @@ cToHs :: Context -> Purity -> C.Type C.CIdentifier -> TH.TypeQ
 cToHs ctx purity cTy = do
   mbHsTy <- convertType purity (ctxTypesTable ctx) cTy
   case mbHsTy of
-    Nothing -> fail $ "Could not resolve Haskell type for C type " ++ pretty80 cTy
+    Nothing -> fail $ "Could not resolve Haskell type for C type " ++ pretty80 (PP.pretty cTy)
     Just hsTy -> return hsTy
 
 genericQuote
@@ -758,8 +759,8 @@ funPtrQuote callSafety = quoteCode $ \rawCode -> do
 ------------------------------------------------------------------------
 -- Utils
 
-pretty80 :: PP.Pretty a => a -> String
-pretty80 x = PP.displayS (PP.renderPretty 0.8 80 (PP.pretty x)) ""
+pretty80 :: PP.Doc ann -> String
+pretty80 x = PP.renderString $ PP.layoutSmart (PP.LayoutOptions { PP.layoutPageWidth = PP.AvailablePerLine 80 0.8 }) x
 
-prettyOneLine :: PP.Pretty a => a -> String
-prettyOneLine x = PP.displayS (PP.renderCompact (PP.pretty x)) ""
+prettyOneLine :: PP.Doc ann -> String
+prettyOneLine x = PP.renderString $ PP.layoutCompact x

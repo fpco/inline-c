@@ -30,7 +30,7 @@ import           Text.Parser.Char (upper, lower, digit, char)
 import           Text.Parser.Combinators (many, eof, try, unexpected, (<?>))
 import           Text.Parser.Token (IdentifierStyle(..), highlight, TokenParsing)
 import qualified Text.Parser.Token.Highlight as Highlight
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import qualified Prettyprinter as PP
 
 import qualified Language.C.Types.Parse as C
 
@@ -49,7 +49,7 @@ instance IsString HaskellIdentifier where
       Right x -> x
 
 instance PP.Pretty HaskellIdentifier where
-  pretty = PP.text . unHaskellIdentifier
+  pretty = fromString . unHaskellIdentifier
 
 haskellIdentifierFromString :: Bool -> String -> Either String HaskellIdentifier
 haskellIdentifierFromString useCpp s =

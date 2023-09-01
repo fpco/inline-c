@@ -67,9 +67,11 @@ import           Control.Monad.State (execState, modify)
 import           Control.Monad.Reader (ask)
 import           Data.List (partition, intersperse)
 import           Data.Maybe (fromMaybe)
+import           Data.String (fromString)
 import           Data.Typeable (Typeable)
-import           Text.PrettyPrint.ANSI.Leijen ((</>), (<+>))
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           Prettyprinter ((<+>))
+import qualified Prettyprinter as PP
+import qualified Prettyprinter.Render.String as PP
 
 #if MIN_VERSION_base(4,9,0)
 import           Data.Semigroup (Semigroup, (<>))
@@ -424,14 +426,14 @@ tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
 ------------------------------------------------------------------------
 -- To english
 
-describeParameterDeclaration :: PP.Pretty i => ParameterDeclaration i -> PP.Doc
+describeParameterDeclaration :: PP.Pretty i => ParameterDeclaration i -> PP.Doc ann
 describeParameterDeclaration (ParameterDeclaration mbId ty) =
   let idDoc = case mbId of
         Nothing -> ""
         Just id' -> PP.pretty id' <+> "is a "
   in idDoc <> describeType ty
 
-describeType :: PP.Pretty i => Type i -> PP.Doc
+describeType :: PP.Pretty i => Type i -> PP.Doc ann
 describeType ty0 = case ty0 of
   TypeSpecifier specs tySpec -> engSpecs specs <> PP.pretty tySpec
   Ptr quals ty -> engQuals quals <> "ptr to" <+> describeType ty
@@ -449,7 +451,7 @@ describeType ty0 = case ty0 of
 
     engArrTy arrTy = case arrTy of
       P.VariablySized -> "variably sized array "
-      P.SizedByInteger n -> "array of size" <+> PP.text (show n) <> " "
+      P.SizedByInteger n -> "array of size" <+> fromString (show n) <> " "
       P.SizedByIdentifier s -> "array of size" <+> PP.pretty s <> " "
       P.Unsized -> "array "
 
@@ -470,7 +472,7 @@ untangleParameterDeclaration'
 untangleParameterDeclaration' pDecl =
   case untangleParameterDeclaration pDecl of
     Left err -> fail $ pretty80 $
-      "Error while parsing declaration:" </> PP.pretty err </> PP.pretty pDecl
+      PP.vsep ["Error while parsing declaration:", PP.pretty err, PP.pretty pDecl]
     Right x -> return x
 
 parseParameterDeclaration
@@ -526,11 +528,11 @@ instance PP.Pretty TypeSpecifier where
 instance PP.Pretty UntangleErr where
   pretty err = case err of
     MultipleDataTypes specs ->
-      "Multiple data types in" </> PP.prettyList specs
+      PP.vsep ["Multiple data types in", PP.prettyList specs]
     IllegalSpecifiers s specs ->
-      "Illegal specifiers, " <+> PP.text s <+> ", in" </> PP.prettyList specs
+      PP.vsep ["Illegal specifiers," <+> fromString s <> ", in", PP.prettyList specs]
     NoDataTypes specs ->
-      "No data types in " </> PP.prettyList specs
+      PP.vsep ["No data types in", PP.prettyList specs]
 
 instance PP.Pretty i => PP.Pretty (ParameterDeclaration i) where
   pretty = PP.pretty . tangleParameterDeclaration
@@ -542,5 +544,5 @@ instance PP.Pretty i => PP.Pretty (Type i) where
 ------------------------------------------------------------------------
 -- Utils
 
-pretty80 :: PP.Doc -> String
-pretty80 x = PP.displayS (PP.renderPretty 0.8 80 x) ""
+pretty80 :: PP.Doc ann -> String
+pretty80 x = PP.renderString $ PP.layoutSmart (PP.LayoutOptions { PP.layoutPageWidth = PP.AvailablePerLine 80 0.8 }) x
