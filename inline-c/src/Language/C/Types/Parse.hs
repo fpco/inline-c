@@ -102,8 +102,8 @@ import           Text.Parser.Combinators
 import           Text.Parser.LookAhead
 import           Text.Parser.Token
 import qualified Text.Parser.Token.Highlight as Highlight
-import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import           Prettyprinter (Pretty(..), (<+>), Doc, hsep)
+import qualified Prettyprinter as PP
 
 #if __GLASGOW_HASKELL__ < 710
 import           Data.Foldable (Foldable)
@@ -531,7 +531,7 @@ direct_abstract_declarator = do
 -- Pretty printing
 
 instance Pretty CIdentifier where
-  pretty = PP.text . unCIdentifier
+  pretty = fromString . unCIdentifier
 
 instance Pretty DeclarationSpecifier where
   pretty dspec = case dspec of
@@ -586,7 +586,7 @@ instance Pretty i => Pretty (Declarator i) where
     [] -> pretty ddecltor
     _:_ -> prettyPointers ptrs <+> pretty ddecltor
 
-prettyPointers :: [Pointer] -> Doc
+prettyPointers :: [Pointer] -> Doc ann
 prettyPointers [] = ""
 prettyPointers (x : xs) = pretty x <> prettyPointers xs
 
@@ -604,7 +604,7 @@ instance Pretty i => Pretty (ArrayOrProto i) where
     Array x -> "[" <> pretty x <> "]"
     Proto x -> "(" <> prettyParams x <> ")"
 
-prettyParams :: (Pretty a) => [a] -> Doc
+prettyParams :: (Pretty a) => [a] -> Doc ann
 prettyParams xs = case xs of
   [] -> ""
   [x] -> pretty x
