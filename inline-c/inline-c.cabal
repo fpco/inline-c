@@ -63,6 +63,7 @@ test-suite tests
                      , inline-c
                      , parsers
                      , QuickCheck
+                     , prettyprinter
                      , raw-strings-qq
                      , regex-posix
                      , template-haskell
