@@ -15,7 +15,8 @@ import qualified Test.Hspec.QuickCheck
 import qualified Test.QuickCheck as QC
 import           Text.Parser.Char
 import           Text.Parser.Combinators
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import qualified Prettyprinter as PP
+import qualified Prettyprinter.Render.String as PP
 import           Data.Typeable (Typeable)
 import qualified Data.HashSet as HashSet
 import           Data.List (intercalate)
@@ -43,7 +44,7 @@ spec = Test.Hspec.QuickCheck.modifyMaxDiscardRatio (const 20) $ do
       ParameterDeclarationWithTypeNames typeNames ty <-
         arbitraryParameterDeclarationWithTypeNames unCIdentifier
       return $ isGoodType ty QC.==>
-        let ty' = assertParse (cCParserContext True typeNames) parameter_declaration (prettyOneLine ty)
+        let ty' = assertParse (cCParserContext True typeNames) parameter_declaration (prettyOneLine (PP.pretty ty))
         in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
   Hspec.it "parses everything which is pretty-printable (Haskell)" $ do
 #if MIN_VERSION_QuickCheck(2,9,0)
@@ -54,7 +55,7 @@ spec = Test.Hspec.QuickCheck.modifyMaxDiscardRatio (const 20) $ do
       ParameterDeclarationWithTypeNames typeNames ty <-
         arbitraryParameterDeclarationWithTypeNames unHaskellIdentifier
       return $ isGoodHaskellIdentifierType typeNames ty QC.==>
-        let ty' = assertParse (haskellCParserContext True typeNames) parameter_declaration (prettyOneLine ty)
+        let ty' = assertParse (haskellCParserContext True typeNames) parameter_declaration (prettyOneLine (PP.pretty ty))
         in Types.untangleParameterDeclaration ty == Types.untangleParameterDeclaration ty'
 
 ------------------------------------------------------------------------
@@ -68,8 +69,8 @@ assertParse ctx p s =
     Left err -> error $ "Parse error (assertParse): " ++ show err ++ " parsed string " ++ show s ++ " with type names " ++ show (cpcTypeNames ctx)
     Right x -> x
 
-prettyOneLine :: PP.Pretty a => a -> String
-prettyOneLine x = PP.displayS (PP.renderCompact (PP.pretty x)) ""
+prettyOneLine :: PP.Doc ann -> String
+prettyOneLine x = PP.renderString $ PP.layoutCompact x
 
 isGoodType :: ParameterDeclaration i -> Bool
 isGoodType ty =
