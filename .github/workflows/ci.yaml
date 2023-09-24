@@ -17,6 +17,10 @@ jobs:
         with:
           enable-stack: true
           stack-no-global: true
+      - name: Install packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gobjc++
       - uses: actions/cache@v3
         with:
           path: ~/.stack
@@ -34,6 +38,10 @@ jobs:
         with:
           enable-stack: true
           stack-no-global: true
+      - name: Install packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gobjc++
       - uses: actions/cache@v3
         with:
           path: ~/.stack
@@ -51,6 +59,10 @@ jobs:
         with:
           enable-stack: true
           stack-no-global: true
+      - name: Install packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gobjc++
       - uses: actions/cache@v3
         with:
           path: ~/.stack
