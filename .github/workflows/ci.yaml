@@ -26,9 +26,9 @@ jobs:
           path: ~/.stack
           key: stack-${{ hashFiles('stack.yaml') }}
       - name: Build
-        run: stack build --stack-yaml stack-nightly.yaml --flag inline-c-cpp:std-vector-example --extra-include-dirs /usr/include/GNUstep
+        run: stack build --stack-yaml stack-nightly.yaml --flag inline-c-cpp:std-vector-example
       - name: Test
-        run: stack test --stack-yaml stack-nightly.yaml --flag inline-c-cpp:std-vector-example --extra-include-dirs /usr/include/GNUstep
+        run: stack test --stack-yaml stack-nightly.yaml --flag inline-c-cpp:std-vector-example
   stack-lts-21:
     name: linux-stack-lts-21
     runs-on: ubuntu-latest
@@ -47,9 +47,9 @@ jobs:
           path: ~/.stack
           key: stack-${{ hashFiles('stack-lts-21.yaml') }}
       - name: Build
-        run: stack build --stack-yaml stack-lts-21.yaml --flag inline-c-cpp:std-vector-example --extra-include-dirs /usr/include/GNUstep
+        run: stack build --stack-yaml stack-lts-21.yaml --flag inline-c-cpp:std-vector-example
       - name: Test
-        run: stack test --stack-yaml stack-lts-21.yaml --flag inline-c-cpp:std-vector-example --extra-include-dirs /usr/include/GNUstep
+        run: stack test --stack-yaml stack-lts-21.yaml --flag inline-c-cpp:std-vector-example
   stack-lts-20:
     name: linux-stack-lts-20
     runs-on: ubuntu-latest
@@ -68,6 +68,6 @@ jobs:
           path: ~/.stack
           key: stack-${{ hashFiles('stack-lts-20.yaml') }}
       - name: Build
-        run: stack build --stack-yaml stack-lts-20.yaml --flag inline-c-cpp:std-vector-example --extra-include-dirs /usr/include/GNUstep
+        run: stack build --stack-yaml stack-lts-20.yaml --flag inline-c-cpp:std-vector-example
       - name: Test
-        run: stack test --stack-yaml stack-lts-20.yaml --flag inline-c-cpp:std-vector-example --extra-include-dirs /usr/include/GNUstep
+        run: stack test --stack-yaml stack-lts-20.yaml --flag inline-c-cpp:std-vector-example
