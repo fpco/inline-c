@@ -38,3 +38,5 @@ test-suite tests
   default-language:    Haskell2010
   if os(darwin)
     frameworks:        Foundation
+  elif os(linux)
+    extra-libraries:   gnustep-base
