@@ -8,66 +8,30 @@ on:
       - opened
       - synchronize
 jobs:
-  stack-nightly:
-    name: linux-stack-nightly
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: haskell/actions/setup@v2
-        with:
-          enable-stack: true
-          stack-no-global: true
-      - name: Install packages
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y gobjc++ libgnustep-base-dev
-      - uses: actions/cache@v3
-        with:
-          path: ~/.stack
-          key: stack-${{ hashFiles('stack.yaml') }}
-      - name: Build
-        run: stack build --stack-yaml stack-nightly.yaml --flag inline-c-cpp:std-vector-example
-      - name: Test
-        run: stack test --stack-yaml stack-nightly.yaml --flag inline-c-cpp:std-vector-example
-  stack-lts-21:
-    name: linux-stack-lts-21
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: haskell/actions/setup@v2
-        with:
-          enable-stack: true
-          stack-no-global: true
-      - name: Install packages
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y gobjc++ libgnustep-base-dev
-      - uses: actions/cache@v3
-        with:
-          path: ~/.stack
-          key: stack-${{ hashFiles('stack-lts-21.yaml') }}
-      - name: Build
-        run: stack build --stack-yaml stack-lts-21.yaml --flag inline-c-cpp:std-vector-example
-      - name: Test
-        run: stack test --stack-yaml stack-lts-21.yaml --flag inline-c-cpp:std-vector-example
-  stack-lts-20:
-    name: linux-stack-lts-20
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: haskell/actions/setup@v2
-        with:
-          enable-stack: true
-          stack-no-global: true
-      - name: Install packages
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y gobjc++ libgnustep-base-dev
-      - uses: actions/cache@v3
-        with:
-          path: ~/.stack
-          key: stack-${{ hashFiles('stack-lts-20.yaml') }}
-      - name: Build
-        run: stack build --stack-yaml stack-lts-20.yaml --flag inline-c-cpp:std-vector-example
-      - name: Test
-        run: stack test --stack-yaml stack-lts-20.yaml --flag inline-c-cpp:std-vector-example
+  build:
+    name: ${{ matrix.os }}-stack-${{ matrix.stackage }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['ubuntu-latest', 'macos-latest']
+        stackage: ['nightly', 'lts-21', 'lts-20']
+  steps:
+    - uses: actions/checkout@v4
+    - uses: haskell/actions/setup@v2
+      with:
+        enable-stack: true
+        stack-no-global: true
+    - name: Install packages
+      run: |
+        if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
+          sudo apt-get update -qq && sudo apt-get install -y gobjc++ libgnustep-base-dev
+        fi
+    - uses: actions/cache@v3
+      with:
+        path: ~/.stack
+        key: stack-${{ matrix.os }}-${{ matrix.stackage }}-${{ hashFiles('stack.yaml') }}
+    - name: Build
+      run: stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+    - name: Test
+      run: stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
