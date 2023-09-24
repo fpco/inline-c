@@ -1,7 +1,8 @@
-resolver: lts-16.15
+resolver: lts-21.13
 packages:
 - inline-c
 - inline-c-cpp
+- inline-c-objc
 - sample-cabal-project
 extra-deps:
 - Chart-cairo-1.9.3@sha256:f484a7194ca08ed67f02aa626e2f8f4d1a9b50624e0d50e3ced62958f7481cca,925

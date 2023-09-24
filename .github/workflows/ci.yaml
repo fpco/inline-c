@@ -1,0 +1,61 @@
+name: CI
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types:
+      - opened
+      - synchronize
+jobs:
+  stack-nightly:
+    name: Build and test via Stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell/actions/setup@v2
+        with:
+          enable-stack: true
+          stack-no-global: true
+      - uses: actions/cache@v3
+        with:
+          path: ~/.stack
+          key: stack-${{ hashFiles('stack.yaml') }}
+      - name: Build
+        run: stack build --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+      - name: Test
+        run: stack test --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+  stack-lts-21:
+    name: Build and test via Stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell/actions/setup@v2
+        with:
+          enable-stack: true
+          stack-no-global: true
+      - uses: actions/cache@v3
+        with:
+          path: ~/.stack
+          key: stack-${{ hashFiles('stack-lts-21.yaml') }}
+      - name: Build
+        run: stack build --stack-yaml stack-lts-21.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+      - name: Test
+        run: stack test --stack-yaml stack-lts-21.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+  stack-lts-20:
+    name: Build and test via Stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell/actions/setup@v2
+        with:
+          enable-stack: true
+          stack-no-global: true
+      - uses: actions/cache@v3
+        with:
+          path: ~/.stack
+          key: stack-${{ hashFiles('stack-lts-20.yaml') }}
+      - name: Build
+        run: stack build --stack-yaml stack-lts-20.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+      - name: Test
+        run: stack test --stack-yaml stack-lts-20.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
