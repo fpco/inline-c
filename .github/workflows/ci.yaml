@@ -9,7 +9,7 @@ on:
       - synchronize
 jobs:
   stack-nightly:
-    name: Build and test via Stack
+    name: linux-stack-nightly
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,11 +22,11 @@ jobs:
           path: ~/.stack
           key: stack-${{ hashFiles('stack.yaml') }}
       - name: Build
-        run: stack build --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+        run: stack build --stack-yaml stack-nightly.yaml --flag inline-c-cpp:std-vector-example
       - name: Test
-        run: stack test --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+        run: stack test --stack-yaml stack-nightly.yaml --flag inline-c-cpp:std-vector-example
   stack-lts-21:
-    name: Build and test via Stack
+    name: linux-stack-lts-21
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,11 +39,11 @@ jobs:
           path: ~/.stack
           key: stack-${{ hashFiles('stack-lts-21.yaml') }}
       - name: Build
-        run: stack build --stack-yaml stack-lts-21.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+        run: stack build --stack-yaml stack-lts-21.yaml --flag inline-c-cpp:std-vector-example
       - name: Test
-        run: stack test --stack-yaml stack-lts-21.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+        run: stack test --stack-yaml stack-lts-21.yaml --flag inline-c-cpp:std-vector-example
   stack-lts-20:
-    name: Build and test via Stack
+    name: linux-stack-lts-20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +56,6 @@ jobs:
           path: ~/.stack
           key: stack-${{ hashFiles('stack-lts-20.yaml') }}
       - name: Build
-        run: stack build --stack-yaml stack-lts-20.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+        run: stack build --stack-yaml stack-lts-20.yaml --flag inline-c-cpp:std-vector-example
       - name: Test
-        run: stack test --stack-yaml stack-lts-20.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+        run: stack test --stack-yaml stack-lts-20.yaml --flag inline-c-cpp:std-vector-example
