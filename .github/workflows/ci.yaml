@@ -16,22 +16,22 @@ jobs:
       matrix:
         os: ['ubuntu-latest', 'macos-latest']
         stackage: ['nightly', 'lts-21', 'lts-20']
-  steps:
-    - uses: actions/checkout@v4
-    - uses: haskell/actions/setup@v2
-      with:
-        enable-stack: true
-        stack-no-global: true
-    - name: Install packages
-      run: |
-        if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
-          sudo apt-get update -qq && sudo apt-get install -y gobjc++ libgnustep-base-dev
-        fi
-    - uses: actions/cache@v3
-      with:
-        path: ~/.stack
-        key: stack-${{ matrix.os }}-${{ matrix.stackage }}-${{ hashFiles('stack.yaml') }}
-    - name: Build
-      run: stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
-    - name: Test
-      run: stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell/actions/setup@v2
+        with:
+          enable-stack: true
+          stack-no-global: true
+      - name: Install packages
+        run: |
+          if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
+            sudo apt-get update -qq && sudo apt-get install -y gobjc++ libgnustep-base-dev
+          fi
+      - uses: actions/cache@v3
+        with:
+          path: ~/.stack
+          key: stack-${{ matrix.os }}-${{ matrix.stackage }}-${{ hashFiles('stack.yaml') }}
+      - name: Build
+        run: stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+      - name: Test
+        run: stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
