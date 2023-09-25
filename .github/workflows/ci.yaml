@@ -25,13 +25,26 @@ jobs:
       - name: Install packages
         run: |
           if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
-            sudo apt-get update -qq && sudo apt-get install -y gobjc++ libgnustep-base-dev
+            sudo apt-get update -qq && sudo apt-get install -y gobjc++ libgnustep-base-dev libgsl-dev
+          else
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            brew install gsl || true
           fi
       - uses: actions/cache@v3
         with:
           path: ~/.stack
           key: stack-${{ matrix.os }}-${{ matrix.stackage }}-${{ hashFiles('stack.yaml') }}
       - name: Build
-        run: stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+        run: |
+          if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
+            stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+          else
+            stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+          fi
       - name: Test
-        run: stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+        run: |
+          if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
+            stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+          else
+            stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+          fi
