@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE MultiWayIf #-}
-import           Data.Coerce (coerce)
+import           Unsafe.Coerce (unsafeCoerce)
 import           Data.Monoid ((<>))
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
@@ -11,11 +11,11 @@ import           Foreign.C.Types
 import           Foreign.ForeignPtr (newForeignPtr_)
 import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (Storable)
-import qualified Graphics.Rendering.Chart.Backend.Cairo as Chart
-import qualified Graphics.Rendering.Chart.Easy as Chart
 import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Unsafe as CU
 import           System.IO.Unsafe (unsafePerformIO)
+import           Control.Monad (forM_)
+import           System.IO (withFile, hPutStrLn, IOMode(..))
 
 C.context (C.baseCtx <> C.vecCtx <> C.funCtx)
 
@@ -94,7 +94,7 @@ solveOde
   -> Either String (V.Vector Double)
   -- ^ Solution at end point, or error.
 solveOde fun x0 f0 xend =
-  coerce $ solveOdeC (coerce fun) (coerce x0) (coerce f0) (coerce xend)
+  unsafeCoerce $ solveOdeC (unsafeCoerce fun) (unsafeCoerce x0) (unsafeCoerce f0) (unsafeCoerce xend)
 
 lorenz
   :: Double
@@ -121,9 +121,9 @@ lorenz x0 f0 xend = solveOde fun x0 f0 xend
            ]
 
 main :: IO ()
-main = Chart.toFile Chart.def "lorenz.png" $ do
-    Chart.layout_title Chart..= "Lorenz"
-    Chart.plot $ Chart.line "curve" [pts]
+main = withFile "lorenz.csv" WriteMode $ \h ->
+         forM_ pts $ \(x,y) ->
+           hPutStrLn h $ show x ++ ", " ++ show y
   where
     pts = [(f V.! 0, f V.! 2) | (_x, f) <- go 0 (V.fromList [10.0 , 1.0 , 1.0])]
 

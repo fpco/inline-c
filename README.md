@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/fpco/inline-c.svg?branch=master)](https://travis-ci.org/fpco/inline-c)
+[![Build Status](https://github.com/fpco/inline-c/actions/workflows/ci.yaml/badge.svg?branch=master)](https://github.com/fpco/inline-c/actions)
 
 See READMEs for `inline-c` and `inline-c-cpp`.
 

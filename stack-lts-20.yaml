@@ -1,0 +1,6 @@
+resolver: lts-20.26
+packages:
+- inline-c
+- inline-c-cpp
+- inline-c-objc
+- sample-cabal-project

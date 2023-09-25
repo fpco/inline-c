@@ -1,0 +1,6 @@
+resolver: nightly-2023-09-24
+packages:
+- inline-c
+- inline-c-cpp
+- inline-c-objc
+- sample-cabal-project

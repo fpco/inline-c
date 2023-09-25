@@ -38,3 +38,6 @@ test-suite tests
   default-language:    Haskell2010
   if os(darwin)
     frameworks:        Foundation
+    buildable:         True
+  else
+    buildable:         False
