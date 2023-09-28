@@ -298,19 +298,20 @@ main = Hspec.hspec $ do
     {- Manual test cases for testing lineDirective and splitTypedC -- For CI, uncomment this line.
 
     Hspec.it "error reporting test case" $ do
-      result <- try $ [C.throwBlock| int { 0 = 0; /* Test this line. */}|]
+      result <- try $ [C.throwBlock| int { 0 = 0; return 0xDEADBEEF; /* Test this line. */}|]
       result `shouldBeRight` 0xDEADBEEF
 
     Hspec.it "error reporting test case" $ do
       result <- try $ [C.throwBlock| int
-        { 1 = 1;  /* Test this line. */}
+        { 1 = 1; return 0xDEADBEEF; /* Test this line. */}
       |]
       result `shouldBeRight` 0xDEADBEEF
 
     Hspec.it "error reporting test case" $ do
       result <- try $ [C.throwBlock| int
         {
-          2 = 2;  /* Test this line. */
+          2 = 2; /* Test this line. */
+          return 0xDEADBEEF;
         }
       |]
       result `shouldBeRight` 0xDEADBEEF
@@ -320,6 +321,7 @@ main = Hspec.hspec $ do
         int
         {
           3 = 3;  /* Test this line. */
+          return 0xDEADBEEF;
         }
       |]
       result `shouldBeRight` 0xDEADBEEF
@@ -330,6 +332,7 @@ main = Hspec.hspec $ do
         int
         {
           4 = 4;  /* Test this line. */
+          return 0xDEADBEEF;
         }
       |]
       result `shouldBeRight` 0xDEADBEEF
