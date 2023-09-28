@@ -295,22 +295,22 @@ main = Hspec.hspec $ do
 
       result `shouldBeRight` 0xDEADBEEF
 
-    {- Manual test cases for testing lineDirective and splitTypedC
+    {- Manual test cases for testing lineDirective and splitTypedC -- For CI, uncomment this line.
 
     Hspec.it "error reporting test case" $ do
-      result <- try $ [C.throwBlock| int { 0 = 0; }|]
+      result <- try $ [C.throwBlock| int { 0 = 0; /* Test this line. */}|]
       result `shouldBeRight` 0xDEADBEEF
 
     Hspec.it "error reporting test case" $ do
       result <- try $ [C.throwBlock| int
-        { 1 = 1; }
+        { 1 = 1;  /* Test this line. */}
       |]
       result `shouldBeRight` 0xDEADBEEF
 
     Hspec.it "error reporting test case" $ do
       result <- try $ [C.throwBlock| int
         {
-          2 = 2;
+          2 = 2;  /* Test this line. */
         }
       |]
       result `shouldBeRight` 0xDEADBEEF
@@ -319,7 +319,7 @@ main = Hspec.hspec $ do
       result <- try $ [C.throwBlock|
         int
         {
-          3 = 3;
+          3 = 3;  /* Test this line. */
         }
       |]
       result `shouldBeRight` 0xDEADBEEF
@@ -329,11 +329,11 @@ main = Hspec.hspec $ do
 
         int
         {
-          4 = 4;
+          4 = 4;  /* Test this line. */
         }
       |]
       result `shouldBeRight` 0xDEADBEEF
-    -- -}
+    -- For CI, uncomment this line. -}
 
   Hspec.describe "Macros" $ do
     Hspec.it "generated std::vector instances work correctly" $ do
