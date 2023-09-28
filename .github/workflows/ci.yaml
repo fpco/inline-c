@@ -45,6 +45,8 @@ jobs:
         run: |
           if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
             stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+            ./inline-c-cpp/test-error-message-line-numbers.sh --stack-yaml stack-${{ matrix.stackage }}.yaml
           else
             stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+            ./inline-c-cpp/test-error-message-line-numbers.sh --stack-yaml stack-${{ matrix.stackage }}.yaml
           fi

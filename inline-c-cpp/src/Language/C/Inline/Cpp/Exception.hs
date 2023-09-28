@@ -210,9 +210,10 @@ exceptionalValue typeStr =
 
 tryBlockQuoteExp :: QuasiQuoter -> String -> Q Exp
 tryBlockQuoteExp block blockStr = do
-  let (ty, body) = C.splitTypedC blockStr
+  let (ty, body, bodyLineShift) = C.splitTypedC blockStr
   _ <- C.include "HaskellException.hxx"
   basePtrVarName <- newName "basePtr"
+  there <- location
   let inlineCStr = unlines
         [ ty ++ " {"
         , "  void** __inline_c_cpp_base_ptr__ = $(void** " ++ nameBase basePtrVarName ++ ");"
@@ -223,7 +224,9 @@ tryBlockQuoteExp block blockStr = do
         , "  HaskellException** __inline_c_cpp_haskellexception__ = (HaskellException**)(__inline_c_cpp_base_ptr__ + 4);"
         , "  *__inline_c_cpp_exception_type__ = 0;"
         , "  try {"
+        , C.lineDirective (C.shiftLines (bodyLineShift - 1) there)
         , body
+        , C.lineDirective $(C.here)
         , "  } catch (const HaskellException &e) {"
         , "    *__inline_c_cpp_exception_type__ = " ++ show ExTypeHaskellException ++ ";"
         , "    *__inline_c_cpp_haskellexception__ = new HaskellException(e);"
