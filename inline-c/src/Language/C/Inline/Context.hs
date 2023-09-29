@@ -161,6 +161,8 @@ data Context = Context
   , ctxForeignSrcLang :: Maybe TH.ForeignSrcLang
     -- ^ TH.LangC by default
   , ctxEnableCpp :: Bool
+    -- ^ Compile source code to raw object.
+  , ctxRawObjectCompile :: Maybe (String -> TH.Q FilePath)
   }
 
 
@@ -172,6 +174,7 @@ instance Semigroup Context where
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
     , ctxEnableCpp = ctxEnableCpp ctx1 || ctxEnableCpp ctx2
+    , ctxRawObjectCompile = ctxRawObjectCompile ctx1 <|> ctxRawObjectCompile ctx2
     }
 #endif
 
@@ -182,6 +185,7 @@ instance Monoid Context where
     , ctxOutput = Nothing
     , ctxForeignSrcLang = Nothing
     , ctxEnableCpp = False
+    , ctxRawObjectCompile = Nothing
     }
 
 #if !MIN_VERSION_base(4,11,0)
@@ -191,6 +195,7 @@ instance Monoid Context where
     , ctxOutput = ctxOutput ctx1 <|> ctxOutput ctx2
     , ctxForeignSrcLang = ctxForeignSrcLang ctx1 <|> ctxForeignSrcLang ctx2
     , ctxEnableCpp = ctxEnableCpp ctx1 || ctxEnableCpp ctx2
+    , ctxRawObjectCompile = ctxRawObjectCompile ctx1 <|> ctxRawObjectCompile ctx2
     }
 #endif
 

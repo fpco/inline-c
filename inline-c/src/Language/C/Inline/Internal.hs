@@ -32,6 +32,7 @@ module Language.C.Inline.Internal
 
       -- ** Emitting C code
     , emitVerbatim
+    , emitBlock
 
       -- ** Inlining C code
       -- $embedding
@@ -168,11 +169,16 @@ initialiseModuleState mbContext = do
           Nothing -> fail "inline-c: ModuleState not present (initialiseModuleState)"
           Just ms -> return ms
         let lang = fromMaybe TH.LangC (ctxForeignSrcLang context)
+            addForeignSource =
 #if MIN_VERSION_base(4,12,0)
-        TH.addForeignSource lang (concat (reverse (msFileChunks ms)))
+              TH.addForeignSource
 #else
-        TH.addForeignFile lang (concat (reverse (msFileChunks ms)))
+              TH.addForeignFile
 #endif
+            src = (concat (reverse (msFileChunks ms)))
+        case (lang, ctxRawObjectCompile context) of
+          (TH.RawObject, Just compile) -> compile src >>= TH.addForeignFilePath lang
+          (_, _)  -> addForeignSource lang src
       let moduleState = ModuleState
             { msContext = context
             , msGeneratedNames = 0
@@ -233,6 +239,15 @@ emitVerbatim s = do
   modifyModuleState $ \ms ->
     (ms{msFileChunks = chunk : msFileChunks ms}, ())
   return []
+
+-- | Simply appends some string of block to the module's C file.  Use with care.
+emitBlock :: TH.QuasiQuoter
+emitBlock = TH.QuasiQuoter
+  { TH.quoteExp = const $ fail "inline-c: quoteExp not implemented (quoteCode)"
+  , TH.quotePat = const $ fail "inline-c: quotePat not implemented (quoteCode)"
+  , TH.quoteType = const $ fail "inline-c: quoteType not implemented (quoteCode)"
+  , TH.quoteDec = emitVerbatim
+  }
 
 ------------------------------------------------------------------------
 -- Inlining
