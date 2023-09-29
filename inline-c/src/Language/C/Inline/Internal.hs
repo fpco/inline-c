@@ -70,12 +70,13 @@ import           Control.Monad.State (evalStateT, StateT, get, put)
 import           Control.Monad.Trans.Class (lift)
 import           Data.Foldable (forM_)
 import qualified Data.Map as Map
-import           Data.Maybe (fromMaybe)
+import           Data.Maybe (fromMaybe, isJust)
 import           Data.Traversable (for)
 import           Data.Typeable (Typeable, cast)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
+import           System.Environment (lookupEnv)
 import           System.IO.Unsafe (unsafePerformIO, unsafeDupablePerformIO)
 import qualified Text.Parsec as Parsec
 import qualified Text.Parsec.Pos as Parsec
@@ -319,12 +320,22 @@ inlineCode Code{..} = do
   void $ emitVerbatim $ out $ directive ++ codeDefs
   -- Create and add the FFI declaration.
   ffiImportName <- uniqueFfiImportName
-  dec <- if codeFunPtr
-    then
-      TH.forImpD TH.CCall codeCallSafety ("&" ++ codeFunName) ffiImportName [t| FunPtr $(codeType) |]
-    else TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType
-  TH.addTopDecls [dec]
-  TH.varE ffiImportName
+  -- Note [ghcide-support]
+  -- haskell-language-server / ghcide cannot handle code that use
+  -- `addForeignFile`/`addForeignSource` as we do here; it will result
+  -- in linker errors during TH evaluations, see:
+  -- <https://github.com/haskell/haskell-language-server/issues/365#issuecomment-976294466>
+  -- Thus for GHCIDE, simply generate a call to `error` instead of a call to a foreign import.
+  usingGhcide <- TH.runIO $ isJust <$> lookupEnv "__GHCIDE__"
+  if usingGhcide
+    then do
+      [e|error "inline-c: A 'usingGhcide' inlineCode stub was evaluated -- this should not happen" :: $(if codeFunPtr then [t| FunPtr $(codeType) |] else codeType) |]
+    else do -- Actual foreign function call generation.
+      dec <- if codeFunPtr
+        then TH.forImpD TH.CCall codeCallSafety ("&" ++ codeFunName) ffiImportName [t| FunPtr $(codeType) |]
+        else TH.forImpD TH.CCall codeCallSafety codeFunName ffiImportName codeType
+      TH.addTopDecls [dec]
+      TH.varE ffiImportName
 
 uniqueCName :: Maybe String -> TH.Q String
 uniqueCName mbPostfix = do
