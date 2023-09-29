@@ -1,0 +1,50 @@
+cabal-version:       2.2
+name:                inline-c-cuda
+version:             0.1.0.0
+synopsis:            Lets you embed CUDA code into Haskell.
+description:         Utilities to inline CUDA code into Haskell using inline-c.  See
+                     tests for example on how to build.
+license:             MIT
+license-file:        LICENSE
+author:              Francesco Mazzoli
+maintainer:          f@mazzo.li
+copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2019 Francesco Mazzoli
+category:            FFI
+tested-with:         GHC == 9.2.2
+build-type:          Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/fpco/inline-c
+
+library
+  exposed-modules:     Language.C.Inline.Cuda
+  build-depends:       base >=4.7 && <5
+                     , bytestring
+                     , inline-c >= 0.9.0.0
+                     , inline-c-cpp
+                     , template-haskell
+                     , text
+                     , safe-exceptions
+                     , containers
+                     , process
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  ghc-options:         -Wall
+  extra-libraries:     cudart
+
+test-suite tests
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             tests.hs
+  build-depends:       base >=4 && <5
+                     , bytestring
+                     , inline-c
+                     , inline-c-cpp
+                     , inline-c-cuda
+                     , safe-exceptions
+                     , hspec
+                     , containers
+                     , template-haskell
+                     , vector
+  default-language:    Haskell2010

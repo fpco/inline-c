@@ -42,6 +42,7 @@ module Language.C.Inline
   , block
   , include
   , verbatim
+  , emitBlock
 
     -- * 'Ptr' utils
   , withPtr
