@@ -10,7 +10,7 @@ author:              Francesco Mazzoli
 maintainer:          f@mazzo.li
 copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2023 Francesco Mazzoli
 category:            FFI
-tested-with:         GHC == 9.2.7
+tested-with:         GHC == 9.2.8, GHC == 9.4.7, GHC == 9.6.2
 build-type:          Simple
 
 source-repository head

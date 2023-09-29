@@ -1,6 +1,6 @@
 cabal-version:       2.2
 name:                inline-c-cpp
-version:             0.5.0.1
+version:             0.5.0.2
 synopsis:            Lets you embed C++ code into Haskell.
 description:         Utilities to inline C++ code into Haskell using inline-c.  See
                      tests for example on how to build.
@@ -10,7 +10,7 @@ author:              Francesco Mazzoli
 maintainer:          f@mazzo.li
 copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2019 Francesco Mazzoli
 category:            FFI
-tested-with:         GHC == 8.4.4, GHC == 8.6.5, GHC == 8.8.4, GHC == 8.10.2, GHC == 9.2.2
+tested-with:         GHC == 9.2.8, GHC == 9.4.7, GHC == 9.6.2
 build-type:          Simple
 extra-source-files:  test/*.h
 

@@ -1,3 +1,8 @@
+- 0.9.1.10:
+  * Add -fcompact-unwind for darwin exceptions(#131).
+  * Fix Cpp.Exception error message line numbers(#133).
+  * Skip generating foreign calls under ghcide(HSL), generate stubs instead(#128).
+  * Add ctxRawObjectCompile option to support CUDA(#147).
 - 0.9.1.8: Tighten ansi-wl-pprint upper bound, see issue #144.
 - 0.9.1.7: Allow arbitrary number of C++ templates, see PR #141.
 - 0.9.1.6: Fix mistakenly unsafe call, see issue #137.
