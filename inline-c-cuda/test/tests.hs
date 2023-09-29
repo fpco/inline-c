@@ -37,6 +37,57 @@ C.context $ C.cudaCtx
 
 C.include "<iostream>"
 C.include "<stdexcept>"
+C.include "<cstring>"
+
+#ifdef TEST_WITHOUT_CUDA
+
+[C.emitBlock|
+
+void
+vectorAdd(int blocksPerGrid, int threadsPerBlock, const float *A, const float *B, float *C, int numElements)
+{
+    for(int blockIdx = 0; blockIdx < blocksPerGrid ; blockIdx++){
+      int blockDim = threadsPerBlock;
+      for(int threadIdx = 0; threadIdx < threadsPerBlock ; threadIdx++){
+        int i = blockDim * blockIdx + threadIdx;
+        
+        if (i < numElements)
+        {
+            C[i] = A[i] + B[i];
+        }
+      }
+    }
+}
+
+
+typedef int cudaError_t;
+const int cudaSuccess = 1;
+
+cudaError_t cudaMalloc(void** dst, size_t size){
+  *dst = malloc(size);
+  return cudaSuccess;
+}
+
+cudaError_t cudaFree(void* dst){
+  free(dst);
+  return cudaSuccess;
+}
+
+const int cudaMemcpyHostToDevice = 0;
+const int cudaMemcpyDeviceToHost = 1;
+
+cudaError_t cudaMemcpy(void *dst, void *src, size_t nbytes, int direction){
+  memcpy(dst, src, nbytes);
+  return cudaSuccess;
+}
+
+char* cudaGetErrorString(cudaError_t err){
+  return "";
+}
+
+|]
+
+#else
 
 [C.emitBlock|
 __global__ void
@@ -50,6 +101,8 @@ vectorAdd(const float *A, const float *B, float *C, int numElements)
     }
 }
 |]
+
+#endif
 
 cudaAllocaArray :: forall b. Int -> (Ptr C.CFloat -> IO b) -> IO b
 cudaAllocaArray size func = do
@@ -121,11 +174,19 @@ main = Hspec.hspec $ do
                   } |]
                   cudaMemcpyHostToDevice numElements h_A d_A
                   cudaMemcpyHostToDevice numElements h_B d_B
+#ifdef TEST_WITHOUT_CUDA
                   [C.block| void {
-                    int threadsPerBlock = 256;
-                    int blocksPerGrid =($(int cNumElements) + threadsPerBlock - 1) / threadsPerBlock;
+                    const int threadsPerBlock = 256;
+                    const int blocksPerGrid =($(int cNumElements) + threadsPerBlock - 1) / threadsPerBlock;
+                    vectorAdd(blocksPerGrid, threadsPerBlock, $(float* d_A), $(float* d_B), $(float* d_C), $(int cNumElements));
+                  } |]
+#else
+                  [C.block| void {
+                    const int threadsPerBlock = 256;
+                    const int blocksPerGrid =($(int cNumElements) + threadsPerBlock - 1) / threadsPerBlock;
                     vectorAdd<<<blocksPerGrid, threadsPerBlock>>>($(float* d_A), $(float* d_B), $(float* d_C), $(int cNumElements));
                   } |]
+#endif
                   cudaMemcpyDeviceToHost numElements d_C h_C
                   lA <- peekArray numElements h_A
                   lB <- peekArray numElements h_B

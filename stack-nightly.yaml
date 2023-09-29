@@ -3,4 +3,5 @@ packages:
 - inline-c
 - inline-c-cpp
 - inline-c-objc
+- inline-c-cuda
 - sample-cabal-project

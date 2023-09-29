@@ -6,16 +6,20 @@ description:         Utilities to inline CUDA code into Haskell using inline-c. 
                      tests for example on how to build.
 license:             MIT
 license-file:        LICENSE
-author:              Francesco Mazzoli
-maintainer:          f@mazzo.li
-copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2017-2019 Francesco Mazzoli
+author:              Junji Hashimoto
+maintainer:          junji.hashimoto@gmail.com
+copyright:           (c) 2015-2016 FP Complete Corporation, (c) 2023 Junji Hashimoto
 category:            FFI
-tested-with:         GHC == 9.2.2
+tested-with:         GHC == 9.2.8, GHC == 9.4.7, GHC == 9.6.2
 build-type:          Simple
 
 source-repository head
   type:     git
   location: https://github.com/fpco/inline-c
+
+flag test-without-cuda
+  description:         Test without cuda
+  default:             False
 
 library
   exposed-modules:     Language.C.Inline.Cuda
@@ -31,7 +35,11 @@ library
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall
-  extra-libraries:     cudart
+  if flag(test-without-cuda)
+    cpp-options:       -DTEST_WITHOUT_CUDA
+  else
+    extra-libraries:   cudart
+
 
 test-suite tests
   type:                exitcode-stdio-1.0
@@ -48,3 +56,5 @@ test-suite tests
                      , template-haskell
                      , vector
   default-language:    Haskell2010
+  if flag(test-without-cuda)
+    cpp-options:       -DTEST_WITHOUT_CUDA

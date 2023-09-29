@@ -37,16 +37,19 @@ jobs:
       - name: Build
         run: |
           if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
-            stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+            stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example --flag inline-c-cuda:test-without-cuda
           else
-            stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+            stack build --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example --flag inline-c-cuda:test-without-cuda
           fi
       - name: Test
         run: |
           if [ ${{ matrix.os }} == "ubuntu-latest" ] ; then
-            stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example
+            stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c:gsl-example --flag inline-c-cpp:std-vector-example --flag inline-c-cuda:test-without-cuda
             ./inline-c-cpp/test-error-message-line-numbers.sh --stack-yaml stack-${{ matrix.stackage }}.yaml
           else
-            stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example
+            stack test --stack-yaml stack-${{ matrix.stackage }}.yaml --flag inline-c-cpp:std-vector-example --flag inline-c-cuda:test-without-cuda
             ./inline-c-cpp/test-error-message-line-numbers.sh --stack-yaml stack-${{ matrix.stackage }}.yaml
           fi
+        env:
+          INLINE_C_CUDA_SUFFIX: cc
+          INLINE_C_CUDA_COMPILER: g++

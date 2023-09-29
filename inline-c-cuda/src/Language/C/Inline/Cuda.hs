@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -25,12 +26,21 @@ import qualified Data.Map as Map
 import           Control.Monad.IO.Class (liftIO)
 import           System.Exit (ExitCode(..))
 import           System.Process (readProcessWithExitCode)
+import           System.Environment (lookupEnv)
+import           Data.Maybe (fromMaybe)
 
 compileCuda :: String -> TH.Q FilePath
 compileCuda src = do
-  cuFile <- TH.addTempFile "cu"
+#ifdef TEST_WITHOUT_CUDA
+  nvcc <- fromMaybe "g++" <$> TH.runIO (lookupEnv "INLINE_C_CUDA_COMPILER")
+  cu <- fromMaybe "cc" <$> TH.runIO (lookupEnv "INLINE_C_CUDA_SUFFIX")
+#else
+  nvcc <- fromMaybe "nvcc" <$> TH.runIO (lookupEnv "INLINE_C_CUDA_COMPILER")
+  cu <- fromMaybe "cu" <$> TH.runIO (lookupEnv "INLINE_C_CUDA_SUFFIX")
+#endif
   oFile <- TH.addTempFile "o"
-  let (cmd,args) = ("nvcc", ["-c","-o",oFile, cuFile])
+  cuFile <- TH.addTempFile cu
+  let (cmd,args) = (nvcc, ["-c", "-o", oFile, cuFile])
   (code, stdout, stderr) <- liftIO $ do
     writeFile cuFile src
     readProcessWithExitCode cmd args ""
