@@ -74,13 +74,16 @@ import           Prelude hiding (exp)
 import           Prelude hiding (exp, pure)
 #endif
 
-import           Control.Monad (void)
+import           Control.Monad (void, when)
 import           Foreign.C.Types
 import           Foreign.Marshal.Alloc (alloca)
 import           Foreign.Ptr (Ptr)
 import           Foreign.Storable (peek, Storable)
+import           System.Directory (getCurrentDirectory, doesFileExist)
+import           System.FilePath (takeDirectory, (</>))
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
+import qualified Language.Haskell.TH.Syntax as TH
 
 import           Language.C.Inline.Context
 import           Language.C.Inline.Internal
@@ -310,7 +313,19 @@ include :: String -> TH.DecsQ
 include s
   | null s = fail "inline-c: empty string (include)"
   | head s == '<' = verbatim $ "#include " ++ s
-  | otherwise = verbatim $ "#include \"" ++ s ++ "\""
+  | otherwise = do
+      addDependentFileRelative s
+      verbatim $ "#include \"" ++ s ++ "\""
+  where
+    addDependentFileRelative relativeFile = do
+      currentFilename <- TH.loc_filename <$> TH.location
+      pwd             <- TH.runIO getCurrentDirectory
+      let currentDirectory = takeDirectory (pwd </> currentFilename)
+          invocationRelativePath = currentDirectory </> relativeFile
+
+      fileExist <- TH.runIO $ doesFileExist invocationRelativePath
+      when fileExist $
+        TH.addDependentFile invocationRelativePath
 
 -- | Emits an arbitrary C string to the C code associated with the
 -- current module.  Use with care.

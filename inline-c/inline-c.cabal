@@ -44,6 +44,8 @@ library
                      , transformers >= 0.1.3.0
                      , unordered-containers
                      , vector
+                     , filepath
+                     , directory
   hs-source-dirs:      src
   default-language:    Haskell2010
 
