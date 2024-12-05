@@ -41,7 +41,7 @@ data CppException
   | CppNonStdException CppExceptionPtr (Maybe ByteString)
 
 instance Show CppException where
-  showsPrec p (CppStdException _ msg typ) = showParen (p >= 11) (showString "CppStdException e " . showsPrec 11 msg . showsPrec 11 typ)
+  showsPrec p (CppStdException _ msg typ) = showParen (p >= 11) (showString "CppStdException e " . showsPrec 11 msg . showChar ' ' . showsPrec 11 typ)
   showsPrec p (CppHaskellException e) = showParen (p >= 11) (showString "CppHaskellException " . showsPrec 11 e)
   showsPrec p (CppNonStdException _ typ) = showParen (p >= 11) (showString "CppOtherException e " . showsPrec 11 typ)
 
