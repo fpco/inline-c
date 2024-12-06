@@ -121,21 +121,26 @@ main = Hspec.hspec $ do
         throw std::runtime_error("C++ error message");
         |]
 
-      result `shouldBeCppStdException` "Exception: C++ error message; type: std::runtime_error"
+      result `shouldBeCppStdException` ("C++ error message", Just "std::runtime_error")
+      result `shouldBeLegacyCppStdException` "Exception: C++ error message; type: std::runtime_error"
+      -- Test that we don't accidentally mess up formatting:
+      result `shouldBeShownException` "CppStdException e \"C++ error message\" (Just \"std::runtime_error\")"
 
     Hspec.it "non-exceptions are caught (unsigned int)" $ do
       result <- try [C.catchBlock|
         throw 0xDEADBEEF;
         |]
 
-      result `shouldBeCppOtherException` (Just "unsigned int")
+      result `shouldBeCppNonStdException` (Just "unsigned int")
+      result `shouldBeLegacyCppOtherException` (Just "unsigned int")
 
     Hspec.it "non-exceptions are caught (void *)" $ do
       result <- try [C.catchBlock|
         throw (void *)0xDEADBEEF;
         |]
 
-      result `shouldBeCppOtherException` (Just "void*")
+      result `shouldBeCppNonStdException` (Just "void*")
+      result `shouldBeLegacyCppOtherException` (Just "void*")
 
     Hspec.it "non-exceptions are caught (std::string)" $ do
       result <- try [C.catchBlock|
@@ -169,7 +174,8 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `shouldBeCppStdException` "Exception: C++ error message; type: std::runtime_error"
+      result `shouldBeCppStdException` ("C++ error message", Just "std::runtime_error")
+      result `shouldBeLegacyCppStdException` "Exception: C++ error message; type: std::runtime_error"
 
     Hspec.it "try and return without throwing (pure)" $ do
       result <- [C.tryBlock| int {
@@ -195,7 +201,8 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `shouldBeCppStdException` "Exception: C++ error message; type: std::runtime_error"
+      result `shouldBeCppStdException` ("C++ error message", Just "std::runtime_error")
+      result `shouldBeLegacyCppStdException` "Exception: C++ error message; type: std::runtime_error"
 
     Hspec.it "catch without return (pure)" $ do
       result <- [C.tryBlock| void {
@@ -203,7 +210,8 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `shouldBeCppStdException` "Exception: C++ error message; type: std::runtime_error"
+      result `shouldBeCppStdException` ("C++ error message", Just "std::runtime_error")
+      result `shouldBeLegacyCppStdException` "Exception: C++ error message; type: std::runtime_error"
 
     Hspec.it "try and return without throwing (throw)" $ do
       result :: Either C.CppException C.CInt <- try [C.throwBlock| int {
@@ -229,7 +237,8 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `shouldBeCppStdException` "Exception: C++ error message; type: std::runtime_error"
+      result `shouldBeCppStdException` ("C++ error message", Just "std::runtime_error")
+      result `shouldBeLegacyCppStdException` "Exception: C++ error message; type: std::runtime_error"
 
     Hspec.it "return throwing Haskell" $ do
       let exc = toException $ userError "This is from Haskell"
@@ -275,7 +284,8 @@ main = Hspec.hspec $ do
         }
         |]
 
-      result `shouldBeCppStdException` "Exception: C++ error message; type: std::runtime_error"
+      result `shouldBeCppStdException` ("C++ error message", Just "std::runtime_error")
+      result `shouldBeLegacyCppStdException` "Exception: C++ error message; type: std::runtime_error"
 
     Hspec.it "code without exceptions works normally" $ do
       result :: Either C.CppException C.CInt <- try $ C.withPtr_ $ \resPtr -> [C.catchBlock|
@@ -368,19 +378,37 @@ main = Hspec.hspec $ do
 tag :: C.CppException -> String
 tag (C.CppStdException {}) = "CppStdException"
 tag (C.CppHaskellException {}) = "CppHaskellException"
-tag (Legacy.CppOtherException {}) = "CppStdException"
+tag (C.CppNonStdException {}) = "CppNonStdException"
 
-shouldBeCppStdException :: Either C.CppException a -> String -> IO ()
-shouldBeCppStdException (Left (Legacy.CppStdException actualMsg)) expectedMsg = do
-  actualMsg `Hspec.shouldBe` expectedMsg
+shouldBeShownException :: Either C.CppException a -> String -> IO ()
+shouldBeShownException (Left e) expectedStr = show e `shouldBe` expectedStr
+shouldBeShownException (Right _) _expectedStr = "Right _" `Hspec.shouldBe` "Left _"
+
+shouldBeCppStdException :: Either C.CppException a -> (ByteString, Maybe ByteString) -> IO ()
+shouldBeCppStdException (Left (C.CppStdException _ actualMsg actualType)) (expectedMsg, expectedType) = do
+  (actualMsg, actualType) `shouldBe` (expectedMsg, expectedType)
 shouldBeCppStdException (Left x) expectedMsg = tag x `Hspec.shouldBe` ("CppStdException " <> show expectedMsg)
 shouldBeCppStdException (Right _) expectedMsg = "Right _" `Hspec.shouldBe` ("Left (CppStdException " <> show expectedMsg <> ")")
 
-shouldBeCppOtherException :: Either C.CppException a -> Maybe String -> IO ()
-shouldBeCppOtherException (Left (Legacy.CppOtherException actualType)) expectedType = do
+-- | Tests that the old, deprecated exception's module and error messages still work.
+shouldBeLegacyCppStdException :: Either Legacy.CppException a -> String -> IO ()
+shouldBeLegacyCppStdException (Left (Legacy.CppStdException actualMsg)) expectedMsg = do
+  actualMsg `Hspec.shouldBe` expectedMsg
+shouldBeLegacyCppStdException (Left x) expectedMsg = tag x `Hspec.shouldBe` ("CppStdException " <> show expectedMsg)
+shouldBeLegacyCppStdException (Right _) expectedMsg = "Right _" `Hspec.shouldBe` ("Left (CppStdException " <> show expectedMsg <> ")")
+
+shouldBeCppNonStdException :: Either C.CppException a -> Maybe ByteString -> IO ()
+shouldBeCppNonStdException (Left (C.CppNonStdException _ actualType)) expectedType = do
   actualType `Hspec.shouldBe` expectedType
-shouldBeCppOtherException (Left x) expectedType = tag x `Hspec.shouldBe` ("CppOtherException " <> show expectedType)
-shouldBeCppOtherException (Right _) expectedType = "Right _" `Hspec.shouldBe` ("Left (CppOtherException " <> show expectedType <> ")")
+shouldBeCppNonStdException (Left x) expectedType = tag x `Hspec.shouldBe` ("CppOtherException " <> show expectedType)
+shouldBeCppNonStdException (Right _) expectedType = "Right _" `Hspec.shouldBe` ("Left (CppOtherException " <> show expectedType <> ")")
+
+-- | Tests that the old, deprecated exception's module and error messages still work.
+shouldBeLegacyCppOtherException :: Either Legacy.CppException a -> Maybe String -> IO ()
+shouldBeLegacyCppOtherException (Left (Legacy.CppOtherException actualType)) expectedType = do
+  actualType `Hspec.shouldBe` expectedType
+shouldBeLegacyCppOtherException (Left x) expectedType = tag x `Hspec.shouldBe` ("CppOtherException " <> show expectedType)
+shouldBeLegacyCppOtherException (Right _) expectedType = "Right _" `Hspec.shouldBe` ("Left (CppOtherException " <> show expectedType <> ")")
 
 shouldBeRight :: (Eq a, Show a) => Either C.CppException a -> a -> IO ()
 shouldBeRight (Right actual) expected = actual `Hspec.shouldBe` expected
