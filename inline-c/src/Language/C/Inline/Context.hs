@@ -320,10 +320,17 @@ convertType purity cTypes = runMaybeT . go
         -- We cannot convert standalone prototypes
         mzero
 
+    buildArr :: [TH.Type] -> TH.Type -> TH.Q TH.Type
     buildArr [] hsRetType =
       case purity of
         Pure -> [t| $(return hsRetType) |]
         IO -> [t| IO $(return hsRetType) |]
+    buildArr [TH.TupleT 0] hsRetType =
+      case purity of
+        Pure -> [t| $(return hsRetType) |]
+        IO -> [t| IO $(return hsRetType) |]
+    buildArr (TH.TupleT 0 : hsPars) hsRetType =
+      fail "C function can only have void parameter as the only parameter"
     buildArr (hsPar : hsPars) hsRetType =
       [t| $(return hsPar) -> $(buildArr hsPars hsRetType) |]
 

@@ -74,6 +74,10 @@ spec = do
     shouldBeType
       (cty "int (*f)(unsigned char, float)")
       [t| FunPtr (CUChar -> CFloat -> IO CInt) |]
+  Hspec.it "converts void parameter function pointer" $ do
+    shouldBeType 
+      (cty "void (*f)(void)") 
+      [t| FunPtr (IO ()) |]
   Hspec.it "converts complicated function pointers (1)" $ do
     -- pointer to function returning pointer to function returning int
     shouldBeType
