@@ -261,6 +261,18 @@ main = hspec $ do
         carry `shouldBe` True
 
   describe "Bit manipulation" $ do
+    context "QuickCheck test for equivalence" $ do
+      it "Verilog and Haskell implementations produce the same results" $
+        QC.property $ \(in_A, in_B) ->
+          QC.forAll (QC.choose (0, 7)) $ \shuffle_control ->
+            QC.forAll (QC.choose (0, 3)) $ \op_select -> do
+              -- Get the result from the Verilog implementation
+              verilogResult <- bitManip in_A in_B shuffle_control op_select
+              -- Get the result from the pure Haskell implementation
+              let haskellResult = bitManipHs in_A in_B shuffle_control op_select
+              -- Assert that they are the same
+              verilogResult `shouldBe` haskellResult
+
     -- Run the same set of tests for both implementations
     context "Haskell Implementation" $
       bitManipSpec (\a b c d -> return (bitManipHs a b c d))
