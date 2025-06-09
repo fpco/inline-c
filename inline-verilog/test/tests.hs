@@ -69,13 +69,13 @@ bitManip in_A in_B shuffle_control op_select = do
   alloca $ \out_shuffled -> alloca $ \out_op_result -> alloca $ \out_popcount_A_gt_B -> do
     [V.block|
       module (
-        input wire [63:0] in_A,            
-        input wire [31:0] in_B,            
-        input wire [2:0]  shuffle_control, 
-        input wire [1:0]  op_select,       
-        output reg [63:0] out_shuffled,   
-        output reg [31:0] out_op_result,  
-        output reg        out_popcount_A_gt_B 
+        input wire [63:0] in_A,               // Primary 64-bit data input for shuffling and operations
+        input wire [31:0] in_B,               // Secondary 32-bit data input for operations
+        input wire [2:0]  shuffle_control,    // Selects the shuffle operation for in_A
+        input wire [1:0]  op_select,          // Selects the bitwise operation for in_A[31:0] and in_B
+        output reg [63:0] out_shuffled,       // Output of the 64-bit shuffle operation
+        output reg [31:0] out_op_result,      // Output of the 32-bit bitwise operation
+        output reg        out_popcount_A_gt_B // '1' if popcount of in_A > popcount of in_B
       );
         // -- Section 1: Parallel Bit Shuffling --
         // This block shuffles the 64 bits of `in_A` based on `shuffle_control`.
