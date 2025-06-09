@@ -320,7 +320,7 @@ invokeCommand cmd args = do
 compileVerilog :: String -> TH.Q FilePath
 compileVerilog src = do
   -- executables we need
-  gpp <- fromMaybe "g++" <$> liftIO (lookupEnv "INLINE_C_CPP_COMPILER")
+  cpp <- fromMaybe "g++" <$> liftIO (lookupEnv "INLINE_C_CPP_COMPILER")
   verilator <- fromMaybe "verilator" <$> liftIO (lookupEnv "INLINE_C_VERILATOR")
   ld <- fromMaybe "ld" <$> liftIO (lookupEnv "INLINE_C_LINKER")
   -- generate verilog source and collect module infos
@@ -373,8 +373,8 @@ compileVerilog src = do
             delete contextp;
           }
         |]
-      let gppArgs = ["-c", "-I", verilatorRoot ++ "/include", "-I", tmpDir, cppFile, "-o", oFile]
-      _ <- invokeCommand gpp gppArgs
+      let cppArgs = ["-c", "-I", verilatorRoot ++ "/include", "-I", tmpDir, cppFile, "-o", oFile]
+      _ <- invokeCommand cpp cppArgs
       return [oFile, tmpDir ++ "/V" ++ (miName minfo) ++ "__ALL.o"]
     let ldArgs = ["-r", "-o", mergedOFile, tmpDir ++ "/verilated.o", tmpDir ++ "/verilated_threads.o"] ++ modsObjs
     void (invokeCommand ld ldArgs)

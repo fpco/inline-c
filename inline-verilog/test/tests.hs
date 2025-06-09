@@ -126,8 +126,6 @@ bitManip in_A in_B shuffle_control op_select = do
 
         // Perform the comparison on the results from the instantiated modules.
         always @(*) begin
-          // FIX: Explicitly zero-extend popcount_B_result from 6 bits to 7 bits to
-          // match the width of popcount_A_result. This resolves the WIDTHEXPAND warning.
           if (popcount_A_result > {1'b0, popcount_B_result}) begin
             out_popcount_A_gt_B = 1'b1;
           end else begin
