@@ -8,3 +8,5 @@ Currently missing or untested:
 * Importing.
 
 All of the above should be easy, I just didn't bother yet.
+
+Also, `inline-verilog` does not make much sense for non-combinatorial circuits (e.g. stuff that does IO).
