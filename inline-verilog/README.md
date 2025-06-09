@@ -4,7 +4,7 @@ Currently missing or untested:
 
 * Inputs/outputs wider than 64 bits.
 * `struct` ports.
-* Multidimensional input/output port, e.g. `reg [15:0] foo [3:0][3:0]` .
+* Multidimensional input/output ports, e.g. `reg [15:0] foo [3:0][3:0]` .
 * Importing.
 
 All of the above should be easy, I just didn't bother yet.
