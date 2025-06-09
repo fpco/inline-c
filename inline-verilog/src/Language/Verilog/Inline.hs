@@ -5,9 +5,10 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Language.Verilog.Inline
   ( verilog
@@ -43,23 +44,24 @@ import           Text.Parser.Token
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Data.HashSet as HashSet
 import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.TH as Aeson
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Lazy as BSL
-import           GHC.Generics (Generic)
 import           Data.IORef
 import           System.IO.Unsafe (unsafePerformIO)
 import qualified Data.HashSet as HS
 import           Foreign.Ptr (Ptr)
 import           Data.Word
+import           Control.Monad.Trans.Class (MonadTrans(..))
+import           Control.Applicative (Alternative)
 
-data PortDirection = In | Out | InOut deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
+data PortDirection = In | Out | InOut deriving (Show, Eq)
 
-data DataType = Wire | Reg | Logic | Integer | Real deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
+data DataType = Wire | Reg | Logic | Integer | Real deriving (Show, Eq)
 
-data Range = Range { rangeMSB :: Int, rangeLSB :: Int } deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
-
+data Range = Range { rangeMSB :: Int, rangeLSB :: Int } deriving (Show, Eq)
 rangeWidth :: Range -> Int
 rangeWidth (Range msb lsb) = msb - lsb + 1
 
@@ -68,13 +70,19 @@ data Port = Port
   , portDataType :: Maybe DataType
   , portRanges :: [Range]
   , portName :: String
-  } deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
+  } deriving (Show, Eq)
 
 data Module = Module
   { mName :: String
   , mPorts :: [Port]
   , mBody :: String
-  } deriving (Show, Eq, Generic, Aeson.ToJSON, Aeson.FromJSON)
+  } deriving (Show, Eq)
+
+Aeson.deriveJSON Aeson.defaultOptions ''PortDirection
+Aeson.deriveJSON Aeson.defaultOptions ''DataType
+Aeson.deriveJSON Aeson.defaultOptions ''Range
+Aeson.deriveJSON Aeson.defaultOptions ''Port
+Aeson.deriveJSON Aeson.defaultOptions ''Module
 
 type VParser m =
   ( Monad m
@@ -188,13 +196,31 @@ pModule mname = do
   body <- many anyChar
   return $ Module mname ports body
 
+newtype VParserImpl t a = VPI (t a)
+  deriving (MonadFail, Alternative, Functor, Applicative, Monad, MonadPlus, Semigroup, Parsing, CharParsing, LookAheadParsing)
+
+instance MonadTrans VParserImpl where
+  lift = VPI
+
+instance (Monad m, MonadPlus m, CharParsing m) => TokenParsing (VParserImpl m) where
+  someSpace = do
+    skipSome (satisfy isSpace)
+    msum
+      [ try (string "//") >> manyTill anyChar (try (char '\n')) >> someSpace
+      , try (string "/*") >> manyTill anyChar (try (string "*/")) >> someSpace
+      , return ()
+      ]
+
+runVParser :: VParserImpl (Parsec.Parsec String ()) a -> Parsec.SourceName -> String -> Either Parsec.ParseError a
+runVParser (VPI m) name s = Parsec.parse m name s
+
 runParserInQ :: String -> (forall m. VParser m => m a) -> TH.Q a
 runParserInQ s p = do
   loc <- TH.location
   let (line, col) = TH.loc_start loc
   let parsecLoc = Parsec.newPos (TH.loc_filename loc) line col
-  let p' = Parsec.setPosition parsecLoc *> (spaces >> p) <* eof
-  case Parsec.parse p' (TH.loc_filename loc) s of
+  let p' = VPI (Parsec.setPosition parsecLoc) *> (spaces >> p) <* eof
+  case runVParser p' (TH.loc_filename loc) s of
     Left err -> do
       -- TODO consider prefixing with "error while parsing Verilog" or similar
       fail $ show err
@@ -204,7 +230,8 @@ runParserInQ s p = do
 data VerilogFileItem =
     VFIVerbatim String
   | VFIModule Module
-  deriving (Eq, Show, Generic, Aeson.ToJSON, Aeson.FromJSON)
+  deriving (Eq, Show)
+Aeson.deriveJSON Aeson.defaultOptions ''VerilogFileItem
 
 verbatimItem :: VerilogFileItem -> TH.DecsQ
 verbatimItem a = C.verbatim (T.unpack (T.decodeUtf8 (BSL.toStrict (Aeson.encode a))))
